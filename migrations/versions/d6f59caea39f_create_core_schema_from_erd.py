@@ -1,8 +1,8 @@
-"""add salary_component table
+"""create core schema from ERD
 
-Revision ID: 4714dd200748
-Revises: d5d38b1c136a
-Create Date: 2026-02-13 11:29:14.554158
+Revision ID: d6f59caea39f
+Revises: 180f891ac9d3
+Create Date: 2026-02-13 11:56:52.307599
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '4714dd200748'
-down_revision: Union[str, Sequence[str], None] = 'd5d38b1c136a'
+revision: str = 'd6f59caea39f'
+down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
