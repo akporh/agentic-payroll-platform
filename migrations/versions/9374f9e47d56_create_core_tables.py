@@ -30,9 +30,30 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
     )
 
+    op.create_table(
+        "employee",
+        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column("workspace_id", sa.UUID(), sa.ForeignKey("workspace.id"), nullable=False),
+
+        sa.Column("employee_number", sa.String(length=50), nullable=False),
+        sa.Column("full_name", sa.String(length=255), nullable=False),
+
+        sa.Column("status", sa.String(length=30), nullable=False, server_default="ACTIVE"),
+
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+    )
+
+    op.create_index(
+        "ix_employee_workspace_employee_number",
+        "employee",
+        ["workspace_id", "employee_number"],
+        unique=True,
+    )
+
 
 def downgrade() -> None:
     op.drop_table("workspace")
     op.drop_table("account")
-
+    op.drop_index("ix_employee_workspace_employee_number", table_name="employee")
+    op.drop_table("employee")
 
