@@ -12,3 +12,10 @@ Bank-grade payroll processing system with metadata-driven rules engine.
 
 ## Getting Started
 See docs/SETUP.md for detailed setup instructions.
+
+## Branching Strategy
+- main: stable baseline (protected)
+- dev: active development branch
+- All feature work is merged into dev first
+- main only updates via PR when stable
+
