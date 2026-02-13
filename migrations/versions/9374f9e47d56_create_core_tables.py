@@ -50,10 +50,32 @@ def upgrade() -> None:
         unique=True,
     )
 
+    op.create_table(
+        "salary_component",
+        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column("workspace_id", sa.UUID(), sa.ForeignKey("workspace.id"), nullable=False),
+
+        sa.Column("code", sa.String(length=50), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+
+        sa.Column("component_type", sa.String(length=30), nullable=False),  # EARNING/DEDUCTION
+        sa.Column("taxable", sa.Boolean(), nullable=False, server_default=sa.true()),
+
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+    )
+
+    op.create_index(
+        "ix_salary_component_workspace_code",
+        "salary_component",
+        ["workspace_id", "code"],
+        unique=True,
+    )
 
 def downgrade() -> None:
     op.drop_table("workspace")
     op.drop_table("account")
     op.drop_index("ix_employee_workspace_employee_number", table_name="employee")
     op.drop_table("employee")
+    op.drop_index("ix_salary_component_workspace_code", table_name="salary_component")
+    op.drop_table("salary_component")
 
