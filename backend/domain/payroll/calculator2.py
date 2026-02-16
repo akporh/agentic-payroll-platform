@@ -1,10 +1,10 @@
 from backend.domain.rules.paye import calculate_paye
 
-
 def calculate_net_pay(gross_income: float, tax_bands: list[dict]) -> dict:
-    computed_tax = calculate_paye(gross_income, tax_bands)
+    paye = calculate_paye(gross_income, tax_bands)
+
     return {
         "gross": gross_income,
-        "paye": computed_tax,
-        "net": round(gross_income - computed_tax, 2),
+        "paye": paye,
+        "net": gross_income - paye,
     }
