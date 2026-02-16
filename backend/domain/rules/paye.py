@@ -1,4 +1,39 @@
+"""
+PAYE (Pay-As-You-Earn) Tax Calculation Module.
+
+Implements Nigerian PAYE tax computation using progressive tax bands.
+This is a pure deterministic function with no database dependencies.
+
+Reference: Phase 1 Business Spec — Statutory Deductions (PAYE).
+"""
+
+
 def calculate_paye(gross_income: float, tax_bands: list[dict]) -> float:
+    """Calculate PAYE tax using progressive tax band brackets.
+
+    Applies each tax band sequentially to the relevant portion of gross income.
+    Bands are sorted by lower_limit to ensure correct bracket ordering.
+
+    Args:
+        gross_income: Total taxable gross income for the period.
+        tax_bands: Ordered list of tax brackets. Each dict must contain:
+            - lower_limit (float): Start of the bracket (inclusive).
+            - upper_limit (float | None): End of the bracket (exclusive).
+              None indicates an unbounded top bracket.
+            - rate (float): Tax rate for this bracket (e.g. 0.07 = 7%).
+
+    Returns:
+        Total PAYE tax amount, rounded to 2 decimal places.
+
+    Example:
+        >>> bands = [
+        ...     {"lower_limit": 0, "upper_limit": 300000, "rate": 0.07},
+        ...     {"lower_limit": 300000, "upper_limit": 600000, "rate": 0.11},
+        ...     {"lower_limit": 600000, "upper_limit": None, "rate": 0.15},
+        ... ]
+        >>> calculate_paye(800000, bands)
+        84000.0
+    """
     sorted_bands = sorted(tax_bands, key=lambda b: b["lower_limit"])
     total_tax = 0.0
 
