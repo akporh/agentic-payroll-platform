@@ -1,0 +1,127 @@
+Sprint 1.12 — Client Onboarding Loader (Emit SQL Bundle Only)
+Implement ONLY this story: doesn't currently exist in the sprint_ready_backlog.md
+
+Follow docs/ARCHITECTURE_LOCK.md,
+docs/INFRASTRUCTURE_DECISIONS.md,
+and docs/REPLIT_AGENT_GUARDRAILS.md strictly.
+Goal:
+Generate a reviewable SQL onboarding bundle from client onboarding JSON.
+
+The loader MUST run the onboarding review first.
+If hard_validation FAILS → do NOT emit SQL.
+
+No database writes.
+No migrations.
+No new dependencies.
+
+Create ONLY these files:
+
+backend/domain/onboarding/sql_emitter.py
+backend/domain/onboarding/loader.py
+tests/test_sql_emitter.py
+
+------------------------------------------------------------
+Inputs (Do NOT rename keys)
+------------------------------------------------------------
+
+Client onboarding JSON contains:
+
+client_json["salary_definitions"]
+client_json["payroll_rules"]
+client_json["employees"]
+
+Use existing:
+
+review_client_onboarding(client_json)
+
+------------------------------------------------------------
+SQL Emission Requirements
+------------------------------------------------------------
+
+The loader must emit SQL strings ONLY (not execute them).
+
+Implement:
+
+def emit_onboarding_sql(client_json: dict) -> dict
+
+Return:
+
+{
+  "status": "BLOCKED" | "READY",
+  "review": {...full review_client_onboarding output...},
+  "sql": {
+     "salary_definitions": "...",
+     "payroll_rules": "...",
+     "employees": "..."
+  }
+}
+
+If hard_validation.status == "FAIL":
+
+- status must be "BLOCKED"
+- sql must be empty strings
+
+If PASS:
+
+- status must be "READY"
+- sql strings must contain INSERT statements
+
+------------------------------------------------------------
+SQL Format (Minimal Phase 1)
+------------------------------------------------------------
+
+Emit inserts for:
+
+1. salary_definition
+
+INSERT INTO salary_definition
+(salary_definition_id, name, components_jsonb)
+VALUES
+(gen_random_uuid(), 'STEP_1_TEMPLATE', '{...json...}'::jsonb);
+
+2. payroll_rule
+
+INSERT INTO payroll_rule
+(payroll_rule_id, rule_code, rule_definition_json)
+VALUES
+(gen_random_uuid(), 'PENSION_EMPLOYEE', '{...json...}'::jsonb);
+
+3. employee
+
+INSERT INTO employee
+(employee_id, employee_number, personal_details_encrypted)
+VALUES
+(gen_random_uuid(), 'EMP001', '{...biodata...}'::jsonb);
+
+Notes:
+
+- Use gen_random_uuid() (Postgres)
+- JSON must be dumped safely as jsonb literal
+- No workspace_id handling yet (Phase 1 simplification)
+
+------------------------------------------------------------
+Tests
+------------------------------------------------------------
+
+tests/test_sql_emitter.py must include:
+
+1. BLOCKED case:
+
+- client_json missing TRANSPORT
+- Assert status == "BLOCKED"
+- Assert emitted sql strings are empty
+
+2. READY case:
+
+- valid client_json
+- Assert status == "READY"
+- Assert salary_definitions SQL contains "INSERT INTO salary_definition"
+- Assert payroll_rules SQL contains "PENSION_EMPLOYEE"
+
+------------------------------------------------------------
+Acceptance Criteria
+------------------------------------------------------------
+
+pytest passes
+Only these new files are added
+Stop after completion.
