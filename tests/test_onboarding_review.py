@@ -73,7 +73,12 @@ def test_hard_pass_valid_config():
         "employees": [
             {
                 "employee_number": "EMP001",
-                "biodata": {"TIN": "1234567890"},
+                "biodata": {
+                    "TIN": "1234567890",
+                    "BANK": "ACCESS",
+                    "ACCOUNT_NUMBER": "0012345678",
+                    "RSA": "PEN100012345678",
+                },
             },
         ],
     }
@@ -82,3 +87,89 @@ def test_hard_pass_valid_config():
 
     assert result["hard_validation"]["status"] == "PASS"
     assert len(result["hard_validation"]["errors"]) == 0
+
+
+def test_fail_missing_pension_rule():
+    client_json = {
+        "salary_definitions": [
+            {
+                "name": "STEP_1_TEMPLATE",
+                "components": {
+                    "BASIC": {"amount": 500000},
+                    "HOUSING": {"amount": 300000},
+                    "TRANSPORT": {"amount": 200000},
+                },
+            },
+        ],
+        "payroll_rules": [
+            {
+                "rule_code": "OVERTIME",
+                "definition": {
+                    "method": "fixed_amount",
+                    "amount": 50000,
+                },
+            },
+        ],
+        "employees": [
+            {
+                "employee_number": "EMP001",
+                "biodata": {
+                    "TIN": "1234567890",
+                    "BANK": "ACCESS",
+                    "ACCOUNT_NUMBER": "0012345678",
+                    "RSA": "PEN100012345678",
+                },
+            },
+        ],
+    }
+
+    result = review_client_onboarding(client_json)
+
+    assert result["hard_validation"]["status"] == "FAIL"
+    assert any(
+        e["category"] == "Completeness" and "pension" in e["message"].lower()
+        for e in result["hard_validation"]["errors"]
+    )
+
+
+def test_fail_employee_missing_rsa():
+    client_json = {
+        "salary_definitions": [
+            {
+                "name": "STEP_1_TEMPLATE",
+                "components": {
+                    "BASIC": {"amount": 500000},
+                    "HOUSING": {"amount": 300000},
+                    "TRANSPORT": {"amount": 200000},
+                },
+            },
+        ],
+        "payroll_rules": [
+            {
+                "rule_code": "PENSION_EMPLOYEE",
+                "definition": {
+                    "method": "percentage",
+                    "rate": 0.08,
+                    "base_components": ["BASIC", "HOUSING", "TRANSPORT"],
+                },
+            },
+        ],
+        "employees": [
+            {
+                "employee_number": "EMP001",
+                "biodata": {
+                    "TIN": "1234567890",
+                    "BANK": "ACCESS",
+                    "ACCOUNT_NUMBER": "0012345678",
+                },
+            },
+        ],
+    }
+
+    result = review_client_onboarding(client_json)
+
+    assert result["hard_validation"]["status"] == "FAIL"
+    assert any(
+        e["category"] == "Employee Compliance" and "RSA" in e["message"]
+        for e in result["hard_validation"]["errors"]
+    )
