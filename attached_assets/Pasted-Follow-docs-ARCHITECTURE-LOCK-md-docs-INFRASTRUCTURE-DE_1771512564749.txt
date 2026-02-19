@@ -1,0 +1,188 @@
+Follow docs/ARCHITECTURE_LOCK.md,
+docs/INFRASTRUCTURE_DECISIONS.md,
+and docs/REPLIT_AGENT_GUARDRAILS.md strictly.
+
+Implement ONLY this story:
+
+Sprint 1.2 — JSONB Validation Framework (Hard Validator + AI Critic Review)
+
+Goal:
+Validate a client onboarding JSON config deterministically,
+and always produce an AI-style review report.
+
+No database writes.
+No migrations.
+No new dependencies.
+No OpenAI calls yet (heuristics only).
+
+Create ONLY these files:
+
+backend/domain/onboarding/report_types.py
+backend/domain/onboarding/hard_validator.py
+backend/domain/onboarding/ai_critic.py
+backend/domain/onboarding/review_runner.py
+tests/test_onboarding_review.py
+
+------------------------------------------------------------
+Domain Contract (Do NOT rename keys)
+------------------------------------------------------------
+
+The client onboarding JSON has these top-level keys:
+
+client_json["salary_definitions"]
+client_json["payroll_rules"]
+client_json["employees"]
+
+Salary Definition shape:
+
+{
+  "name": "STEP_2_TEMPLATE",
+  "components": {
+    "BASIC": {"amount": 500000},
+    "HOUSING": {"amount": 300000},
+    "TRANSPORT": {"amount": 200000},
+    "CONSOLIDATED": {"amount": 100000}
+  }
+}
+
+Payroll Rule shape:
+
+{
+  "rule_code": "PENSION_EMPLOYEE",
+  "definition": {
+    "method": "percentage",
+    "rate": 0.08,
+    "base_components": ["BASIC", "HOUSING", "TRANSPORT"]
+  }
+}
+
+Employee shape:
+
+{
+  "employee_number": "EMP001",
+  "biodata": {
+    "TIN": "1234567890"
+  }
+}
+
+------------------------------------------------------------
+Hard Validation Requirements (Phase 1 Legal Minimum)
+------------------------------------------------------------
+
+A) Salary Definition Completeness
+
+For every salary_definition:
+
+- components MUST include:
+  BASIC
+  HOUSING
+  TRANSPORT
+
+- every component MUST contain numeric "amount"
+
+Extras (e.g. CONSOLIDATED) are allowed.
+
+B) Payroll Rule Executability
+
+Supported Phase 1 methods ONLY:
+
+- percentage → requires rate, base_components
+- fixed_amount → requires amount
+- per_day → requires rate, input_key
+- statutory → requires system
+
+Reject unsupported methods.
+
+Hard validator returns:
+
+HardValidationResult:
+  status: "PASS" or "FAIL"
+  errors: list of ValidationError(category, message)
+
+------------------------------------------------------------
+AI Critic Requirements (Soft Review, Always Runs)
+------------------------------------------------------------
+
+AI critic does NOT block onboarding.
+
+It produces:
+
+AICriticReport:
+  summary: str
+  warnings: list[str]
+  questions: list[str]
+  suggestions: list[str]
+
+Phase 1 heuristics:
+
+- If any salary_definition includes "CONSOLIDATED":
+    add warning: confirm taxable vs informational.
+
+- If BASIC amount == 0:
+    add question: is this intentional?
+
+- If any employee missing biodata["TIN"]:
+    add suggestion: PAYE remittance will fail.
+
+- If any payroll_rule has method == "statutory":
+    - if tax_year missing → warning
+    - if tax_year != 2026 → warning
+
+No LLM integration yet.
+
+------------------------------------------------------------
+Unified Review Runner
+------------------------------------------------------------
+
+Implement:
+
+def review_client_onboarding(client_json: dict) -> dict
+
+It must ALWAYS return:
+
+{
+  "hard_validation": {
+     "status": "...",
+     "errors": [...]
+  },
+  "ai_review": {
+     "summary": "...",
+     "warnings": [...],
+     "questions": [...],
+     "suggestions": [...]
+  }
+}
+
+Even if hard validation FAILS, ai_review must still be present.
+
+------------------------------------------------------------
+Tests
+------------------------------------------------------------
+
+tests/test_onboarding_review.py must:
+
+1. Create a sample client_json with:
+
+- salary_definition missing TRANSPORT (hard FAIL)
+- pension rule valid
+- employee missing TIN (AI suggestion)
+
+Assert:
+
+hard_validation.status == "FAIL"
+ai_review.suggestions contains "missing TIN"
+
+2. Create a valid client_json with all components present.
+
+Assert:
+
+hard_validation.status == "PASS"
+
+------------------------------------------------------------
+Acceptance Criteria
+------------------------------------------------------------
+
+pytest passes
+Only these new files are added
+No other modifications
+Stop after completion.
