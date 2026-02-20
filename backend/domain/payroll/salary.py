@@ -8,7 +8,10 @@ Reference: Phase 1 Business Spec — SALARY_DEFINITION.components_jsonb.
 """
 
 
-def calculate_gross(components: list[dict]) -> float:
+from decimal import Decimal
+
+
+def calculate_gross(components: list[dict]) -> Decimal:
     """Sum all salary component amounts to produce total gross pay.
 
     Args:

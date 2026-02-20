@@ -6,9 +6,9 @@ This is a pure deterministic function with no database dependencies.
 
 Reference: Phase 1 Business Spec — Statutory Deductions (PAYE).
 """
+from decimal import Decimal, ROUND_HALF_UP
 
-
-def calculate_paye(gross_income: float, tax_bands: list[dict]) -> float:
+def calculate_paye(gross_income: Decimal, tax_bands: list[dict]) -> Decimal:
     """Calculate PAYE tax using progressive tax band brackets.
 
     Applies each tax band sequentially to the relevant portion of gross income.
@@ -35,7 +35,7 @@ def calculate_paye(gross_income: float, tax_bands: list[dict]) -> float:
         84000.0
     """
     sorted_bands = sorted(tax_bands, key=lambda b: b["lower_limit"])
-    total_tax = 0.0
+    total_tax = Decimal("0")
 
     for band in sorted_bands:
         lower = band["lower_limit"]
@@ -52,4 +52,5 @@ def calculate_paye(gross_income: float, tax_bands: list[dict]) -> float:
 
         total_tax += taxable * rate
 
-    return round(total_tax, 2)
+    return total_tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    

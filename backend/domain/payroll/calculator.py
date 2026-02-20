@@ -7,10 +7,11 @@ This is a pure deterministic function with no database dependencies.
 Reference: Phase 1 Business Spec — Payroll Calculation Pipeline.
 """
 
+from decimal import Decimal
 from backend.domain.rules.paye import calculate_paye
 
 
-def calculate_net_pay(gross_income: float, tax_bands: list[dict]) -> dict:
+def calculate_net_pay(gross_income: Decimal, tax_bands: list[dict]) -> dict:
     """Calculate net pay after PAYE deduction.
 
     Args:
@@ -35,3 +36,4 @@ def calculate_net_pay(gross_income: float, tax_bands: list[dict]) -> dict:
         "paye": computed_tax,
         "net": round(gross_income - computed_tax, 2),
     }
+ 
