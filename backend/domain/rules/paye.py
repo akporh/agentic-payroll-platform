@@ -8,6 +8,8 @@ Reference: Phase 1 Business Spec — Statutory Deductions (PAYE).
 """
 from decimal import Decimal, ROUND_HALF_UP
 
+print("Loaded PAYE from:", __file__)
+
 def calculate_paye(gross_income: Decimal, tax_bands: list[dict]) -> Decimal:
     """Calculate PAYE tax using progressive tax band brackets.
 
