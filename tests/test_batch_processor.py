@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.batch_processor import process_payroll_run
 
 
@@ -37,4 +38,4 @@ def test_process_payroll_run():
     )
     assert result["payroll_run_id"] == "run1"
     assert len(result["results"]) == 2
-    assert result["totals"]["total_net_pay"] == 1432000.0
+    assert result["totals"]["total_net_pay"] == Decimal("1432000.00")

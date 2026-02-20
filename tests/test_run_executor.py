@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.run_executor import execute_payroll_run_pure
 
 
@@ -38,6 +39,6 @@ def test_execute_payroll_run_pure():
     )
     assert result["payroll_run_id"] == "run1"
     assert len(result["results"]) == 2
-    assert result["totals"]["total_net_pay"] == 1432000.0
+    assert result["totals"]["total_net_pay"] == Decimal("1432000.00")
     assert len(result["audit_logs"]) == 2
     assert len(result["events"]) == 2

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.result_builder import build_payroll_result
 
 
@@ -16,10 +17,10 @@ TAX_BANDS = [
 def test_build_payroll_result():
     result = build_payroll_result(COMPONENTS, TAX_BANDS)
     assert result["gross_components_jsonb"] == COMPONENTS
-    assert result["deductions_jsonb"] == {"PAYE": 84000.0}
-    assert result["net_pay"] == 716000.0
+    assert result["deductions_jsonb"] == {"PAYE": Decimal("84000.00")}
+    assert result["net_pay"] == Decimal("716000.00")
     assert result["calculations_snapshot_json"] == {
-        "gross": 800000.0,
-        "paye": 84000.0,
-        "net": 716000.0,
+        "gross": Decimal("800000"),
+        "paye": Decimal("84000.00"),
+        "net": Decimal("716000.00"),
     }

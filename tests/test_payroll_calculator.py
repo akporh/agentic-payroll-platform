@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.calculator import calculate_net_pay
 
 
@@ -9,7 +10,7 @@ TAX_BANDS = [
 
 
 def test_net_pay_800000():
-    result = calculate_net_pay(800000, TAX_BANDS)
-    assert result["gross"] == 800000
-    assert result["paye"] == 84000.0
-    assert result["net"] == 716000.0
+    result = calculate_net_pay(Decimal("800000"), TAX_BANDS)
+    assert result["gross"] == Decimal("800000")
+    assert result["paye"] == Decimal("84000.00")
+    assert result["net"] == Decimal("716000.00")

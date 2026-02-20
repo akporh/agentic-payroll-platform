@@ -6,6 +6,7 @@ and tax bands. Combines gross summation, PAYE calculation, and net pay into
 the structure expected by the payroll_result table.
 
 This is a pure deterministic function with no database dependencies.
+All monetary values are Decimal throughout — no floats in the pipeline.
 
 Reference: Phase 1 Business Spec — PAYROLL_RESULT schema.
 """
@@ -25,6 +26,8 @@ def build_payroll_result(
     2. Apply PAYE tax bands to compute deductions.
     3. Derive net pay.
 
+    All monetary values in the returned dict are Decimal.
+
     Args:
         components: Salary component dicts with "code" and "amount" keys.
         tax_bands: Progressive tax brackets for PAYE calculation.
@@ -34,13 +37,13 @@ def build_payroll_result(
         Dict matching the Phase 1 PAYROLL_RESULT schema:
             - gross_components_jsonb: Original salary components.
             - deductions_jsonb: Applied deductions (currently PAYE only).
-            - net_pay: Final take-home amount.
+            - net_pay (Decimal): Final take-home amount.
             - calculations_snapshot_json: Full breakdown for audit trail.
 
     Example:
         >>> result = build_payroll_result(components, tax_bands)
         >>> result["net_pay"]
-        716000.0
+        Decimal('716000.00')
     """
     gross = calculate_gross(components)
     pay_result = calculate_net_pay(gross, tax_bands)

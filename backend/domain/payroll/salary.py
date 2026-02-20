@@ -17,10 +17,10 @@ def calculate_gross(components: list[dict]) -> Decimal:
     Args:
         components: List of salary component dicts. Each must contain:
             - code (str): Component identifier (e.g. "BASIC", "HOUSING").
-            - amount (float): Monetary value for this component.
+            - amount (Decimal|int|float): Monetary value for this component.
 
     Returns:
-        Total gross pay as a float.
+        Total gross pay as Decimal.
 
     Example:
         >>> components = [
@@ -28,6 +28,6 @@ def calculate_gross(components: list[dict]) -> Decimal:
         ...     {"code": "HOUSING", "amount": 300000},
         ... ]
         >>> calculate_gross(components)
-        800000.0
+        Decimal('800000')
     """
-    return float(sum(c["amount"] for c in components))
+    return sum((Decimal(str(c["amount"])) for c in components), Decimal("0"))

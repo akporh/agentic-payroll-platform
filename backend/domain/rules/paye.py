@@ -34,21 +34,22 @@ def calculate_paye(gross_income: Decimal, tax_bands: list[dict]) -> Decimal:
         >>> calculate_paye(800000, bands)
         84000.0
     """
+    gross = Decimal(str(gross_income))
     sorted_bands = sorted(tax_bands, key=lambda b: b["lower_limit"])
     total_tax = Decimal("0")
 
     for band in sorted_bands:
-        lower = band["lower_limit"]
-        upper = band.get("upper_limit")
-        rate = band["rate"]
+        lower = Decimal(str(band["lower_limit"]))
+        upper = Decimal(str(band["upper_limit"])) if band.get("upper_limit") is not None else None
+        rate = Decimal(str(band["rate"]))
 
-        if gross_income <= lower:
+        if gross <= lower:
             break
 
         if upper is None:
-            taxable = gross_income - lower
+            taxable = gross - lower
         else:
-            taxable = min(gross_income, upper) - lower
+            taxable = min(gross, upper) - lower
 
         total_tax += taxable * rate
 

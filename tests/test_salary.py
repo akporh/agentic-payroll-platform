@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.salary import calculate_gross
 
 
@@ -7,4 +8,4 @@ def test_gross_from_components():
         {"code": "HOUSING", "amount": 300000},
     ]
     result = calculate_gross(components)
-    assert result == 800000.0
+    assert result == Decimal("800000")

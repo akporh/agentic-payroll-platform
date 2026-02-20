@@ -1,3 +1,4 @@
+from decimal import Decimal
 from backend.domain.payroll.executor import execute_single_employee_payroll
 
 
@@ -26,6 +27,6 @@ def test_execute_single_employee_payroll():
     )
     assert result["payroll_run_id"] == "run1"
     assert result["employee_id"] == "emp1"
-    assert result["payroll_result"]["net_pay"] == 716000.0
+    assert result["payroll_result"]["net_pay"] == Decimal("716000.00")
     assert result["rules_context_snapshot"]["statutory_rule"]["id"] == "rule2026"
     assert result["rules_context_snapshot"]["statutory_rule"]["version"] == 1
