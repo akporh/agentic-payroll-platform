@@ -51,7 +51,12 @@ def build_payroll_result(
     net = pay_result["net"]
 
     return {
-        "gross_components_jsonb": components,
+        "gross_components_jsonb": {
+            component["code"]: {
+                "amount": component["amount"]
+            }
+            for component in components
+        },
         "deductions_jsonb": {"PAYE": paye},
         "net_pay": net,
         "calculations_snapshot_json": {

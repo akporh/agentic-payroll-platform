@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import json
 import uuid
+from datetime import date 
 from datetime import datetime
 from decimal import Decimal
 
@@ -163,9 +164,15 @@ def main():
 
     conn = get_connection()
     cur = conn.cursor()
-
     payroll_run_id = str(uuid.uuid4())
     performed_by = "admin@acme.com"
+
+    cur.execute("SELECT workspace_id FROM workspace LIMIT 1;")
+    row = cur.fetchone()
+    if not row:
+        raise Exception("❌ No workspace found. Insert one first.")
+    workspace_id = str(row[0])
+    print(f"🏢 Using workspace_id: {workspace_id}")
 
     employee_id = load_employee(cur)
     components_dict = load_salary_definition(cur)
@@ -194,19 +201,63 @@ def main():
     )
 
     payroll_result = result["payroll_result"]
+    
+    print("DEBUG payroll_result keys:", payroll_result.keys())
+    print("DEBUG deductions:", payroll_result["deductions_jsonb"])
 
     print("===================================================")
     print("📄 PAYROLL PREVIEW")
     print("===================================================")
-    print(f"💵 Gross Pay:        ₦{payroll_result['gross_pay']:,}")
-    print(f"📉 Total Deductions: ₦{payroll_result['total_deductions']:,}")
-    print(f"🏦 Net Pay:          ₦{payroll_result['net_pay']:,}")
+    
+    gross_components = payroll_result["gross_components_jsonb"]
+    gross_pay = sum(
+        component["amount"]
+        for component in gross_components.values()
+    )
+
+    deductions = payroll_result["deductions_jsonb"]
+    paye = deductions.get("PAYE", 0)
+
+    net_pay = payroll_result["net_pay"]    
+    
+    print(f"💵 Gross Pay:        ₦{gross_pay:,.2f}")
+    print(f"🧾 PAYE:             ₦{paye:,.2f}")
+    print(f"🏦 Net Pay:          ₦{net_pay:,.2f}")
     print("===================================================\n")
 
-    # Persist result
+    #---- Persist result ------#
+    # Generate IDs
+    payroll_run_id = str(uuid.uuid4())
     payroll_result_id = str(uuid.uuid4())
 
-    print("💾 Persisting payroll_result to database...")
+    print("🗂 Creating payroll_run record...")
+
+    cur.execute("""
+        INSERT INTO payroll_run (
+            payroll_run_id,
+            workspace_id,
+            status,
+            rules_context_snapshot,
+            period_start,
+            period_end,
+            pay_date,
+            total_gross_pay,
+            total_deduction,
+            total_net_pay
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        payroll_run_id,
+        workspace_id,
+        "COMPLETED",
+        json.dumps(result["rules_context_snapshot"], default=str),
+        date(2026, 1, 1),
+        date(2026, 1, 31),
+        date(2026, 1, 31),
+        payroll_result["calculations_snapshot_json"]["gross"],
+        payroll_result["calculations_snapshot_json"]["paye"],
+        payroll_result["calculations_snapshot_json"]["net"],
+    ))
 
     cur.execute("""
         INSERT INTO payroll_result (
@@ -216,21 +267,18 @@ def main():
             gross_components_jsonb,
             deductions_jsonb,
             net_pay,
-            calculations_snapshot_json,
-            created_at
+            calculations_snapshot_json
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
         payroll_result_id,
         payroll_run_id,
         employee_id,
-        json.dumps(payroll_result["gross_components"]),
-        json.dumps(payroll_result["deductions"]),
+        json.dumps(payroll_result["gross_components_jsonb"], default=str),
+        json.dumps(payroll_result["deductions_jsonb"], default=str),
         payroll_result["net_pay"],
-        json.dumps(payroll_result["calculation_snapshot"]),
-        datetime.utcnow()
+        json.dumps(payroll_result["calculations_snapshot_json"], default=str)
     ))
-
     conn.commit()
     cur.close()
     conn.close()
