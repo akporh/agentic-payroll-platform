@@ -1,3 +1,16 @@
+"""
+Payroll Run Application Service.
+
+Coordinates the full payroll run lifecycle: executes the pure domain
+calculation pipeline and then persists the results, audit logs, and
+events to the database via the infrastructure layer.
+
+This is the main entry point for triggering a payroll run from an
+API handler or CLI script.
+
+Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
+"""
+
 from backend.domain.payroll.run_executor import execute_payroll_run_pure
 from backend.application.payroll_run_persister import persist_payroll_run_execution
 
@@ -13,15 +26,28 @@ def execute_and_persist(
     performed_by: str,
     execution_mode: str = "isolated",
 ) -> dict:
-    """
-    Execute a full payroll run and persist all outputs.
 
+    """Execute a full payroll run and persist all outputs.
     Supports execution isolation modes:
         - "atomic"
         - "isolated" (default)
+    Orchestrates two steps:
+    1. Run the pure domain calculation (no side effects).
+    2. Persist results, audit logs, and events to the database.
 
-    Domain remains pure.
-    Persistence handled via repositories.
+    Args:
+        payroll_run_id: Unique identifier of the payroll run.
+        workspace_id: Workspace this run belongs to.
+        employees: List of employee dicts with "employee_id" and "components".
+        tax_bands: Progressive tax brackets for PAYE calculation.
+        statutory_rule_id: Identifier of the statutory rule applied.
+        statutory_version: Version number of the statutory rule.
+        payroll_rule_ids: List of workspace-specific payroll rule IDs applied.
+        performed_by: Identifier of the user or system triggering the run.
+
+    Returns:
+        Dict containing payroll_run_id, per-employee results, totals,
+        audit_logs, and events (as produced by execute_payroll_run_pure).
     """
 
     output = execute_payroll_run_pure(
