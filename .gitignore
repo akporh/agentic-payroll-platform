@@ -26,3 +26,4 @@ build/
 *.csv
 *.local_backup.py
 __pycache__/
+data/
