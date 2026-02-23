@@ -2,7 +2,7 @@
 
 Revision ID: 8c3b7a7eb23a
 Revises: 6f5b05ff4690
-Create Date: 2026-02-21 15:32:28.089563
+
 
 """
 from typing import Sequence, Union
@@ -15,14 +15,11 @@ import sqlalchemy as sa
 revision: str = '8c3b7a7eb23a'
 down_revision: Union[str, Sequence[str], None] = '6f5b05ff4690'
 branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None 
 
 
-def upgrade() -> None:
-    """Upgrade schema."""
+def upgrade():
     pass
 
-
-def downgrade() -> None:
-    """Downgrade schema."""
+def downgrade():
     pass

@@ -26,6 +26,7 @@ def execute_payroll_run_pure(
     statutory_version: int,
     payroll_rule_ids: list[str],
     performed_by: str,
+    execution_mode: str = "isolated",
 ) -> dict:
     """Execute a full payroll run end-to-end as a pure function.
 
@@ -78,22 +79,32 @@ def execute_payroll_run_pure(
         statutory_version=statutory_version,
         payroll_rule_ids=payroll_rule_ids,
         performed_by=performed_by,
+        execution_mode=execution_mode,
     )
 
-    transition(PayrollRunStatus.CALCULATING, PayrollRunStatus.CALCULATED)
+    totals = batch_result["totals"]
+
+    if totals["failure_count"] > 0:
+        new_status = PayrollRunStatus.PARTIAL
+    else:
+        new_status = PayrollRunStatus.CALCULATED
+
+    transition(PayrollRunStatus.CALCULATING, new_status)
+
     audit_logs.append(
         build_transition_audit(
             payroll_run_id=payroll_run_id,
             old_status=PayrollRunStatus.CALCULATING,
-            new_status=PayrollRunStatus.CALCULATED,
+            new_status=new_status,
             performed_by=performed_by,
         )
     )
+
     events.append(
         build_transition_event(
             payroll_run_id=payroll_run_id,
             old_status=PayrollRunStatus.CALCULATING,
-            new_status=PayrollRunStatus.CALCULATED,
+            new_status=new_status,
         )
     )
 

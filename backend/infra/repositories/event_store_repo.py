@@ -1,10 +1,15 @@
 from sqlalchemy import text
 from psycopg2.extras import Json
 from backend.infra.db.session import SessionLocal
+import json
 
 
 def save_event(event: dict):
     db = SessionLocal()
+
+    safe_payload = json.loads(
+        json.dumps(event["event_payload"], default=str)
+    )
 
     db.execute(
         text("""
@@ -27,10 +32,9 @@ def save_event(event: dict):
             "aggregate_type": event["aggregate_type"],
             "aggregate_id": event["aggregate_id"],
             "event_type": event["event_type"],
-            "payload": Json(event["event_payload"]),
+            "payload": Json(safe_payload),
         }
     )
 
     db.commit()
     db.close()
-

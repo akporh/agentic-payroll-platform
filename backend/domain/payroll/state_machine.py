@@ -14,7 +14,8 @@ from backend.domain.payroll.status import PayrollRunStatus
 
 ALLOWED_TRANSITIONS: dict[PayrollRunStatus, list[PayrollRunStatus]] = {
     PayrollRunStatus.DRAFT: [PayrollRunStatus.CALCULATING],
-    PayrollRunStatus.CALCULATING: [PayrollRunStatus.CALCULATED],
+    PayrollRunStatus.CALCULATING: [PayrollRunStatus.CALCULATED, PayrollRunStatus.PARTIAL],
+    PayrollRunStatus.PARTIAL: [PayrollRunStatus.CALCULATED],
     PayrollRunStatus.CALCULATED: [PayrollRunStatus.APPROVED],
     PayrollRunStatus.APPROVED: [PayrollRunStatus.LOCKED],
     PayrollRunStatus.LOCKED: [],
