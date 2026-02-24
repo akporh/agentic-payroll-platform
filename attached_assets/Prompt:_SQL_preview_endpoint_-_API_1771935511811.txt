@@ -1,0 +1,94 @@
+You are implementing Phase 1 Onboarding SQL Preview.
+
+You MUST follow:
+
+ARCHITECTURE_LOCK_V1_1.md
+
+REPLIT_AGENT_GUARDRAILS.md
+
+INFRASTRUCTURE_DECISIONS.md
+
+You are NOT allowed to:
+
+Modify schema
+
+Write to database
+
+Modify payroll logic
+
+Add dependencies
+
+Add AI logic
+
+Objective
+
+Create endpoint:
+
+POST /api/v1/onboarding/preview
+
+This endpoint:
+
+Calls existing onboarding validation logic.
+
+If invalid → returns validation response.
+
+If valid → generates SQL preview using sql_emitter.
+
+Returns structured SQL statements.
+
+Expected Request Body
+
+{
+"workspace_id": "<uuid>",
+"employees": [...],
+"salary_definitions": [...],
+"payroll_rules": [...]
+}
+
+Behavior
+
+If validation invalid:
+
+Return:
+
+{
+"status": "invalid",
+"errors": [...],
+"warnings": [...]
+}
+
+If validation valid:
+
+Call existing sql_emitter.
+
+Return:
+
+{
+"status": "valid",
+"warnings": [...],
+"preview": {
+"salary_definitions_sql": [...],
+"payroll_rules_sql": [...],
+"employees_sql": [...]
+}
+}
+
+No execution.
+
+Deliverables
+
+New route file (or extend existing onboarding route file)
+
+Router registration
+
+Minimal tests
+
+Confirmation:
+
+No DB writes
+
+No schema changes
+
+No payroll logic touched
+
+STOP after completion.
