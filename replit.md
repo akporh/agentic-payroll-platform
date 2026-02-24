@@ -57,12 +57,19 @@ The schema is defined through Alembic migrations in `migrations/versions/`. The 
 
 ### Project Structure
 ```
-backend/           # FastAPI application + domain logic (being built)
-migrations/        # Alembic migrations (schema is defined here)
-  versions/        # Individual migration files
-docs/              # Architecture lock, business specs, planning docs
-  planning/        # Roadmap, user story maps, backlog
-tests/             # Deterministic rule engine tests
+backend/
+  api/
+    main.py              # FastAPI app entry point (uvicorn target)
+    routes/
+      health.py          # GET /api/v1/health
+  application/           # Orchestration services (payroll run, persistence)
+  domain/                # Pure domain logic (calculations, rules, state machine)
+  infrastructure/        # Database repositories
+migrations/              # Alembic migrations (schema is defined here)
+  versions/              # Individual migration files
+docs/                    # Architecture lock, business specs, planning docs
+  planning/              # Roadmap, user story maps, backlog
+tests/                   # Deterministic rule engine tests
 ```
 
 ### Hard Rules for the Agent

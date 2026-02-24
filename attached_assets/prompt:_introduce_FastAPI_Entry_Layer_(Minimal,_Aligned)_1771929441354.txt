@@ -1,0 +1,103 @@
+You are implementing Phase 1 FastAPI entry layer.
+
+You MUST follow:
+
+ARCHITECTURE_LOCK_V1_1.md
+
+INFRASTRUCTURE_DECISIONS.md
+
+REPLIT_AGENT_GUARDRAILS.md
+
+You are NOT allowed to:
+
+Modify domain logic
+
+Modify state machine
+
+Modify schema
+
+Add new tables
+
+Add new dependencies
+
+Objective
+
+Introduce a minimal FastAPI application that:
+
+Creates the app instance
+
+Exposes health check route
+
+Adds versioned API router structure
+
+Does NOT change payroll logic
+
+Does NOT call DB directly
+
+Required Structure
+
+Create the following files:
+
+backend/api/main.py
+backend/api/routes/__init__.py
+backend/api/routes/health.py
+
+Implementation Requirements
+backend/api/main.py
+
+Create FastAPI app
+
+Include router prefix: /api/v1
+
+Register health router
+
+No business logic here
+
+backend/api/routes/health.py
+
+Route:
+
+GET /api/v1/health
+
+Returns:
+
+{
+"status": "ok",
+"service": "agentic-payroll-platform",
+"phase": "phase1"
+}
+
+No DB access.
+No side effects.
+
+Constraints
+
+Use FastAPI only
+
+No API gateway abstraction
+
+No middleware
+
+No auth
+
+No CORS
+
+No extra routes
+
+No environment config yet
+
+Deliverables
+
+After implementation, output:
+
+Files created
+
+Exact code in each file
+
+Confirmation that:
+
+No schema changed
+
+No state machine modified
+
+No domain logic altered

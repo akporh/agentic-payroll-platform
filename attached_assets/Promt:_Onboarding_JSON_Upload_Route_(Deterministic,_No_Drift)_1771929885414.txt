@@ -1,0 +1,135 @@
+You are implementing Phase 1 onboarding route.
+
+You MUST follow:
+
+ARCHITECTURE_LOCK_V1_1.md
+
+REPLIT_AGENT_GUARDRAILS.md
+
+INFRASTRUCTURE_DECISIONS.md
+
+You are NOT allowed to:
+
+Modify existing domain logic
+
+Modify state machine
+
+Modify schema
+
+Add new tables
+
+Add new frameworks
+
+Introduce AI logic
+
+Refactor existing services
+
+Objective
+
+Expose a FastAPI route that:
+
+Accepts a full JSON payload for onboarding
+
+Calls the existing onboarding application service
+
+Returns structured response
+
+Does NOT implement business logic in route
+
+Required Route
+
+POST /api/v1/onboarding/upload
+
+Expected Payload (Full JSON Only)
+
+The route must accept:
+
+{
+"workspace": {...},
+"employees": [...],
+"salary_definitions": [...],
+"payroll_rules": [...],
+"statutory_rules": [...],
+"tax_bands": [...]
+}
+
+Do NOT validate business rules here.
+Do NOT transform schema.
+Pass payload to application service as-is.
+
+Required Structure
+
+Create:
+
+backend/api/routes/onboarding.py
+
+
+Register router in:
+
+backend/api/main.py
+
+Route Requirements
+
+Use APIRouter
+
+Accept JSON body
+
+Call existing onboarding service:
+backend.domain.onboarding.sql_emitter
+or existing onboarding loader logic
+
+Catch exceptions
+
+Return:
+
+Success:
+
+{
+"status": "success",
+"message": "Onboarding completed"
+}
+
+Failure:
+
+{
+"status": "error",
+"message": "<error message>"
+}
+
+No DB access in route
+
+No JSON parsing beyond body read
+
+No Decimal conversion logic here
+
+No rule validation here
+
+Constraints
+
+Keep onboarding deterministic
+
+Keep business logic inside existing onboarding modules
+
+Do NOT rewrite sql_emitter
+
+Do NOT add new schema
+
+Do NOT add pydantic validation models yet
+
+Deliverables
+
+After implementation, output:
+
+Files created/modified
+
+Exact code
+
+Confirmation that:
+
+No schema changed
+
+No payroll logic modified
+
+No state machine altered
+
+STOP after completion.
