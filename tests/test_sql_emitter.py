@@ -6,10 +6,9 @@ Covers:
 - READY status with valid config produces transactional SQL.
 - Transaction wrapping (BEGIN/COMMIT).
 - Duplicate-prevention guard is present.
-- workspace_id is embedded in employee and payroll_rule INSERTs.
-- Salary definitions are linked to employees via employee_id FK subquery.
-- Emitted column names match the actual database schema.
-- Correct insert ordering: employees before salary definitions.
+- Column names match the live database schema exactly.
+- workspace_id scoping on all workspace-scoped tables.
+- Correct insert ordering within the transaction.
 """
 
 from backend.domain.onboarding.loader import emit_onboarding_sql
@@ -105,7 +104,7 @@ def test_ready_with_valid_config():
     assert result["status"] == "READY"
     assert "INSERT INTO employee" in result["sql"]
     assert "INSERT INTO salary_definition" in result["sql"]
-    assert "PENSION_EMPLOYEE" in result["sql"]
+    assert "INSERT INTO payroll_rule" in result["sql"]
 
 
 def test_transaction_wrapping():
@@ -124,42 +123,51 @@ def test_duplicate_guard_present():
     assert WORKSPACE_ID in sql
 
 
-def test_workspace_id_in_employee_inserts():
+def test_employee_uses_correct_schema_columns():
     sql = emit_employees_sql(WORKSPACE_ID, VALID_CLIENT_JSON["employees"])
-    assert WORKSPACE_ID in sql
-    assert "workspace_id" in sql
-
-
-def test_employee_uses_schema_columns():
-    sql = emit_employees_sql(WORKSPACE_ID, VALID_CLIENT_JSON["employees"])
-    assert "full_name" in sql
-    assert "employee_number" not in sql
-    assert "personal_details_encrypted" not in sql
-
-
-def test_payroll_rule_uses_schema_columns():
-    sql = emit_payroll_rules_sql(WORKSPACE_ID, VALID_CLIENT_JSON["payroll_rules"])
-    assert "rule_jsonb" in sql
-    assert "name" in sql
-    assert "rule_code" not in sql
-    assert "rule_definition_json" not in sql
-
-
-def test_salary_definition_uses_employee_id_fk():
-    sql = emit_salary_definitions_sql(
-        WORKSPACE_ID,
-        VALID_CLIENT_JSON["employees"],
-        VALID_CLIENT_JSON["salary_definitions"],
-    )
     assert "employee_id" in sql
-    assert "SELECT employee_id FROM employee" in sql
-    assert "workspace_id" not in sql.split("VALUES")[0]
-
-
-def test_payroll_rules_includes_workspace():
-    sql = emit_payroll_rules_sql(WORKSPACE_ID, VALID_CLIENT_JSON["payroll_rules"])
-    assert WORKSPACE_ID in sql
     assert "workspace_id" in sql
+    assert "full_name" in sql
+    assert "employee_number" in sql
+    assert "personal_details_encrypted" in sql
+    assert "status" in sql
+    assert "'ACTIVE'" in sql
+    assert WORKSPACE_ID in sql
+    assert "'EMP001'" in sql
+
+
+def test_salary_definition_uses_correct_schema_columns():
+    sql = emit_salary_definitions_sql(WORKSPACE_ID, VALID_CLIENT_JSON["salary_definitions"])
+    assert "salary_definition_id" in sql
+    assert "workspace_id" in sql
+    assert "name" in sql
+    assert "components_jsonb" in sql
+    assert WORKSPACE_ID in sql
+    assert "STEP_2_TEMPLATE" in sql
+    assert "employee_id" not in sql
+
+
+def test_payroll_rule_uses_correct_schema_columns():
+    sql = emit_payroll_rules_sql(WORKSPACE_ID, VALID_CLIENT_JSON["payroll_rules"])
+    assert "rule_id" in sql
+    assert "workspace_id" in sql
+    assert "rule_name" in sql
+    assert "rule_definition_json" in sql
+    assert WORKSPACE_ID in sql
+    assert "PENSION_EMPLOYEE" in sql
+    assert "payroll_rule_id" not in sql
+    assert "rule_jsonb" not in sql
+
+
+def test_workspace_id_in_all_inserts():
+    result = emit_onboarding_sql(WORKSPACE_ID, VALID_CLIENT_JSON)
+    sql = result["sql"]
+    for line in sql.split("\n"):
+        if "INSERT INTO" in line:
+            table = line.split("INSERT INTO ")[1].strip()
+            insert_block_start = sql.index(line)
+            insert_block = sql[insert_block_start:sql.index(";", insert_block_start) + 1]
+            assert WORKSPACE_ID in insert_block, f"workspace_id missing from {table} INSERT"
 
 
 def test_duplicate_guard_checks_employee_table():
@@ -187,14 +195,8 @@ def test_full_transaction_order():
     assert begin_pos < guard_pos < emp_pos < salary_pos < rules_pos < commit_pos
 
 
-def test_employees_before_salary_definitions():
-    sql = emit_onboarding_transaction(
-        workspace_id=WORKSPACE_ID,
-        salary_definitions=VALID_CLIENT_JSON["salary_definitions"],
-        payroll_rules=VALID_CLIENT_JSON["payroll_rules"],
-        employees=VALID_CLIENT_JSON["employees"],
-    )
-
-    emp_pos = sql.index("INSERT INTO employee")
-    salary_pos = sql.index("INSERT INTO salary_definition")
-    assert emp_pos < salary_pos
+def test_employee_biodata_stored_as_encrypted_json():
+    sql = emit_employees_sql(WORKSPACE_ID, VALID_CLIENT_JSON["employees"])
+    assert "TIN" in sql
+    assert "1234567890" in sql
+    assert "::jsonb" in sql

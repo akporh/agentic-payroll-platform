@@ -1,0 +1,63 @@
+payroll_dev=# \d employee
+                                  Table "public.employee"
+           Column           |            Type             | Collation | Nullable | Default 
+----------------------------+-----------------------------+-----------+----------+---------
+ employee_id                | uuid                        |           | not null | 
+ workspace_id               | uuid                        |           |          | 
+ full_name                  | character varying(255)      |           | not null | 
+ created_at                 | timestamp without time zone |           |          | now()
+ status                     | character varying(20)       |           |          | 
+ personal_details_encrypted | jsonb                       |           |          | 
+ employee_number            | character varying(50)       |           |          | 
+Indexes:
+    "employee_pkey" PRIMARY KEY, btree (employee_id)
+    "uq_employee_number_per_workspace" UNIQUE, btree (workspace_id, employee_number)
+Foreign-key constraints:
+    "employee_workspace_id_fkey" FOREIGN KEY (workspace_id) REFERENCES workspace(workspace_id)
+Referenced by:
+    TABLE "employee_contract" CONSTRAINT "employee_contract_employee_id_fkey" FOREIGN KEY (employee_id) REFERENCES employee(employee_id)
+    TABLE "payroll_result" CONSTRAINT "payroll_result_employee_id_fkey" FOREIGN KEY (employee_id) REFERENCES employee(employee_id)
+
+payroll_dev=# \d payroll_rule
+                             Table "public.payroll_rule"
+        Column        |            Type             | Collation | Nullable | Default 
+----------------------+-----------------------------+-----------+----------+---------
+ rule_id              | uuid                        |           | not null | 
+ workspace_id         | uuid                        |           |          | 
+ rule_name            | character varying(255)      |           | not null | 
+ rule_definition_json | jsonb                       |           | not null | 
+ rule_type            | character varying(100)      |           |          | 
+ schema_version       | integer                     |           |          | 1
+ is_active            | boolean                     |           |          | true
+ created_at           | timestamp without time zone |           |          | now()
+Indexes:
+    "payroll_rule_pkey" PRIMARY KEY, btree (rule_id)
+Check constraints:
+    "chk_rule_definition_is_object" CHECK (jsonb_typeof(rule_definition_json) = 'object'::text)
+Foreign-key constraints:
+    "payroll_rule_workspace_id_fkey" FOREIGN KEY (workspace_id) REFERENCES workspace(workspace_id)
+
+payroll_dev=# \d salary_definition
+                        Table "public.salary_definition"
+        Column        |          Type          | Collation | Nullable | Default 
+----------------------+------------------------+-----------+----------+---------
+ salary_definition_id | uuid                   |           | not null | 
+ components_jsonb     | jsonb                  |           | not null | 
+ workspace_id         | uuid                   |           |          | 
+ name                 | character varying(255) |           |          | 
+ schema_version       | integer                |           |          | 1
+ effective_from       | date                   |           |          | 
+ effective_to         | date                   |           |          | 
+Indexes:
+    "salary_definition_pkey" PRIMARY KEY, btree (salary_definition_id)
+    "idx_salary_definition_components_gin" gin (components_jsonb)
+    "uq_salary_definition_name_per_workspace" UNIQUE, btree (workspace_id, name)
+Check constraints:
+    "chk_salary_components_is_object" CHECK (jsonb_typeof(components_jsonb) = 'object'::text)
+    "chk_salary_definition_basic_required" CHECK (components_jsonb ? 'BASIC'::text)
+Foreign-key constraints:
+    "fk_salary_definition_workspace" FOREIGN KEY (workspace_id) REFERENCES workspace(workspace_id)
+Referenced by:
+    TABLE "employee_contract" CONSTRAINT "employee_contract_salary_definition_id_fkey" FOREIGN KEY (salary_definition_id) REFERENCES salary_definition(salary_definition_id)
+
+payroll_dev=# 

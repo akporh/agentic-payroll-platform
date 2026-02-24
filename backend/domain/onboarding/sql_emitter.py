@@ -11,6 +11,13 @@ All emitted SQL is:
 3. Guarded by a duplicate-prevention check that aborts the
    transaction if the workspace already has loaded data.
 
+Column names match the live database schema exactly:
+- employee: employee_id, workspace_id, full_name, employee_number,
+            personal_details_encrypted, status
+- salary_definition: salary_definition_id, workspace_id, name,
+                     components_jsonb
+- payroll_rule: rule_id, workspace_id, rule_name, rule_definition_json
+
 No database access — pure string generation.
 
 Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
@@ -48,8 +55,13 @@ def _emit_duplicate_guard(workspace_id: str) -> str:
 def emit_employees_sql(workspace_id: str, employees: list[dict]) -> str:
     """Emit INSERT statements for employee records.
 
-    Maps onboarding JSON fields to the actual schema:
-        employee_number → full_name (schema column).
+    Schema columns used:
+        employee_id          — gen_random_uuid()
+        workspace_id         — from argument
+        full_name            — from biodata or employee_number fallback
+        employee_number      — from client JSON (unique per workspace)
+        personal_details_encrypted — biodata JSONB (TIN, BANK, etc.)
+        status               — defaults to 'ACTIVE'
 
     Args:
         workspace_id: The workspace these employees belong to.
@@ -61,60 +73,66 @@ def emit_employees_sql(workspace_id: str, employees: list[dict]) -> str:
     """
     statements = []
     for emp in employees:
-        full_name = emp.get("employee_number", "UNKNOWN")
+        employee_number = emp.get("employee_number", "UNKNOWN")
+        biodata = emp.get("biodata", {})
+        full_name = biodata.get("FULL_NAME", employee_number)
+        biodata_json = json.dumps(biodata)
         stmt = (
             "INSERT INTO employee\n"
-            "(employee_id, workspace_id, full_name)\n"
+            "(employee_id, workspace_id, full_name, employee_number,"
+            " personal_details_encrypted, status)\n"
             "VALUES\n"
-            f"(gen_random_uuid(), '{workspace_id}', '{full_name}');"
+            f"(gen_random_uuid(), '{workspace_id}', '{full_name}',"
+            f" '{employee_number}', '{biodata_json}'::jsonb, 'ACTIVE');"
         )
         statements.append(stmt)
     return "\n\n".join(statements)
 
 
-def emit_salary_definitions_sql(workspace_id: str, employees: list[dict], salary_definitions: list[dict]) -> str:
+def emit_salary_definitions_sql(workspace_id: str, salary_definitions: list[dict]) -> str:
     """Emit INSERT statements for salary_definition records.
 
-    Salary definitions are linked to employees via employee_id (FK).
-    Uses a subquery to look up employee_id by full_name within the
-    workspace, so employees must be inserted first in the transaction.
+    Schema columns used:
+        salary_definition_id — gen_random_uuid()
+        workspace_id         — from argument
+        name                 — template name from client JSON
+        components_jsonb     — salary components JSONB
 
-    Each salary definition is assigned to the first employee in the
-    workspace. For Phase 1 (single bureau, uniform salary templates),
-    this is correct. Multi-employee salary mapping is a Phase 2 concern.
+    Salary definitions are workspace-scoped (not employee-scoped).
+    The link from employee to salary definition goes through the
+    employee_contract table.
 
     Args:
-        workspace_id: The workspace (used to scope the employee lookup).
-        employees: List of employee dicts (to resolve employee_id FK).
+        workspace_id: The workspace these definitions belong to.
         salary_definitions: List of salary definition dicts from client JSON.
 
     Returns:
-        SQL string containing one INSERT per salary definition.
+        SQL string containing one INSERT per salary definition,
+        scoped to the workspace.
     """
     statements = []
     for sd in salary_definitions:
+        name = sd.get("name", "UNKNOWN")
         components_json = json.dumps(sd.get("components", {}))
-        for emp in employees:
-            full_name = emp.get("employee_number", "UNKNOWN")
-            stmt = (
-                "INSERT INTO salary_definition\n"
-                "(salary_definition_id, employee_id, components_jsonb)\n"
-                "VALUES\n"
-                f"(gen_random_uuid(), "
-                f"(SELECT employee_id FROM employee WHERE workspace_id = '{workspace_id}' "
-                f"AND full_name = '{full_name}' LIMIT 1), "
-                f"'{components_json}'::jsonb);"
-            )
-            statements.append(stmt)
+        stmt = (
+            "INSERT INTO salary_definition\n"
+            "(salary_definition_id, workspace_id, name, components_jsonb)\n"
+            "VALUES\n"
+            f"(gen_random_uuid(), '{workspace_id}', '{name}',"
+            f" '{components_json}'::jsonb);"
+        )
+        statements.append(stmt)
     return "\n\n".join(statements)
 
 
 def emit_payroll_rules_sql(workspace_id: str, payroll_rules: list[dict]) -> str:
     """Emit INSERT statements for payroll_rule records.
 
-    Maps onboarding JSON fields to the actual schema:
-        rule_code → name (schema column).
-        definition → rule_jsonb (schema column).
+    Schema columns used:
+        rule_id              — gen_random_uuid()
+        workspace_id         — from argument
+        rule_name            — mapped from rule_code in client JSON
+        rule_definition_json — mapped from definition in client JSON
 
     Args:
         workspace_id: The workspace these rules belong to.
@@ -126,13 +144,14 @@ def emit_payroll_rules_sql(workspace_id: str, payroll_rules: list[dict]) -> str:
     """
     statements = []
     for rule in payroll_rules:
-        name = rule.get("rule_code", "UNKNOWN")
-        rule_jsonb = json.dumps(rule.get("definition", {}))
+        rule_name = rule.get("rule_code", "UNKNOWN")
+        definition_json = json.dumps(rule.get("definition", {}))
         stmt = (
             "INSERT INTO payroll_rule\n"
-            "(payroll_rule_id, workspace_id, name, rule_jsonb)\n"
+            "(rule_id, workspace_id, rule_name, rule_definition_json)\n"
             "VALUES\n"
-            f"(gen_random_uuid(), '{workspace_id}', '{name}', '{rule_jsonb}'::jsonb);"
+            f"(gen_random_uuid(), '{workspace_id}', '{rule_name}',"
+            f" '{definition_json}'::jsonb);"
         )
         statements.append(stmt)
     return "\n\n".join(statements)
@@ -149,9 +168,9 @@ def emit_onboarding_transaction(
     The emitted SQL includes:
     1. BEGIN — starts the transaction.
     2. Duplicate guard — aborts if workspace already has data.
-    3. Salary definition INSERTs.
-    4. Payroll rule INSERTs.
-    5. Employee INSERTs.
+    3. Employee INSERTs.
+    4. Salary definition INSERTs (workspace-scoped).
+    5. Payroll rule INSERTs.
     6. COMMIT — finalises all inserts atomically.
 
     If any statement fails, the entire transaction rolls back
@@ -172,11 +191,11 @@ def emit_onboarding_transaction(
         "-- Duplicate prevention: abort if workspace already loaded",
         _emit_duplicate_guard(workspace_id),
         "",
-        "-- Employees (inserted first — salary definitions reference them)",
+        "-- Employees",
         emit_employees_sql(workspace_id, employees),
         "",
-        "-- Salary definitions (linked to employees via employee_id FK)",
-        emit_salary_definitions_sql(workspace_id, employees, salary_definitions),
+        "-- Salary definitions (workspace-scoped templates)",
+        emit_salary_definitions_sql(workspace_id, salary_definitions),
         "",
         "-- Payroll rules",
         emit_payroll_rules_sql(workspace_id, payroll_rules),
