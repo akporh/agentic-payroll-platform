@@ -1,0 +1,186 @@
+You are implementing Phase 1 Safe Onboarding Validation.
+
+You MUST follow:
+
+ARCHITECTURE_LOCK_V1_1.md
+
+REPLIT_AGENT_GUARDRAILS.md
+
+INFRASTRUCTURE_DECISIONS.md
+
+You are NOT allowed to:
+
+Modify schema
+
+Write to database
+
+Modify payroll logic
+
+Modify onboarding commit logic
+
+Introduce AI
+
+Add new dependencies
+
+Refactor existing domain modules
+
+Objective
+
+Create a deterministic validation endpoint that:
+
+Accepts full onboarding JSON
+
+Performs structural validation only
+
+Performs cross-reference validation
+
+Returns validation report
+
+Does NOT write to DB
+
+This is Phase 1 of the onboarding wizard.
+
+Required Route
+
+POST /api/v1/onboarding/validate
+
+Required File
+
+Create:
+
+backend/api/routes/onboarding_validation.py
+
+Register it in main.py
+
+Expected Payload
+
+{
+"workspace": {...},
+"employees": [...],
+"salary_definitions": [...],
+"payroll_rules": [...],
+"statutory_rules": [...],
+"tax_bands": [...]
+}
+
+Do NOT modify this structure.
+
+Validation Rules (Deterministic Only)
+
+Perform the following checks:
+
+1. Required Top-Level Keys
+
+All of the following must exist:
+
+workspace
+
+employees
+
+salary_definitions
+
+payroll_rules
+
+statutory_rules
+
+tax_bands
+
+If missing → error.
+
+2. Salary Definition Integrity
+
+For each employee:
+
+Must reference an existing salary_definition
+
+If employee_contract exists in payload, salary_definition_id must match defined salary_definitions
+
+3. Salary Definition Structure
+
+Each salary_definition must contain:
+
+name
+
+components
+
+Each component must contain:
+
+code
+
+amount OR calculation logic (do not evaluate logic)
+
+4. Statutory Rule Integrity
+
+Each tax_band must reference a valid statutory_rule_id from statutory_rules list.
+
+5. Duplicate Checks (Within Payload Only)
+
+No duplicate employee_id in payload
+
+No duplicate salary_definition_id in payload
+
+No duplicate statutory_rule_id in payload
+
+Do NOT check against database.
+
+Response Format
+
+If validation passes:
+
+{
+"status": "valid",
+"errors": [],
+"warnings": []
+}
+
+If validation fails:
+
+{
+"status": "invalid",
+"errors": [
+{"field": "...", "message": "..."}
+],
+"warnings": []
+}
+
+Warnings may include:
+
+Empty payroll_rules
+
+No tax_bands provided
+
+Hard Constraints
+
+No DB session
+
+No writes
+
+No SQL
+
+No calls to sql_emitter
+
+No calls to payroll services
+
+No Decimal conversions
+
+No business rule evaluation
+
+This endpoint is purely structural validation.
+
+Deliverables
+
+After implementation, output:
+
+Files created
+
+Full code
+
+Confirmation that:
+
+No DB writes occur
+
+No schema changed
+
+No payroll logic modified
+
+STOP after completion.
