@@ -1,0 +1,134 @@
+You are implementing Phase 1 Safe Onboarding Validation (Workspace Scoped).
+
+You MUST follow:
+
+ARCHITECTURE_LOCK_V1_1.md
+
+REPLIT_AGENT_GUARDRAILS.md
+
+INFRASTRUCTURE_DECISIONS.md
+
+You are NOT allowed to:
+
+Modify schema
+
+Write to database
+
+Validate statutory_rules
+
+Accept tax_bands in payload
+
+Modify payroll logic
+
+Introduce AI
+
+Add dependencies
+
+Objective
+
+Create validation endpoint for workspace-level onboarding only.
+
+Statutory rules and tax bands are system-level and NOT part of onboarding.
+
+Route
+
+POST /api/v1/onboarding/validate
+
+Expected Payload
+
+{
+"workspace_id": "<uuid>",
+"employees": [...],
+"salary_definitions": [...],
+"payroll_rules": [...]
+}
+
+workspace must already exist.
+
+Validation Rules
+1️⃣ Required Fields
+
+Must contain:
+
+workspace_id
+
+employees
+
+salary_definitions
+
+payroll_rules optional.
+
+2️⃣ Structural Checks
+
+Validate:
+
+Each employee has employee_id
+
+Each employee has salary_definition_id (via contract or field)
+
+Each salary_definition has name + components
+
+Each component has code + amount
+
+3️⃣ Cross Reference Validation
+
+Every employee.salary_definition_id must exist in salary_definitions list.
+
+No duplicate employee_id in payload.
+
+No duplicate salary_definition_id in payload.
+
+4️⃣ Workspace Existence Check
+
+Open DB session.
+Confirm workspace_id exists.
+
+No other DB queries allowed.
+
+Response Format
+
+Valid:
+
+{
+"status": "valid",
+"errors": [],
+"warnings": []
+}
+
+Invalid:
+
+{
+"status": "invalid",
+"errors": [...],
+"warnings": [...]
+}
+
+Hard Constraints
+
+No writes
+
+No SQL inserts
+
+No statutory validation
+
+No payroll logic
+
+Only structural + cross-reference validation
+
+Deliverables
+
+Output:
+
+Files created
+
+Full code
+
+Confirmation:
+
+No schema changed
+
+No payroll logic modified
+
+No statutory logic added
+
+STOP.

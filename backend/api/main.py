@@ -10,6 +10,7 @@ Reference: ARCHITECTURE_LOCK.md — API Layer.
 from fastapi import FastAPI
 from backend.api.routes.health import router as health_router
 from backend.api.routes.onboarding import router as onboarding_router
+from backend.api.routes.onboarding_validation import router as onboarding_validation_router
 
 app = FastAPI(
     title="Agentic Payroll Platform",
@@ -19,3 +20,4 @@ app = FastAPI(
 
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(onboarding_router, prefix="/api/v1")
+app.include_router(onboarding_validation_router, prefix="/api/v1")
