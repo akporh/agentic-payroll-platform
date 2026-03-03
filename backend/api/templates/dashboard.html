@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="row mt-4">
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5>Onboarding</h5>
+            <p>Upload and validate client configuration.</p>
+            <a href="/admin/onboarding" class="btn btn-primary">Start Onboarding</a>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5>Run Payroll</h5>
+            <p>Execute payroll for current workspace.</p>
+            <a href="/admin/payroll" class="btn btn-success">Run Payroll</a>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Onboarding</h2>
+
+<div class="card p-3 mt-3">
+    <h5>Upload Client JSON</h5>
+
+    <textarea id="jsonInput" class="form-control mt-2" rows="12"
+        placeholder='Paste full onboarding JSON here...'></textarea>
+
+    <button class="btn btn-primary mt-3" onclick="previewOnboarding()">
+        Validate & Preview
+    </button>
+</div>
+
+<div id="previewSection" class="mt-4" style="display:none;">
+    <div class="card p-3">
+        <h5>Validation Result</h5>
+        <pre id="validationResult"></pre>
+
+        <h5 class="mt-3">SQL Preview</h5>
+        <pre id="sqlPreview"></pre>
+
+        <button id="commitBtn" class="btn btn-success mt-3"
+            onclick="commitOnboarding()" style="display:none;">
+            Commit Onboarding
+        </button>
+    </div>
+</div>
+
+<script>
+async function previewOnboarding() {
+    const jsonText = document.getElementById("jsonInput").value;
+
+    let payload;
+    try {
+        payload = JSON.parse(jsonText);
+    } catch (err) {
+        alert("Invalid JSON");
+        return;
+    }
+
+    const response = await fetch("/api/v1/onboarding/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+
+    document.getElementById("previewSection").style.display = "block";
+    document.getElementById("validationResult").textContent =
+        JSON.stringify(result, null, 2);
+
+    if (result.status === "valid") {
+        document.getElementById("sqlPreview").textContent =
+            JSON.stringify(result.preview, null, 2);
+        document.getElementById("commitBtn").style.display = "inline-block";
+    } else {
+        document.getElementById("sqlPreview").textContent = "";
+        document.getElementById("commitBtn").style.display = "none";
+    }
+}
+
+async function commitOnboarding() {
+    const jsonText = document.getElementById("jsonInput").value;
+    const payload = JSON.parse(jsonText);
+
+    const response = await fetch("/api/v1/onboarding/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+
+    alert(JSON.stringify(result, null, 2));
+}
+</script>
+
+{% endblock %}

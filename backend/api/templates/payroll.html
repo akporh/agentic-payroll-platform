@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Payroll Run</h2>
+
+<div class="card p-3 mt-3">
+    <h5>Workspace</h5>
+    <p id="workspaceName">Loading...</p>
+    <p>Active Employees: <strong id="employeeCount">-</strong></p>
+
+    <button id="runBtn" class="btn btn-primary mt-2" onclick="runPayroll()" disabled>
+        Run Payroll
+    </button>
+</div>
+
+<div id="resultSection" class="card p-3 mt-4" style="display:none;">
+    <h5>Payroll Result</h5>
+
+    <p>Gross: ₦<span id="gross"></span></p>
+    <p>Deductions: ₦<span id="deductions"></span></p>
+    <p>Net: ₦<span id="net"></span></p>
+    <p>Success: <span id="success"></span></p>
+    <p>Failures: <span id="failures"></span></p>
+</div>
+
+<script>
+
+async function loadWorkspaceInfo() {
+    const response = await fetch("/api/v1/workspace/info");
+    const data = await response.json();
+
+    window.workspaceId = data.workspace_id;
+
+    document.getElementById("workspaceName").innerText = data.workspace_name;
+    document.getElementById("employeeCount").innerText = data.active_employee_count;
+
+    document.getElementById("runBtn").disabled = false;
+}
+
+
+async function runPayroll() {
+    const response = await fetch("/api/v1/payroll/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: window.workspaceId })
+    });
+
+    const result = await response.json();
+
+    if (result.status !== "success") {
+        alert("Payroll failed");
+        return;
+    }
+
+    document.getElementById("resultSection").style.display = "block";
+
+    document.getElementById("gross").innerText = result.summary.total_gross_pay;
+    document.getElementById("deductions").innerText = result.summary.total_deduction;
+    document.getElementById("net").innerText = result.summary.total_net_pay;
+    document.getElementById("success").innerText = result.summary.success_count;
+    document.getElementById("failures").innerText = result.summary.failure_count;
+}
+
+loadWorkspaceInfo();
+window.workspaceId = data.workspace_id;
+
+</script>
+
+{% endblock %}
