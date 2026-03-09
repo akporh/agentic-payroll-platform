@@ -7,6 +7,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 ENV/
 .vscode/
@@ -22,6 +23,9 @@ secrets/
 *.key
 dist/
 build/
+node_modules/
+frontend/node_modules/
+frontend/dist/
 *.egg-info/
 *.csv
 *.local_backup.py
