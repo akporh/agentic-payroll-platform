@@ -1,6 +1,8 @@
 # Agentic Payroll Platform - Phase 1 MVP
 
 ## Overview
+
+This project is now accessible and editable via Manus AI.
 Bank-grade payroll processing system with metadata-driven rules engine. Phase 1 is a deterministic, audit-first Nigerian payroll engine.
 Agentic workflows are **not implemented yet** — the system is designed to be agentic-ready
 
