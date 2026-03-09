@@ -15,6 +15,7 @@ from backend.domain.payroll.audit_events import (
     build_transition_audit,
     build_transition_event,
 )
+from backend.domain.rules.snapshot import build_rules_context_snapshot
 
 
 def execute_payroll_run_pure(
@@ -114,4 +115,7 @@ def execute_payroll_run_pure(
         "totals": batch_result["totals"],
         "audit_logs": audit_logs,
         "events": events,
+        "rules_context_snapshot": build_rules_context_snapshot(
+            statutory_rule_id, statutory_version, payroll_rule_ids
+        ),
     }

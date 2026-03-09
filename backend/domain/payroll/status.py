@@ -3,7 +3,7 @@ Payroll Run Status Enum.
 
 Defines the single source of truth for all valid PAYROLL_RUN lifecycle
 statuses. The order of members reflects the required progression:
-DRAFT → CALCULATING → PARTIAL → CALCULATED → APPROVED → LOCKED.
+DRAFT → CALCULATING → PARTIAL → CALCULATED → APPROVED → LOCKED → PAID.
 
 No state may be skipped. See state_machine.py for transition enforcement.
 
@@ -22,6 +22,7 @@ class PayrollRunStatus(Enum):
         CALCULATED: All calculations complete, awaiting review.
         APPROVED: Authorized approver has signed off on results.
         LOCKED: Finalized and immutable. No further changes allowed.
+        PAID: Disbursement confirmed. Terminal state.
     """
 
     DRAFT = "DRAFT"
@@ -30,3 +31,4 @@ class PayrollRunStatus(Enum):
     APPROVED = "APPROVED"
     LOCKED = "LOCKED"
     PARTIAL = "PARTIAL"
+    PAID = "PAID"

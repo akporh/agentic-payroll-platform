@@ -2,7 +2,7 @@
 Payroll Run State Machine.
 
 Enforces the strict, linear state transition rules for PAYROLL_RUN records.
-Transitions must follow: DRAFT → CALCULATING → CALCULATED → APPROVED → LOCKED.
+Transitions must follow: DRAFT → CALCULATING → CALCULATED → APPROVED → LOCKED → PAID.
 No skipping states. No backwards movement.
 
 This is a pure deterministic module with no database dependencies.
@@ -18,7 +18,8 @@ ALLOWED_TRANSITIONS: dict[PayrollRunStatus, list[PayrollRunStatus]] = {
     PayrollRunStatus.PARTIAL: [PayrollRunStatus.CALCULATED],
     PayrollRunStatus.CALCULATED: [PayrollRunStatus.APPROVED],
     PayrollRunStatus.APPROVED: [PayrollRunStatus.LOCKED],
-    PayrollRunStatus.LOCKED: [],
+    PayrollRunStatus.LOCKED: [PayrollRunStatus.PAID],
+    PayrollRunStatus.PAID: [],
 }
 """Maps each status to its list of valid next statuses."""
 
