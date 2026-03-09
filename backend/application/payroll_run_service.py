@@ -25,6 +25,9 @@ def execute_and_persist(
     payroll_rule_ids: list[str],
     performed_by: str,
     execution_mode: str = "isolated",
+    idempotency_key: str | None = None,
+    period_start: str | None = None,
+    period_end: str | None = None,
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -44,6 +47,9 @@ def execute_and_persist(
         statutory_version: Version number of the statutory rule.
         payroll_rule_ids: List of workspace-specific payroll rule IDs applied.
         performed_by: Identifier of the user or system triggering the run.
+        idempotency_key: Optional caller key stored on the run for deduplication.
+        period_start: Optional ISO-format start date of the pay period.
+        period_end: Optional ISO-format end date of the pay period.
 
     Returns:
         Dict containing payroll_run_id, per-employee results, totals,
@@ -62,6 +68,12 @@ def execute_and_persist(
         execution_mode=execution_mode,
     )
 
-    persist_payroll_run_execution(workspace_id, output)
+    persist_payroll_run_execution(
+        workspace_id,
+        output,
+        idempotency_key=idempotency_key,
+        period_start=period_start,
+        period_end=period_end,
+    )
 
     return output

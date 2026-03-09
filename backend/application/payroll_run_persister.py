@@ -11,19 +11,28 @@ It contains no business logic; it only routes data to the correct repository.
 Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
 """
 
+from decimal import Decimal
+
 from backend.infra.repositories.payroll_run_repo import save_payroll_run
 from backend.infra.repositories.payroll_result_repo import save_payroll_result
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
 
 
-def persist_payroll_run_execution(workspace_id: str, execution_output: dict):
+def persist_payroll_run_execution(
+    workspace_id: str,
+    execution_output: dict,
+    idempotency_key: str | None = None,
+    period_start: str | None = None,
+    period_end: str | None = None,
+):
     """Persist all outputs from a payroll run execution.
 
     Iterates through the execution output and saves:
-    1. Each employee's payroll result to the payroll_result table.
-    2. Each audit log entry to the audit_log table.
-    3. Each event to the event_store table.
+    1. The payroll_run header row (with financial totals).
+    2. Each employee's payroll result to the payroll_result table.
+    3. Each audit log entry to the audit_log table.
+    4. Each event to the event_store table.
 
     Args:
         workspace_id: Workspace this run belongs to (required for audit logs).
@@ -31,20 +40,32 @@ def persist_payroll_run_execution(workspace_id: str, execution_output: dict):
             - payroll_run_id (str): The run identifier.
             - results (list[dict]): Per-employee results with employee_id
               and payroll_result keys.
+            - totals (dict): Aggregated totals from the batch processor,
+              including total_gross_pay, total_deduction, total_net_pay.
             - audit_logs (list[dict]): Audit payloads for state transitions.
             - events (list[dict]): Event payloads for state transitions.
+        idempotency_key: Optional caller-supplied idempotency key to store on
+            the payroll_run row (enforced unique per workspace by DB index).
+        period_start: Optional ISO-format start date of the pay period.
+        period_end: Optional ISO-format end date of the pay period.
     """
     payroll_run_id = execution_output["payroll_run_id"]
+    totals = execution_output["totals"]
 
-    print("DEBUG LAST EVENT:", execution_output["events"][-1])
-
-    # 1️⃣ Insert payroll_run first
+    # 1️⃣ Insert payroll_run first (with financial totals for reconciliation)
     final_status = execution_output["events"][-1]["event_payload"]["to"]
 
     save_payroll_run(
         payroll_run_id=payroll_run_id,
         workspace_id=workspace_id,
         status=final_status,
+        rules_context_snapshot=execution_output["rules_context_snapshot"],
+        idempotency_key=idempotency_key,
+        period_start=period_start,
+        period_end=period_end,
+        total_gross_pay=Decimal(str(totals["total_gross_pay"])),
+        total_tax=Decimal(str(totals["total_deduction"])),
+        total_net_pay=Decimal(str(totals["total_net_pay"])),
     )
 
     # 2️⃣ Insert payroll_results
