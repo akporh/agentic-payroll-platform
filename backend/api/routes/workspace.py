@@ -230,8 +230,9 @@ def create_component_metadata_endpoint(workspace_id: str, payload: ComponentMeta
         return onboarding_service.create_component_metadata(
             db=db,
             workspace_id=workspace_id,
+            component_code=payload.component_code,
             version=payload.version,
-            rules_jsonb=payload.rules_jsonb,
+            metadata_json=payload.metadata_json,
             effective_from=payload.effective_from,
         )
     finally:

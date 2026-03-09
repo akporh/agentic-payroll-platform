@@ -111,17 +111,19 @@ def create_payroll_rule(
 def create_component_metadata(
     db,
     workspace_id: str,
+    component_code: str,
     version: int,
-    rules_jsonb: dict,
+    metadata_json: dict,
     effective_from,
 ):
 
     workspace = db.query(Workspace).get(workspace_id)
 
     metadata = ComponentMetadata(
+        component_code=component_code,
         country_code=workspace.country_code,
         version=version,
-        rules_jsonb=rules_jsonb,
+        metadata_json=metadata_json,
         effective_from=effective_from,
         is_active=True,
     )
