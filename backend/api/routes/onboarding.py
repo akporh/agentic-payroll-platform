@@ -10,6 +10,7 @@ Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
+from psycopg2.extras import Json
 from backend.infra.db.session import SessionLocal
 from fastapi import APIRouter, Request
 
@@ -38,13 +39,12 @@ async def upload_onboarding(request: Request):
     try:
         payload = await request.json()
 
-        workspace = payload.get("workspace", {})
-        workspace_id = workspace.get("workspace_id", "")
+        workspace_id = payload.get("workspace_id", "")
 
         if not workspace_id:
             return {
                 "status": "error",
-                "message": "Missing workspace_id in workspace object",
+                "message": "Missing workspace_id",
             }
 
         result = emit_onboarding_sql(workspace_id, payload)
@@ -225,7 +225,7 @@ async def commit_onboarding(request: Request):
                     "id": new_id,
                     "workspace_id": workspace_id,
                     "name": sd["name"],
-                    "components": sd["components"],
+                    "components": Json(sd["components"]),
                 },
             )
 
@@ -254,7 +254,7 @@ async def commit_onboarding(request: Request):
                     "id": str(uuid4()),
                     "workspace_id": workspace_id,
                     "name": rule["rule_name"],
-                    "definition": rule["definition"],
+                    "definition": Json(rule["definition"]),
                 },
             )
 
@@ -264,6 +264,13 @@ async def commit_onboarding(request: Request):
         for emp in payload.get("employees", []):
 
             employee_id = str(uuid4())
+
+            biodata = emp.get("biodata", {})
+            full_name = (
+                emp.get("full_name")
+                or biodata.get("FULL_NAME")
+                or emp.get("employee_number", "UNKNOWN")
+            )
 
             db.execute(
                 text("""
@@ -283,7 +290,7 @@ async def commit_onboarding(request: Request):
                 {
                     "eid": employee_id,
                     "workspace_id": workspace_id,
-                    "name": emp["full_name"],
+                    "name": full_name,
                 },
             )
 
