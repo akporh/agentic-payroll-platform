@@ -1,5 +1,13 @@
 const BASE = '/api';
 
+export class ApiError extends Error {
+  response: { status: number };
+  constructor(status: number, statusText: string, body: string) {
+    super(`${status} ${statusText}: ${body}`);
+    this.response = { status };
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -7,7 +15,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    throw new ApiError(res.status, res.statusText, text);
   }
   return res.json() as Promise<T>;
 }

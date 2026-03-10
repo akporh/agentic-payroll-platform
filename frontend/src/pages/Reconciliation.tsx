@@ -29,7 +29,11 @@ export function Reconciliation() {
     payrollApi
       .getReconciliation(workspaceId, runId)
       .then(setRecord)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => {
+        if (e?.response?.status !== 404) {
+          setError(e.message);
+        }
+      })
       .finally(() => setLoading(false));
   }
 

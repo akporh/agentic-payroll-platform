@@ -92,7 +92,7 @@ def run_payroll(
         employees.append({
             "employee_id": str(row[0]),
             "components": [
-                {"code": k, "amount": v["amount"]}
+                {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
                 for k, v in row[1].items()
             ],
         })
@@ -143,6 +143,17 @@ def run_payroll(
 
     payroll_rule_ids = [str(r[0]) for r in rule_rows]
 
+    # --- Load Pay Cycle definition_json ---
+    pay_cycle_row = db.execute(text("""
+        SELECT definition_json
+        FROM pay_cycle
+        WHERE workspace_id = :workspace_id
+          AND is_active = TRUE
+        LIMIT 1
+    """), {"workspace_id": workspace_id}).fetchone()
+
+    pay_cycle_definition = pay_cycle_row[0] if pay_cycle_row else None
+
     db.close()
 
     payroll_run_id = str(uuid.uuid4())
@@ -161,6 +172,7 @@ def run_payroll(
             idempotency_key=idempotency_key,
             period_start=period_start,
             period_end=period_end,
+            pay_cycle_definition=pay_cycle_definition,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -177,6 +189,158 @@ def run_payroll(
         "payroll_run_id": payroll_run_id,
         "summary":        result["totals"],
     }
+
+
+@router.post("/{workspace_id}/payroll/run")
+def run_payroll_scoped(
+    workspace_id: str,
+    payload: dict,
+    idempotency_key: str | None = Header(default=None),
+):
+    """Workspace-scoped payroll run trigger. Delegates to the core run logic."""
+    payload["workspace_id"] = workspace_id
+    result = run_payroll(payload, idempotency_key)
+    # Normalise response key for the frontend (run_id vs payroll_run_id)
+    return {
+        "run_id": result.get("payroll_run_id", result.get("run_id")),
+        "status": result.get("status"),
+    }
+
+
+@router.get("/{workspace_id}/payroll/runs")
+def list_payroll_runs(workspace_id: str):
+    """List all payroll runs for a workspace, newest first."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT payroll_run_id, workspace_id, status,
+                       period_start, period_end, pay_date,
+                       created_at, total_net_pay, total_gross_pay, total_deduction
+                FROM payroll_run
+                WHERE workspace_id = :wid
+                ORDER BY created_at DESC
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        return [
+            {
+                "run_id":       str(r[0]),
+                "workspace_id": str(r[1]),
+                "status":       r[2],
+                "period_start": str(r[3]) if r[3] else None,
+                "period_end":   str(r[4]) if r[4] else None,
+                "pay_date":     str(r[5]) if r[5] else None,
+                "created_at":   str(r[6]) if r[6] else None,
+                "total_net_pay": float(r[7]) if r[7] is not None else 0,
+            }
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}")
+def get_payroll_run(workspace_id: str, run_id: str):
+    """Get a single payroll run."""
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text("""
+                SELECT payroll_run_id, workspace_id, status,
+                       period_start, period_end, pay_date, created_at
+                FROM payroll_run
+                WHERE payroll_run_id = :rid AND workspace_id = :wid
+            """),
+            {"rid": run_id, "wid": workspace_id},
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Payroll run not found")
+
+        return {
+            "run_id":       str(row[0]),
+            "workspace_id": str(row[1]),
+            "status":       row[2],
+            "period_start": str(row[3]) if row[3] else None,
+            "period_end":   str(row[4]) if row[4] else None,
+            "pay_date":     str(row[5]) if row[5] else None,
+            "created_at":   str(row[6]) if row[6] else None,
+        }
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/results")
+def get_payroll_run_results(workspace_id: str, run_id: str):
+    """Get per-employee results and totals for a payroll run."""
+    db = SessionLocal()
+    try:
+        run_row = db.execute(
+            text("""
+                SELECT status, total_gross_pay, total_deduction, total_net_pay
+                FROM payroll_run
+                WHERE payroll_run_id = :rid AND workspace_id = :wid
+            """),
+            {"rid": run_id, "wid": workspace_id},
+        ).fetchone()
+
+        if not run_row:
+            raise HTTPException(status_code=404, detail="Payroll run not found")
+
+        result_rows = db.execute(
+            text("""
+                SELECT
+                    pr.employee_id,
+                    e.full_name,
+                    e.employee_number,
+                    pr.net_pay,
+                    pr.gross_components_jsonb,
+                    pr.deductions_jsonb,
+                    pr.status
+                FROM payroll_result pr
+                JOIN employee e ON e.employee_id = pr.employee_id
+                WHERE pr.payroll_run_id = :rid
+                ORDER BY e.full_name
+            """),
+            {"rid": run_id},
+        ).fetchall()
+
+        results = []
+        for r in result_rows:
+            status = r[6]
+            gross_components = r[4] or {}
+            deductions = r[5] or {}
+            gross_total = sum(
+                v.get("amount", v) if isinstance(v, dict) else v
+                for v in gross_components.values()
+            )
+            deductions_total = sum(
+                v.get("amount", v) if isinstance(v, dict) else v
+                for v in deductions.values()
+            )
+            results.append({
+                "employee_id":      str(r[0]),
+                "employee_name":    r[1] or "",
+                "employee_number":  r[2] or "",
+                "gross_pay":        float(gross_total) if status == "SUCCESS" else None,
+                "total_deductions": float(deductions_total) if status == "SUCCESS" else None,
+                "net_pay":          float(r[3]) if r[3] is not None else None,
+                "status":           status,
+            })
+
+        return {
+            "results": results,
+            "totals": {
+                "gross":          float(run_row[1] or 0),
+                "deductions":     float(run_row[2] or 0),
+                "net":            float(run_row[3] or 0),
+                "employee_count": len(results),
+            },
+        }
+    finally:
+        db.close()
 
 
 @router.post("/payroll/run/{run_id}/retry")
@@ -310,3 +474,38 @@ def get_reconciliation(run_id: str):
             detail=f"No reconciliation found for run {run_id}.",
         )
     return {"status": "success", "reconciliation": record}
+
+
+def _to_reconciliation_record(record: dict) -> dict:
+    """Map backend field names to frontend ReconciliationRecord shape."""
+    return {
+        "run_id":         record.get("payroll_run_id"),
+        "expected_total": float(record["expected_total"]) if record.get("expected_total") is not None else None,
+        "actual_payment": float(record["actual_total"]) if record.get("actual_total") is not None else None,
+        "status":         record.get("status"),
+    }
+
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+def get_reconciliation_scoped(workspace_id: str, run_id: str):
+    """Get the reconciliation record for a payroll run (workspace-scoped)."""
+    record = get_reconciliation_status(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"No reconciliation found for run {run_id}.")
+    return _to_reconciliation_record(record)
+
+
+@router.post("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+def submit_reconciliation_scoped(workspace_id: str, run_id: str, payload: dict):
+    """Submit an actual payment total and create a reconciliation record (workspace-scoped)."""
+    actual_payment = payload.get("actual_payment")
+    if actual_payment is None:
+        raise HTTPException(status_code=400, detail="actual_payment is required")
+    try:
+        from decimal import Decimal
+        record = reconcile_payroll_run(run_id, Decimal(str(actual_payment)))
+    except ValueError as exc:
+        error = str(exc)
+        status_code = 409 if "already exists" in error else 404 if "not found" in error else 400
+        raise HTTPException(status_code=status_code, detail=error)
+    return _to_reconciliation_record(record)
