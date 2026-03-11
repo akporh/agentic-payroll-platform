@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
-import type { PayrollResult, PayrollTotals } from '../types/payroll';
+import type { PayrollResult, PayrollTotals, ExecutionTraceStep } from '../types/payroll';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Btn } from '../components/ui/Btn';
 import { AlertBox } from '../components/ui/AlertBox';
+import { PayrollTimeline } from '../components/payroll/PayrollTimeline';
 
 function fmt(n: number) {
   return n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,14 +20,18 @@ export function PayrollResults() {
   const [totals, setTotals] = useState<PayrollTotals | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeline, setTimeline] = useState<ExecutionTraceStep[]>([]);
 
   useEffect(() => {
     if (!workspaceId || !runId) return;
-    payrollApi
-      .getResults(workspaceId, runId)
-      .then((data) => {
+    Promise.all([
+      payrollApi.getResults(workspaceId, runId),
+      payrollApi.getTimeline(workspaceId, runId).catch(() => []),
+    ])
+      .then(([data, steps]) => {
         setResults(data.results);
         setTotals(data.totals);
+        setTimeline(steps);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -59,6 +64,12 @@ export function PayrollResults() {
           <StatCard label="Gross Pay" value={fmt(totals.gross)} />
           <StatCard label="Deductions" value={fmt(totals.deductions)} />
           <StatCard label="Net Pay" value={fmt(totals.net)} highlight />
+        </div>
+      )}
+
+      {!loading && !error && timeline.length > 0 && (
+        <div className="mb-5">
+          <PayrollTimeline steps={timeline} />
         </div>
       )}
 

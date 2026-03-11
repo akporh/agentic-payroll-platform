@@ -13,6 +13,7 @@ from backend.application.payroll_run_service import execute_and_persist
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
 from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status
+from backend.infra.repositories.execution_trace_repo import get_trace_steps
 
 router = APIRouter()
 
@@ -313,11 +314,11 @@ def get_payroll_run_results(workspace_id: str, run_id: str):
             gross_components = r[4] or {}
             deductions = r[5] or {}
             gross_total = sum(
-                v.get("amount", v) if isinstance(v, dict) else v
+                float(v.get("amount", v) if isinstance(v, dict) else v)
                 for v in gross_components.values()
             )
             deductions_total = sum(
-                v.get("amount", v) if isinstance(v, dict) else v
+                float(v.get("amount", v) if isinstance(v, dict) else v)
                 for v in deductions.values()
             )
             results.append({
@@ -509,3 +510,10 @@ def submit_reconciliation_scoped(workspace_id: str, run_id: str, payload: dict):
         status_code = 409 if "already exists" in error else 404 if "not found" in error else 400
         raise HTTPException(status_code=status_code, detail=error)
     return _to_reconciliation_record(record)
+
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/timeline")
+def get_run_timeline(workspace_id: str, run_id: str):
+    """Return all execution trace steps for a payroll run, ordered by time."""
+    steps = get_trace_steps(run_id)
+    return steps

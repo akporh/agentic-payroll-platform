@@ -49,3 +49,11 @@ export interface ReconciliationRecord {
   actual_payment: number | null;
   status: 'MATCHED' | 'MISMATCH' | 'PENDING';
 }
+
+export interface ExecutionTraceStep {
+  step_name: string;
+  status: 'success' | 'error';
+  duration_ms: number | null;
+  error_message: string | null;
+  created_at: string;
+}

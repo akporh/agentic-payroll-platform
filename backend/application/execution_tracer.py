@@ -47,6 +47,7 @@ class ExecutionTracer:
 
         Logs the step name on entry, measures wall-clock duration, and
         logs SUCCESS or ERROR (with the exception message) on exit.
+        Also persists each completed step to the execution_trace table.
         The exception is always re-raised so callers are unaffected.
         """
         console.log(f"[bold cyan]►[/bold cyan]  [bold]{name}[/bold]")
@@ -54,17 +55,42 @@ class ExecutionTracer:
         try:
             yield
             duration = round(time() - start, 3)
+            duration_ms = int(duration * 1000)
             console.log(
                 f"[bold green]✓  SUCCESS[/bold green]  {name}  "
                 f"[dim]({duration}s)[/dim]"
             )
+            self._persist(name, "success", duration_ms, None)
         except Exception as exc:
             duration = round(time() - start, 3)
+            duration_ms = int(duration * 1000)
             console.log(
                 f"[bold red]✗  ERROR[/bold red]  {name}  "
                 f"[dim]({duration}s)[/dim]  →  [red]{exc}[/red]"
             )
+            self._persist(name, "error", duration_ms, str(exc))
             raise
+
+    def _persist(
+        self,
+        step_name: str,
+        status: str,
+        duration_ms: int,
+        error_message: str | None,
+    ) -> None:
+        """Write one trace row to the DB.  Never raises — a DB failure
+        must never interrupt the payroll run."""
+        try:
+            from backend.infra.repositories.execution_trace_repo import save_trace_step
+            save_trace_step(
+                run_id=self.run_id,
+                step_name=step_name,
+                status=status,
+                duration_ms=duration_ms,
+                error_message=error_message,
+            )
+        except Exception:
+            pass
 
     def info(self, message: str) -> None:
         """Log a nested informational message inside the current step."""

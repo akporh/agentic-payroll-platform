@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { PayrollRun, PayrollResult, PayrollTotals, ReconciliationRecord } from '../types/payroll';
+import type { PayrollRun, PayrollResult, PayrollTotals, ReconciliationRecord, ExecutionTraceStep } from '../types/payroll';
 
 export const payrollApi = {
   createRun: (
@@ -30,4 +30,7 @@ export const payrollApi = {
       `/${workspaceId}/payroll/runs/${runId}/reconciliation`,
       payload
     ),
+
+  getTimeline: (workspaceId: string, runId: string) =>
+    api.get<ExecutionTraceStep[]>(`/${workspaceId}/payroll/runs/${runId}/timeline`),
 };
