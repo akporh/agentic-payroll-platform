@@ -156,6 +156,141 @@ def _delete_failed_row(db, *, payroll_run_id: str, employee_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# FULL_RUN retry helper
+# ---------------------------------------------------------------------------
+
+def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
+    """Delete all existing payroll_result rows for the run and re-calculate
+    every active employee in the workspace from scratch.
+
+    Called inside the same transaction and DB session as the caller.
+    """
+
+    # 1. Load shared inputs (same pattern as the original run)
+    stat_row = db.execute(
+        text("SELECT statutory_rule_id, version FROM statutory_rule ORDER BY version DESC LIMIT 1")
+    ).fetchone()
+
+    if stat_row is None:
+        raise ValueError("No statutory rule found")
+
+    statutory_rule_id = str(stat_row[0])
+    statutory_version = stat_row[1]
+
+    tax_rows = db.execute(
+        text("""
+            SELECT lower_limit, upper_limit, rate
+            FROM   tax_band
+            WHERE  statutory_rule_id = :sr_id
+            ORDER  BY lower_limit
+        """),
+        {"sr_id": statutory_rule_id},
+    ).fetchall()
+
+    tax_bands = [{"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]} for r in tax_rows]
+
+    rule_rows = db.execute(
+        text("SELECT rule_id FROM payroll_rule WHERE is_active = TRUE AND workspace_id = :wid"),
+        {"wid": workspace_id},
+    ).fetchall()
+
+    payroll_rule_ids = [str(r[0]) for r in rule_rows]
+
+    # 2. Load ALL active employees for the workspace with current salary data
+    emp_rows = db.execute(
+        text("""
+            SELECT e.employee_id, sd.components_jsonb
+            FROM   employee e
+            JOIN   employee_contract ec ON e.employee_id = ec.employee_id
+            JOIN   salary_definition sd ON ec.salary_definition_id = sd.salary_definition_id
+            WHERE  e.workspace_id = :wid
+              AND  e.status       = 'ACTIVE'
+              AND  (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+        """),
+        {"wid": workspace_id},
+    ).fetchall()
+
+    if not emp_rows:
+        raise ValueError("No active employees found for FULL_RUN retry")
+
+    # 3. Delete ALL existing results (both SUCCESS and FAILED)
+    db.execute(
+        text("DELETE FROM payroll_result WHERE payroll_run_id = :run_id"),
+        {"run_id": payroll_run_id},
+    )
+
+    # 4. Re-calculate every employee using the DELETE + INSERT pattern
+    success_count = 0
+    still_failed  = 0
+
+    for emp in emp_rows:
+        employee_id = str(emp[0])
+        components  = [
+            {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
+            for k, v in emp[1].items()
+        ]
+
+        try:
+            calc_result = execute_single_employee_payroll(
+                payroll_run_id    = payroll_run_id,
+                employee_id       = employee_id,
+                components        = components,
+                tax_bands         = tax_bands,
+                statutory_rule_id = statutory_rule_id,
+                statutory_version = statutory_version,
+                payroll_rule_ids  = payroll_rule_ids,
+                performed_by      = "admin@internal",
+            )
+            calc_error = None
+        except Exception as exc:
+            calc_result = None
+            calc_error  = str(exc)
+
+        if calc_error is None:
+            _insert_result(
+                db,
+                payroll_run_id = payroll_run_id,
+                employee_id    = employee_id,
+                status         = "SUCCESS",
+                payroll_output = calc_result,
+                error_message  = None,
+            )
+            success_count += 1
+        else:
+            _insert_result(
+                db,
+                payroll_run_id = payroll_run_id,
+                employee_id    = employee_id,
+                status         = "FAILED",
+                payroll_output = None,
+                error_message  = calc_error,
+            )
+            still_failed += 1
+
+    # 5. Recompute run status from DB (authoritative)
+    remaining_failed = db.execute(
+        text("SELECT COUNT(*) FROM payroll_result WHERE payroll_run_id = :run_id AND status = 'FAILED'"),
+        {"run_id": payroll_run_id},
+    ).scalar()
+
+    new_run_status = "CALCULATED" if remaining_failed == 0 else "PARTIAL"
+
+    db.execute(
+        text("UPDATE payroll_run SET status = :status WHERE payroll_run_id = :run_id"),
+        {"run_id": payroll_run_id, "status": new_run_status},
+    )
+
+    db.commit()
+
+    return {
+        "payroll_run_id": payroll_run_id,
+        "retried":        len(emp_rows),
+        "success":        success_count,
+        "still_failed":   still_failed,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -188,7 +323,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
         # -------------------------------------------------------------------
         run_row = db.execute(
             text("""
-                SELECT workspace_id, status
+                SELECT workspace_id, status, retry_strategy
                 FROM   payroll_run
                 WHERE  payroll_run_id = :run_id
                 FOR UPDATE
@@ -201,6 +336,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
 
         workspace_id   = str(run_row[0])
         current_status = run_row[1]
+        retry_strategy = run_row[2] or "PER_EMPLOYEE"
 
         if current_status == "PAID":
             raise ValueError("Cannot retry a PAID payroll run")
@@ -218,6 +354,12 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
                 f"Only PARTIAL runs can be retried. "
                 f"Current status: {current_status}"
             )
+
+        # -------------------------------------------------------------------
+        # FULL_RUN branch — delete all results and re-run every employee.
+        # -------------------------------------------------------------------
+        if retry_strategy == "FULL_RUN":
+            return _retry_full_run(db, payroll_run_id, workspace_id)
 
         # -------------------------------------------------------------------
         # Step 2 — Find FAILED employees (explicit status guard).
@@ -336,7 +478,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
                 calc_error    = "Employee has no active contract"
             else:
                 components = [
-                    {"code": k, "amount": v["amount"]}
+                    {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
                     for k, v in emp_row[0].items()
                 ]
                 try:

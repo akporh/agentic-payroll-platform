@@ -26,6 +26,7 @@ def persist_payroll_run_execution(
     idempotency_key: str | None = None,
     period_start: str | None = None,
     period_end: str | None = None,
+    retry_strategy: str = "PER_EMPLOYEE",
     tracer=None,
 ):
     """Persist all outputs from a payroll run execution.
@@ -80,6 +81,7 @@ def persist_payroll_run_execution(
             total_gross_pay=Decimal(str(totals["total_gross_pay"])),
             total_tax=Decimal(str(totals["total_deduction"])),
             total_net_pay=Decimal(str(totals["total_net_pay"])),
+            retry_strategy=retry_strategy,
         )
 
     # 2️⃣ Insert payroll_results

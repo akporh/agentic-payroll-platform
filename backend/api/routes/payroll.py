@@ -36,9 +36,10 @@ def run_payroll(
     returning HTTP 409.
     """
 
-    workspace_id = payload.get("workspace_id")
-    period_start  = payload.get("period_start")
-    period_end    = payload.get("period_end")
+    workspace_id   = payload.get("workspace_id")
+    period_start   = payload.get("period_start")
+    period_end     = payload.get("period_end")
+    retry_strategy = payload.get("retry_strategy", "PER_EMPLOYEE")
 
     if not workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id required")
@@ -174,14 +175,33 @@ def run_payroll(
             period_start=period_start,
             period_end=period_end,
             pay_cycle_definition=pay_cycle_definition,
+            retry_strategy=retry_strategy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except SQLInternalError as exc:
-        if "PAYROLL_ALREADY_EXISTS" in str(exc):
+        error_str = str(exc)
+        if "PAYROLL_ALREADY_EXISTS" in error_str:
             raise HTTPException(
                 status_code=409,
                 detail="A payroll run already exists for this period.",
+            )
+        if "Payroll readiness failed:" in error_str:
+            import re, json as _json
+            match = re.search(r'Payroll readiness failed: (\[.*?\])', error_str, re.DOTALL)
+            if match:
+                try:
+                    errors = _json.loads(match.group(1))
+                    messages = " | ".join(e["message"] for e in errors)
+                    raise HTTPException(
+                        status_code=422,
+                        detail={"error": "PAYROLL_NOT_READY", "message": messages},
+                    )
+                except (ValueError, KeyError):
+                    pass
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "PAYROLL_NOT_READY", "message": "Payroll readiness check failed."},
             )
         raise
 

@@ -30,6 +30,7 @@ def execute_and_persist(
     period_start: str | None = None,
     period_end: str | None = None,
     pay_cycle_definition: dict | None = None,
+    retry_strategy: str = "PER_EMPLOYEE",
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -95,6 +96,7 @@ def execute_and_persist(
             idempotency_key=idempotency_key,
             period_start=period_start,
             period_end=period_end,
+            retry_strategy=retry_strategy,
             tracer=tracer,
         )
 

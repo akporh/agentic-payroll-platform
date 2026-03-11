@@ -22,6 +22,7 @@ def save_payroll_run(
     total_gross_pay: Decimal = Decimal("0"),
     total_tax: Decimal = Decimal("0"),
     total_net_pay: Decimal = Decimal("0"),
+    retry_strategy: str = "PER_EMPLOYEE",
 ):
     """Insert a new payroll_run row and advance it to the target status.
 
@@ -67,7 +68,8 @@ def save_payroll_run(
                 total_gross_pay,
                 total_deduction,
                 total_tax,
-                total_net_pay
+                total_net_pay,
+                retry_strategy
             )
             VALUES (
                 :payroll_run_id,
@@ -78,9 +80,10 @@ def save_payroll_run(
                 :period_start,
                 :period_end,
                 :total_gross_pay,
+                :total_deduction,
                 :total_tax,
-                :total_tax,
-                :total_net_pay
+                :total_net_pay,
+                :retry_strategy
             )
             """),
             {
@@ -91,8 +94,10 @@ def save_payroll_run(
                 "period_start": period_start,
                 "period_end": period_end,
                 "total_gross_pay": total_gross_pay,
+                "total_deduction": total_tax,
                 "total_tax": total_tax,
                 "total_net_pay": total_net_pay,
+                "retry_strategy": retry_strategy,
             },
         )
 
