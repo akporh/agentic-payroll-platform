@@ -9,15 +9,18 @@ Reference: Phase 1 Business Spec — Payroll Calculation Pipeline.
 
 from decimal import Decimal, ROUND_HALF_UP
 from backend.domain.rules.paye import calculate_paye
+from backend.application.trace_decorators import trace_step
 
 
-def calculate_net_pay(gross_income: Decimal, tax_bands: list[dict]) -> dict:
+@trace_step("Calculate net pay (PAYE)")
+def calculate_net_pay(gross_income: Decimal, tax_bands: list[dict], *, tracer=None) -> dict:
     """Calculate net pay after PAYE deduction.
 
     Args:
         gross_income: Total gross income as Decimal.
         tax_bands: Progressive tax brackets for PAYE calculation.
             See calculate_paye() for band format.
+        tracer: Optional ExecutionTracer for structured trace output.
 
     Returns:
         Dict with Decimal values:
@@ -38,4 +41,3 @@ def calculate_net_pay(gross_income: Decimal, tax_bands: list[dict]) -> dict:
         "paye": computed_tax,
         "net": net,
     }
- 

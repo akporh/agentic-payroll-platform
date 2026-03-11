@@ -12,8 +12,10 @@ Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
 
 from backend.domain.payroll.result_builder import build_payroll_result
 from backend.domain.rules.snapshot import build_rules_context_snapshot
+from backend.application.trace_decorators import trace_step
 
 
+@trace_step("Calculate employee payroll")
 def execute_single_employee_payroll(
     payroll_run_id: str,
     employee_id: str,
@@ -23,6 +25,8 @@ def execute_single_employee_payroll(
     statutory_version: int,
     payroll_rule_ids: list[str],
     performed_by: str,
+    *,
+    tracer=None,
 ) -> dict:
     """Execute a full payroll calculation for a single employee.
 
@@ -39,6 +43,7 @@ def execute_single_employee_payroll(
         statutory_version: Version number of the statutory rule.
         payroll_rule_ids: List of workspace-specific payroll rule IDs applied.
         performed_by: Identifier of the user or system triggering the run.
+        tracer: Optional ExecutionTracer for structured trace output.
 
     Returns:
         Dict containing:
@@ -47,7 +52,7 @@ def execute_single_employee_payroll(
             - rules_context_snapshot: Captured rules at time of calculation.
             - payroll_result: Full calculation output (gross, deductions, net).
     """
-    payroll_result = build_payroll_result(components, tax_bands)
+    payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
     rules_snapshot = build_rules_context_snapshot(
         statutory_rule_id, statutory_version, payroll_rule_ids
     )

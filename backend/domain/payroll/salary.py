@@ -10,14 +10,18 @@ Reference: Phase 1 Business Spec — SALARY_DEFINITION.components_jsonb.
 
 from decimal import Decimal
 
+from backend.application.trace_decorators import trace_step
 
-def calculate_gross(components: list[dict]) -> Decimal:
+
+@trace_step("Calculate gross pay")
+def calculate_gross(components: list[dict], *, tracer=None) -> Decimal:
     """Sum all salary component amounts to produce total gross pay.
 
     Args:
         components: List of salary component dicts. Each must contain:
             - code (str): Component identifier (e.g. "BASIC", "HOUSING").
             - amount (Decimal|int|float): Monetary value for this component.
+        tracer: Optional ExecutionTracer for structured trace output.
 
     Returns:
         Total gross pay as Decimal.
@@ -30,4 +34,7 @@ def calculate_gross(components: list[dict]) -> Decimal:
         >>> calculate_gross(components)
         Decimal('800000')
     """
-    return sum((Decimal(str(c["amount"])) for c in components), Decimal("0"))
+    return sum(
+        (Decimal(str(c["amount"] if isinstance(c, dict) else c)) for c in components),
+        Decimal("0"),
+    )

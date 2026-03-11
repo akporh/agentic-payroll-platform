@@ -13,11 +13,15 @@ Reference: Phase 1 Business Spec — PAYROLL_RESULT schema.
 
 from backend.domain.payroll.salary import calculate_gross
 from backend.domain.payroll.calculator import calculate_net_pay
+from backend.application.trace_decorators import trace_step
 
 
+@trace_step("Build payroll result")
 def build_payroll_result(
     components: list[dict],
     tax_bands: list[dict],
+    *,
+    tracer=None,
 ) -> dict:
     """Build a complete payroll result payload for one employee.
 
@@ -32,6 +36,7 @@ def build_payroll_result(
         components: Salary component dicts with "code" and "amount" keys.
         tax_bands: Progressive tax brackets for PAYE calculation.
             See calculate_paye() for band format.
+        tracer: Optional ExecutionTracer for structured trace output.
 
     Returns:
         Dict matching the Phase 1 PAYROLL_RESULT schema:
@@ -45,8 +50,8 @@ def build_payroll_result(
         >>> result["net_pay"]
         Decimal('716000.00')
     """
-    gross = calculate_gross(components)
-    pay_result = calculate_net_pay(gross, tax_bands)
+    gross = calculate_gross(components, tracer=tracer)
+    pay_result = calculate_net_pay(gross, tax_bands, tracer=tracer)
     paye = pay_result["paye"]
     net = pay_result["net"]
 

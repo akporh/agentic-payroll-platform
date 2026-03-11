@@ -88,6 +88,7 @@ def process_payroll_run(
                 statutory_version=statutory_version,
                 payroll_rule_ids=payroll_rule_ids,
                 performed_by=performed_by,
+                tracer=tracer,
             )
 
             payroll_result = result["payroll_result"]
