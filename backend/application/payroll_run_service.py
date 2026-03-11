@@ -13,6 +13,7 @@ Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
 
 from backend.domain.payroll.run_executor import execute_payroll_run_pure
 from backend.application.payroll_run_persister import persist_payroll_run_execution
+from backend.application.execution_tracer import ExecutionTracer
 
 
 def execute_and_persist(
@@ -28,6 +29,7 @@ def execute_and_persist(
     idempotency_key: str | None = None,
     period_start: str | None = None,
     period_end: str | None = None,
+    pay_cycle_definition: dict | None = None,
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -56,24 +58,46 @@ def execute_and_persist(
         audit_logs, and events (as produced by execute_payroll_run_pure).
     """
 
-    output = execute_payroll_run_pure(
-        payroll_run_id=payroll_run_id,
-        workspace_id=workspace_id,
-        employees=employees,
-        tax_bands=tax_bands,
-        statutory_rule_id=statutory_rule_id,
-        statutory_version=statutory_version,
-        payroll_rule_ids=payroll_rule_ids,
-        performed_by=performed_by,
-        execution_mode=execution_mode,
+    tracer = ExecutionTracer(payroll_run_id)
+    tracer.info(
+        f"{len(employees)} employees  │  "
+        f"{len(tax_bands)} tax bands  │  "
+        f"{len(payroll_rule_ids)} workspace rules"
     )
+    tracer.info(
+        f"Statutory rule v{statutory_version}  │  "
+        f"execution_mode={execution_mode}  │  "
+        f"workspace={workspace_id}"
+    )
+    tracer.separator()
 
-    persist_payroll_run_execution(
-        workspace_id,
-        output,
-        idempotency_key=idempotency_key,
-        period_start=period_start,
-        period_end=period_end,
-    )
+    with tracer.step("Execute payroll engine"):
+        output = execute_payroll_run_pure(
+            payroll_run_id=payroll_run_id,
+            workspace_id=workspace_id,
+            employees=employees,
+            tax_bands=tax_bands,
+            statutory_rule_id=statutory_rule_id,
+            statutory_version=statutory_version,
+            payroll_rule_ids=payroll_rule_ids,
+            performed_by=performed_by,
+            execution_mode=execution_mode,
+            pay_cycle_definition=pay_cycle_definition,
+            tracer=tracer,
+        )
+
+    tracer.separator()
+
+    with tracer.step("Persist results"):
+        persist_payroll_run_execution(
+            workspace_id,
+            output,
+            idempotency_key=idempotency_key,
+            period_start=period_start,
+            period_end=period_end,
+            tracer=tracer,
+        )
+
+    tracer.separator()
 
     return output

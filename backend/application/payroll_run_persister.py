@@ -17,6 +17,7 @@ from backend.infra.repositories.payroll_run_repo import save_payroll_run
 from backend.infra.repositories.payroll_result_repo import save_payroll_result
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
+from backend.application.execution_tracer import NULL_TRACER
 
 
 def persist_payroll_run_execution(
@@ -25,6 +26,7 @@ def persist_payroll_run_execution(
     idempotency_key: str | None = None,
     period_start: str | None = None,
     period_end: str | None = None,
+    tracer=None,
 ):
     """Persist all outputs from a payroll run execution.
 
@@ -49,39 +51,60 @@ def persist_payroll_run_execution(
         period_start: Optional ISO-format start date of the pay period.
         period_end: Optional ISO-format end date of the pay period.
     """
+    tracer = tracer or NULL_TRACER
+
     payroll_run_id = execution_output["payroll_run_id"]
     totals = execution_output["totals"]
+    results = execution_output["results"]
+    audit_logs = execution_output["audit_logs"]
+    events = execution_output["events"]
 
     # 1️⃣ Insert payroll_run first (with financial totals for reconciliation)
-    final_status = execution_output["events"][-1]["event_payload"]["to"]
+    final_status = events[-1]["event_payload"]["to"]
 
-    save_payroll_run(
-        payroll_run_id=payroll_run_id,
-        workspace_id=workspace_id,
-        status=final_status,
-        rules_context_snapshot=execution_output["rules_context_snapshot"],
-        idempotency_key=idempotency_key,
-        period_start=period_start,
-        period_end=period_end,
-        total_gross_pay=Decimal(str(totals["total_gross_pay"])),
-        total_tax=Decimal(str(totals["total_deduction"])),
-        total_net_pay=Decimal(str(totals["total_net_pay"])),
-    )
-
-    # 2️⃣ Insert payroll_results
-    for r in execution_output["results"]:
-        save_payroll_result(
+    with tracer.step("Save payroll run header"):
+        tracer.info(
+            f"Status: [bold]{final_status}[/bold]  │  "
+            f"Gross: {totals['total_gross_pay']}  │  "
+            f"PAYE: {totals['total_deduction']}  │  "
+            f"Net: {totals['total_net_pay']}"
+        )
+        save_payroll_run(
             payroll_run_id=payroll_run_id,
-            employee_id=r["employee_id"],
-            status=r["status"],
-            payroll_output=r.get("output"),
-            error_message=r.get("error"),
+            workspace_id=workspace_id,
+            status=final_status,
+            rules_context_snapshot=execution_output["rules_context_snapshot"],
+            idempotency_key=idempotency_key,
+            period_start=period_start,
+            period_end=period_end,
+            total_gross_pay=Decimal(str(totals["total_gross_pay"])),
+            total_tax=Decimal(str(totals["total_deduction"])),
+            total_net_pay=Decimal(str(totals["total_net_pay"])),
         )
 
+    # 2️⃣ Insert payroll_results
+    with tracer.step(f"Save {len(results)} employee results"):
+        for r in results:
+            tracer.info(
+                f"Employee {r['employee_id'][:8]}  →  "
+                f"[bold {'green' if r['status'] == 'SUCCESS' else 'red'}]{r['status']}[/bold {'green' if r['status'] == 'SUCCESS' else 'red'}]"
+            )
+            save_payroll_result(
+                payroll_run_id=payroll_run_id,
+                employee_id=r["employee_id"],
+                status=r["status"],
+                payroll_output=r.get("output"),
+                error_message=r.get("error"),
+            )
+
     # 3️⃣ Insert audit logs
-    for audit in execution_output["audit_logs"]:
-        save_audit_log(workspace_id, audit)
+    with tracer.step(f"Save {len(audit_logs)} audit entries"):
+        for audit in audit_logs:
+            save_audit_log(workspace_id, audit)
+        tracer.info(f"{len(audit_logs)} audit log entries written")
 
     # 4️⃣ Insert events
-    for event in execution_output["events"]:
-        save_event(event)
+    with tracer.step(f"Save {len(events)} events"):
+        for event in events:
+            save_event(event)
+        tracer.info(f"{len(events)} events written to event store")

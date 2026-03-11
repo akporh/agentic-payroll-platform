@@ -13,6 +13,7 @@ Pure computation only. No database writes.
 from decimal import Decimal
 from typing import Literal
 from backend.domain.payroll.executor import execute_single_employee_payroll
+from backend.application.execution_tracer import NULL_TRACER
 
 ExecutionMode = Literal["atomic", "isolation"]
 
@@ -25,6 +26,7 @@ def process_payroll_run(
     payroll_rule_ids: list[str],
     performed_by: str,
     execution_mode: ExecutionMode = "isolated",
+    tracer=None,
 ) -> dict:
     """Process payroll for all employees in a single payroll run.
 
@@ -53,6 +55,8 @@ def process_payroll_run(
             - totals: Aggregated totals including total_net_pay.
     """
 
+    tracer = tracer or NULL_TRACER
+
     results = []
 
     total_gross = Decimal("0")
@@ -64,11 +68,21 @@ def process_payroll_run(
 
     for emp in employees:
 
+        emp_id = emp["employee_id"]
+        components = emp["components"]
+        short_id = emp_id[:8]
+
+        tracer.info(f"[bold]Employee {short_id}[/bold]")
+        tracer.info(
+            f"  {len(components)} components: "
+            + "  ".join(f"[cyan]{c['code']}[/cyan]={c['amount']}" for c in components)
+        )
+
         try:
             result = execute_single_employee_payroll(
                 payroll_run_id=payroll_run_id,
-                employee_id=emp["employee_id"],
-                components=emp["components"],
+                employee_id=emp_id,
+                components=components,
                 tax_bands=tax_bands,
                 statutory_rule_id=statutory_rule_id,
                 statutory_version=statutory_version,
@@ -83,8 +97,15 @@ def process_payroll_run(
             total_deductions += Decimal(snapshot["paye"])
             total_net += Decimal(snapshot["net"])
 
+            tracer.info(
+                f"  Gross: [green]{snapshot['gross']}[/green]  │  "
+                f"PAYE: [yellow]{snapshot['paye']}[/yellow]  │  "
+                f"Net: [bold green]{snapshot['net']}[/bold green]  │  "
+                f"[bold green]SUCCESS[/bold green]"
+            )
+
             results.append({
-                "employee_id": emp["employee_id"],
+                "employee_id": emp_id,
                 "status": "SUCCESS",
                 "output": result,
                 "error": None,
@@ -94,11 +115,13 @@ def process_payroll_run(
 
         except Exception as e:
 
+            tracer.warn(f"Employee {short_id} calculation failed: {e}")
+
             if execution_mode == "atomic":
                 raise
 
             results.append({
-                "employee_id": emp["employee_id"],
+                "employee_id": emp_id,
                 "status": "FAILED",
                 "output": None,
                 "error": str(e),
