@@ -37,7 +37,8 @@ def review_client_json(client_json: dict) -> AICriticReport:
             )
 
         basic = components.get("BASIC", {})
-        if isinstance(basic.get("amount"), (int, float)) and basic["amount"] == 0:
+        basic_amount = basic.get("amount") if isinstance(basic, dict) else basic
+        if isinstance(basic_amount, (int, float)) and basic_amount == 0:
             questions.append(
                 f"{name}: BASIC amount is 0 — is this intentional?"
             )

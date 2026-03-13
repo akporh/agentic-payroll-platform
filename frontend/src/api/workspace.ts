@@ -70,4 +70,9 @@ export const workspaceApi = {
 
   getEmployees: (workspaceId: string) =>
     api.get<Employee[]>(`/${workspaceId}/employees`),
+
+  getSalaryDefinitions: (workspaceId: string) =>
+    api.get<{ salary_definition_id: string; code: string; name: string }[]>(
+      `/${workspaceId}/salary-definitions`
+    ),
 };

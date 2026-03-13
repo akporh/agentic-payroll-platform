@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Dict, Literal, Optional
 
 
 class PayCycleCreateSchema(BaseModel):
@@ -7,3 +7,4 @@ class PayCycleCreateSchema(BaseModel):
     run_day: int
     cutoff_day: int
     payment_day: int
+    definition_json: Optional[Dict] = None

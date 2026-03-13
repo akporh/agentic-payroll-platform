@@ -14,6 +14,7 @@ from backend.application.payroll_retry_service import retry_failed_payroll_emplo
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
 from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status
 from backend.infra.repositories.execution_trace_repo import get_trace_steps
+from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, load_inputs_for_run
 
 router = APIRouter()
 
@@ -159,6 +160,11 @@ def run_payroll(
     db.close()
 
     payroll_run_id = str(uuid.uuid4())
+
+    link_inputs_to_run(workspace_id, payroll_run_id)
+    inputs_by_employee = load_inputs_for_run(payroll_run_id)
+    for emp in employees:
+        emp["inputs"] = inputs_by_employee.get(emp["employee_id"], {})
 
     try:
         result = execute_and_persist(

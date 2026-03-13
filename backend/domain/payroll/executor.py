@@ -26,6 +26,7 @@ def execute_single_employee_payroll(
     payroll_rule_ids: list[str],
     performed_by: str,
     *,
+    inputs=None,
     tracer=None,
 ) -> dict:
     """Execute a full payroll calculation for a single employee.
@@ -52,6 +53,8 @@ def execute_single_employee_payroll(
             - rules_context_snapshot: Captured rules at time of calculation.
             - payroll_result: Full calculation output (gross, deductions, net).
     """
+    inputs = inputs or {}
+
     payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
     rules_snapshot = build_rules_context_snapshot(
         statutory_rule_id, statutory_version, payroll_rule_ids
@@ -62,4 +65,5 @@ def execute_single_employee_payroll(
         "employee_id": employee_id,
         "rules_context_snapshot": rules_snapshot,
         "payroll_result": payroll_result,
+        "inputs_applied": inputs,
     }

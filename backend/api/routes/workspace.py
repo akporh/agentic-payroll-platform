@@ -31,8 +31,8 @@ def create_workspace(payload: WorkspaceCreateSchema):
         workspace_id = str(uuid.uuid4())
         db.execute(
             text("""
-                INSERT INTO workspace (workspace_id, name, country_code, base_currency, status)
-                VALUES (:wid, :name, :country_code, :base_currency, 'DRAFT')
+                INSERT INTO workspace (workspace_id, name, country_code, base_currency, status, retry_strategy)
+                VALUES (:wid, :name, :country_code, :base_currency, 'DRAFT', 'PER_EMPLOYEE')
             """),
             {
                 "wid": workspace_id,
@@ -151,6 +151,79 @@ def onboarding_status(workspace_id: str):
     finally:
         db.close()
 
+
+@router.get("/{workspace_id}/employees")
+def list_employees(workspace_id: str):
+    """Return all active employees for a workspace with contract details."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT
+                    e.employee_id,
+                    e.full_name,
+                    e.employee_number,
+                    e.status,
+                    d.designation_code   AS designation,
+                    g.grade_code         AS grade,
+                    ec.start_date        AS contract_start
+                FROM employee e
+                LEFT JOIN employee_contract ec
+                    ON ec.employee_id = e.employee_id
+                    AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                LEFT JOIN designation d ON d.designation_id = ec.designation_id
+                LEFT JOIN grade       g ON g.grade_id       = ec.grade_id
+                WHERE e.workspace_id = :wid
+                ORDER BY e.full_name
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        return [
+            {
+                "employee_id":    str(row[0]),
+                "full_name":      row[1],
+                "employee_number": row[2],
+                "status":         row[3],
+                "designation":    row[4],
+                "grade":          row[5],
+                "contract_start": str(row[6]) if row[6] else None,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/salary-definitions")
+def list_salary_definitions(workspace_id: str):
+    """Return all salary definitions for a workspace with their codes.
+
+    Used by the onboarding UI to populate salary mapping dropdowns.
+    """
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT salary_definition_id, code, name
+                FROM salary_definition
+                WHERE workspace_id = :wid
+                ORDER BY code
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+        return [
+            {
+                "salary_definition_id": str(row[0]),
+                "code": row[1],
+                "name": row[2],
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
 @router.post("/{workspace_id}/pay-cycle")
 def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
     db = SessionLocal()
@@ -162,6 +235,7 @@ def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
             run_day=payload.run_day,
             cutoff_day=payload.cutoff_day,
             payment_day=payload.payment_day,
+            definition_json=payload.definition_json,
         )
         return result
     finally:

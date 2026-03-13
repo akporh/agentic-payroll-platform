@@ -15,6 +15,7 @@ from backend.api.routes.onboarding import router as onboarding_router
 from backend.api.routes.onboarding_validation import router as onboarding_validation_router
 from backend.api.routes import admin
 from backend.api.routes import payroll
+from backend.api.routes import payroll_input
 from backend.api.routes import workspace
 
 app = FastAPI(
@@ -34,4 +35,5 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(onboarding_router, prefix="/api/v1")
 app.include_router(onboarding_validation_router, prefix="/api/v1")
 app.include_router(payroll.router, prefix="/api/v1")
+app.include_router(payroll_input.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")

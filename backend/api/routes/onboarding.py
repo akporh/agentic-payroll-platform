@@ -15,6 +15,8 @@ from backend.infra.db.session import SessionLocal
 from fastapi import APIRouter, Request
 
 from backend.domain.onboarding.loader import emit_onboarding_sql
+from backend.domain.onboarding.workspace_state_machine import transition_workspace
+from backend.domain.onboarding.hard_validator import validate_workspace_for_state
 from backend.domain.onboarding.sql_emitter import (
     emit_employees_sql,
     emit_salary_definitions_sql,
@@ -199,24 +201,32 @@ async def commit_onboarding(request: Request):
 
         # ----------------------------
         # INSERT SALARY DEFINITIONS
+        # Keyed by both name and code so employees can be linked either way.
         # ----------------------------
-        salary_def_id_map = {}
+        salary_def_id_map: dict[str, str] = {}
 
         for sd in payload.get("salary_definitions", []):
             new_id = str(uuid4())
-            salary_def_id_map[sd["name"]] = new_id
+            sd_name = sd.get("name", "UNKNOWN")
+            sd_code = sd.get("code") or sd_name.upper().replace(" ", "_")
+
+            # Register under both name and code for flexible employee lookup
+            salary_def_id_map[sd_name] = new_id
+            salary_def_id_map[sd_code] = new_id
 
             db.execute(
                 text("""
                     INSERT INTO salary_definition (
                         salary_definition_id,
                         workspace_id,
+                        code,
                         name,
                         components_jsonb
                     )
                     VALUES (
                         :id,
                         :workspace_id,
+                        :code,
                         :name,
                         :components
                     )
@@ -224,10 +234,28 @@ async def commit_onboarding(request: Request):
                 {
                     "id": new_id,
                     "workspace_id": workspace_id,
-                    "name": sd["name"],
-                    "components": Json(sd["components"]),
+                    "code": sd_code,
+                    "name": sd_name,
+                    "components": Json(sd.get("components", {})),
                 },
             )
+
+        # Also load any pre-existing salary definitions for this workspace
+        # so Excel-uploaded employees can link to them by code.
+        existing_rows = db.execute(
+            text("""
+                SELECT salary_definition_id, name, code
+                FROM salary_definition
+                WHERE workspace_id = :wid
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+        for row in existing_rows:
+            existing_id = str(row[0])
+            if row[1] and row[1] not in salary_def_id_map:
+                salary_def_id_map[row[1]] = existing_id  # by name
+            if row[2] and row[2] not in salary_def_id_map:
+                salary_def_id_map[row[2]] = existing_id  # by code
 
         # ----------------------------
         # INSERT PAYROLL RULES
@@ -236,97 +264,206 @@ async def commit_onboarding(request: Request):
             db.execute(
                 text("""
                     INSERT INTO payroll_rule (
-                        rule_id,
-                        workspace_id,
-                        rule_name,
-                        rule_definition_json,
-                        is_active
+                        rule_id, workspace_id, rule_name, rule_definition_json, is_active
                     )
-                    VALUES (
-                        :id,
-                        :workspace_id,
-                        :name,
-                        :definition,
-                        TRUE
-                    )
+                    VALUES (:id, :workspace_id, :name, :definition, TRUE)
                 """),
                 {
                     "id": str(uuid4()),
                     "workspace_id": workspace_id,
-                    "name": rule["rule_name"],
-                    "definition": Json(rule["definition"]),
+                    "name": rule.get("rule_name") or rule.get("rule_code") or "UNKNOWN",
+                    "definition": Json(
+                        rule.get("definition") or rule.get("rule_definition_json") or {}
+                    ),
                 },
             )
 
         # ----------------------------
+        # INSERT STRUCTURE: PAY CYCLE
+        # Accepts flat {frequency, run_day, ...} or definition_json
+        # {execution_window: {run_day, ...}} format.
+        # ----------------------------
+        structure = payload.get("structure", {})
+        pay_cycle_data = structure.get("pay_cycle", {}) if isinstance(structure, dict) else {}
+        if pay_cycle_data and isinstance(pay_cycle_data, dict):
+            execution_window = pay_cycle_data.get("execution_window") or {}
+            frequency   = pay_cycle_data.get("frequency") or "monthly"
+            run_day     = int(pay_cycle_data.get("run_day")     or execution_window.get("run_day", 1))
+            cutoff_day  = int(pay_cycle_data.get("cutoff_day")  or execution_window.get("adjustment_cutoff_day", 1))
+            payment_day = int(pay_cycle_data.get("payment_day") or execution_window.get("payment_day", 1))
+            definition_json = pay_cycle_data.get("definition_json") or pay_cycle_data
+            db.execute(
+                text("""
+                    INSERT INTO pay_cycle (
+                        pay_cycle_id, workspace_id, frequency,
+                        run_day, cutoff_day, payment_day, is_active, definition_json
+                    )
+                    VALUES (
+                        :id, :workspace_id, :frequency,
+                        :run_day, :cutoff_day, :payment_day, TRUE, :definition_json
+                    )
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "id": str(uuid4()),
+                    "workspace_id": workspace_id,
+                    "frequency": frequency,
+                    "run_day": run_day,
+                    "cutoff_day": cutoff_day,
+                    "payment_day": payment_day,
+                    "definition_json": Json(definition_json),
+                },
+            )
+
+        # ----------------------------
+        # INSERT STRUCTURE: GRADES
+        # Build a code→id map so employee contracts can reference them.
+        # ----------------------------
+        grades = structure.get("grades", []) if isinstance(structure, dict) else []
+        for grade in grades:
+            grade_code = grade.get("grade_code") or grade.get("code") or grade.get("name")
+            if not grade_code:
+                continue
+            db.execute(
+                text("""
+                    INSERT INTO grade (grade_id, workspace_id, grade_code, description)
+                    VALUES (:id, :workspace_id, :grade_code, :description)
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "id": str(uuid4()),
+                    "workspace_id": workspace_id,
+                    "grade_code": grade_code,
+                    "description": grade.get("description"),
+                },
+            )
+
+        # ----------------------------
+        # INSERT STRUCTURE: DESIGNATIONS
+        # ----------------------------
+        designations = structure.get("designations", []) if isinstance(structure, dict) else []
+        for desig in designations:
+            desig_code = desig.get("designation_code") or desig.get("code") or desig.get("name")
+            if not desig_code:
+                continue
+            db.execute(
+                text("""
+                    INSERT INTO designation (designation_id, workspace_id, designation_code, description)
+                    VALUES (:id, :workspace_id, :designation_code, :description)
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "id": str(uuid4()),
+                    "workspace_id": workspace_id,
+                    "designation_code": desig_code,
+                    "description": desig.get("description"),
+                },
+            )
+
+        # Build grade and designation code→id maps from all DB rows for this
+        # workspace (covers both newly inserted and pre-existing records).
+        grade_id_map: dict[str, str] = {}
+        for row in db.execute(
+            text("SELECT grade_id, grade_code FROM grade WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchall():
+            grade_id_map[str(row[1]).upper()] = str(row[0])
+
+        designation_id_map: dict[str, str] = {}
+        for row in db.execute(
+            text("SELECT designation_id, designation_code FROM designation WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchall():
+            designation_id_map[str(row[1]).upper()] = str(row[0])
+
+        # ----------------------------
         # INSERT EMPLOYEES + CONTRACTS
+        # Grade and designation are resolved by code from the maps above.
         # ----------------------------
         for emp in payload.get("employees", []):
 
             employee_id = str(uuid4())
-
             biodata = emp.get("biodata", {})
             full_name = (
                 emp.get("full_name")
                 or biodata.get("FULL_NAME")
                 or emp.get("employee_number", "UNKNOWN")
             )
+            emp_number = emp.get("employee_number") or emp.get("employee_id")
 
             db.execute(
                 text("""
                     INSERT INTO employee (
-                        employee_id,
-                        workspace_id,
-                        full_name,
-                        status
+                        employee_id, workspace_id, full_name,
+                        employee_number, personal_details_encrypted, status
                     )
                     VALUES (
-                        :eid,
-                        :workspace_id,
-                        :name,
-                        'ACTIVE'
+                        :eid, :workspace_id, :name,
+                        :employee_number, :biodata, 'ACTIVE'
                     )
                 """),
                 {
                     "eid": employee_id,
                     "workspace_id": workspace_id,
                     "name": full_name,
+                    "employee_number": emp_number,
+                    "biodata": Json(biodata),
                 },
             )
 
-            # Link to salary definition by name
-            salary_definition_id = salary_def_id_map.get(
-                emp["salary_definition_name"]
+            # Resolve salary definition: prefer code, fall back to name.
+            sd_code = emp.get("salary_definition_code")
+            sd_name = emp.get("salary_definition_name")
+            salary_definition_id = (
+                salary_def_id_map.get(sd_code)
+                if sd_code
+                else salary_def_id_map.get(sd_name)
             )
 
             if not salary_definition_id:
+                ref = sd_code or sd_name or "(none)"
                 raise Exception(
-                    f"Salary definition '{emp['salary_definition_name']}' not found"
+                    f"Employee '{emp_number}': salary definition '{ref}' not found"
                 )
+
+            # Resolve grade and designation FKs by code (uppercase for consistency)
+            emp_grade = str(emp.get("grade") or "").upper()
+            emp_desig = str(emp.get("designation") or "").upper()
+            grade_id       = grade_id_map.get(emp_grade)
+            designation_id = designation_id_map.get(emp_desig)
 
             db.execute(
                 text("""
                     INSERT INTO employee_contract (
-                        contract_id,
-                        employee_id,
-                        salary_definition_id,
-                        start_date
+                        contract_id, employee_id, salary_definition_id,
+                        grade_id, designation_id, start_date
                     )
                     VALUES (
-                        :cid,
-                        :employee_id,
-                        :salary_definition_id,
-                        CURRENT_DATE
+                        :cid, :employee_id, :salary_definition_id,
+                        :grade_id, :designation_id, CURRENT_DATE
                     )
                 """),
                 {
                     "cid": str(uuid4()),
                     "employee_id": employee_id,
                     "salary_definition_id": salary_definition_id,
+                    "grade_id": grade_id,
+                    "designation_id": designation_id,
                 },
             )
 
         db.commit()
+
+        # ----------------------------
+        # AUTO-ADVANCE STATE MACHINE
+        # Attempt each transition in order; stop at the first one that fails.
+        # This advances the workspace as far as its data allows.
+        # ----------------------------
+        for target_state in ["STRUCTURE_DEFINED", "COMPENSATION_DEFINED", "RULES_DEFINED", "READY"]:
+            try:
+                transition_workspace(db, workspace_id, target_state, validate_workspace_for_state)
+            except Exception:
+                break
 
         return {
             "status": "success",

@@ -50,6 +50,20 @@ export interface ReconciliationRecord {
   status: 'MATCHED' | 'MISMATCH' | 'PENDING';
 }
 
+export interface PayrollInput {
+  payroll_input_id: string;
+  employee_id: string;
+  employee_name: string;
+  employee_number: string;
+  input_code: string;
+  input_category: 'EARNING' | 'DEDUCTION' | 'INFORMATION';
+  quantity: number | null;
+  rate: number | null;
+  amount: number | null;
+  source: string;
+  created_at: string;
+}
+
 export interface ExecutionTraceStep {
   step_name: string;
   status: 'success' | 'error';

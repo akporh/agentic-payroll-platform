@@ -12,5 +12,5 @@ class Workspace(Base):
     name = Column(String(255), nullable=False)
     country_code = Column(String(10))
     base_currency = Column(String(10))
-    retry_strategy = Column(String(30))
     status = Column(String(50), nullable=False)
+    statutory_rule_id = Column(UUID(as_uuid=True), ForeignKey("statutory_rule.statutory_rule_id"), nullable=True)

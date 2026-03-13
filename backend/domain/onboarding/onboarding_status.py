@@ -10,6 +10,19 @@ from backend.infra.db.repositories.workspace_repo import (
 )
 
 
+# Map each status to the numeric level it represents.
+# Prerequisites for a state are only reported as missing if the workspace
+# has not yet reached or passed that state.
+_STATUS_LEVEL = {
+    "DRAFT": 0,
+    "STRUCTURE_DEFINED": 1,
+    "COMPENSATION_DEFINED": 2,
+    "RULES_DEFINED": 3,
+    "READY": 4,
+    "LIVE": 5,
+}
+
+
 def get_onboarding_status(db, workspace_id: str):
 
     workspace = get_workspace(db, workspace_id)
@@ -17,29 +30,36 @@ def get_onboarding_status(db, workspace_id: str):
     if not workspace:
         raise Exception("Workspace not found")
 
+    level = _STATUS_LEVEL.get(workspace.status, 0)
     missing = []
 
-    # STRUCTURE
-    if not pay_cycle_exists(db, workspace_id):
-        missing.append("pay_cycle")
+    # Only check a prerequisite if the workspace hasn't already passed
+    # the state that requires it.  A workspace at READY or LIVE has
+    # definitionally satisfied all prior prerequisites.
 
-    if not grade_exists(db, workspace_id):
-        missing.append("grade")
+    # STRUCTURE_DEFINED prerequisites (level 1)
+    if level < 1:
+        if not pay_cycle_exists(db, workspace_id):
+            missing.append("pay_cycle")
+        if not grade_exists(db, workspace_id):
+            missing.append("grade")
+        if not designation_exists(db, workspace_id):
+            missing.append("designation")
 
-    if not designation_exists(db, workspace_id):
-        missing.append("designation")
+    # COMPENSATION_DEFINED prerequisite (level 2)
+    if level < 2:
+        if not salary_definition_exists(db, workspace_id):
+            missing.append("salary_definition")
 
-    # COMPENSATION
-    if not salary_definition_exists(db, workspace_id):
-        missing.append("salary_definition")
+    # RULES_DEFINED prerequisite (level 3)
+    if level < 3:
+        if not active_payroll_rule_exists(db, workspace_id):
+            missing.append("payroll_rule")
 
-    # RULES
-    if not active_payroll_rule_exists(db, workspace_id):
-        missing.append("payroll_rule")
-
-    # COMPONENT METADATA
-    if not component_metadata_exists(db, workspace_id):
-        missing.append("component_metadata")
+    # READY prerequisite (level 4)
+    if level < 4:
+        if not component_metadata_exists(db, workspace_id):
+            missing.append("component_metadata")
 
     progress = calculate_progress(missing)
 

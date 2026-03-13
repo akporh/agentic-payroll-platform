@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from backend.infra.db.session import Base
 
@@ -17,3 +17,4 @@ class PayCycle(Base):
     payment_day = Column(Integer, nullable=False)
 
     is_active = Column(Boolean, default=True, nullable=False)
+    definition_json = Column(JSONB, nullable=True)

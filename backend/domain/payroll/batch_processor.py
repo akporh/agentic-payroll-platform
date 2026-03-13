@@ -70,6 +70,7 @@ def process_payroll_run(
 
         emp_id = emp["employee_id"]
         components = emp["components"]
+        inputs = emp.get("inputs", {})
         short_id = emp_id[:8]
 
         tracer.info(f"[bold]Employee {short_id}[/bold]")
@@ -77,6 +78,11 @@ def process_payroll_run(
             f"  {len(components)} components: "
             + "  ".join(f"[cyan]{c['code']}[/cyan]={c['amount']}" for c in components)
         )
+        if inputs:
+            tracer.info(
+                f"  {len(inputs)} inputs: "
+                + ", ".join(f"[magenta]{c}[/magenta]" for c in inputs)
+            )
 
         try:
             result = execute_single_employee_payroll(
@@ -88,6 +94,7 @@ def process_payroll_run(
                 statutory_version=statutory_version,
                 payroll_rule_ids=payroll_rule_ids,
                 performed_by=performed_by,
+                inputs=inputs,
                 tracer=tracer,
             )
 

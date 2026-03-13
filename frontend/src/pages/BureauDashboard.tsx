@@ -77,13 +77,23 @@ export function BureauDashboard() {
                     </Td>
                     <Td>{ws.active_employee_count ?? 0}</Td>
                     <Td>
-                      <Btn
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/workspaces/${ws.workspace_id}`)}
-                      >
-                        Open
-                      </Btn>
+                      {ws.status === 'DRAFT' ? (
+                        <Btn
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/workspaces/${ws.workspace_id}/setup`)}
+                        >
+                          Continue Setup
+                        </Btn>
+                      ) : (
+                        <Btn
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/workspaces/${ws.workspace_id}`)}
+                        >
+                          Open
+                        </Btn>
+                      )}
                     </Td>
                   </tr>
                 ))

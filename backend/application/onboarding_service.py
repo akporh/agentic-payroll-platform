@@ -11,7 +11,7 @@ from backend.infra.db.models import (
 
 
 @auto_infer_workspace_state
-def create_pay_cycle(db, workspace_id: str, frequency: str, run_day: int, cutoff_day: int, payment_day: int):
+def create_pay_cycle(db, workspace_id: str, frequency: str, run_day: int, cutoff_day: int, payment_day: int, definition_json: dict | None = None):
 
     pay_cycle = PayCycle(
         workspace_id=workspace_id,
@@ -20,6 +20,7 @@ def create_pay_cycle(db, workspace_id: str, frequency: str, run_day: int, cutoff
         cutoff_day=cutoff_day,
         payment_day=payment_day,
         is_active=True,
+        definition_json=definition_json,
     )
 
     db.add(pay_cycle)

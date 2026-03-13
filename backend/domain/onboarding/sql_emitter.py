@@ -113,12 +113,13 @@ def emit_salary_definitions_sql(workspace_id: str, salary_definitions: list[dict
     statements = []
     for sd in salary_definitions:
         name = sd.get("name", "UNKNOWN")
+        code = sd.get("code") or name.upper().replace(" ", "_")
         components_json = json.dumps(sd.get("components", {}))
         stmt = (
             "INSERT INTO salary_definition\n"
-            "(salary_definition_id, workspace_id, name, components_jsonb)\n"
+            "(salary_definition_id, workspace_id, code, name, components_jsonb)\n"
             "VALUES\n"
-            f"(gen_random_uuid(), '{workspace_id}', '{name}',"
+            f"(gen_random_uuid(), '{workspace_id}', '{code}', '{name}',"
             f" '{components_json}'::jsonb);"
         )
         statements.append(stmt)
