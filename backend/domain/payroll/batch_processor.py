@@ -26,6 +26,8 @@ def process_payroll_run(
     payroll_rule_ids: list[str],
     performed_by: str,
     execution_mode: ExecutionMode = "isolated",
+    component_metadata: list | None = None,
+    context: dict | None = None,
     tracer=None,
 ) -> dict:
     """Process payroll for all employees in a single payroll run.
@@ -95,6 +97,8 @@ def process_payroll_run(
                 payroll_rule_ids=payroll_rule_ids,
                 performed_by=performed_by,
                 inputs=inputs,
+                component_metadata=component_metadata,
+                context=context,
                 tracer=tracer,
             )
 

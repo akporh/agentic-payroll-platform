@@ -27,6 +27,7 @@ def save_payroll_result(
     status: str,
     payroll_output: dict | None,
     error_message: str | None,
+    component_trace: list | None = None,
 ):
     """
     Persist a single payroll result.
@@ -51,11 +52,18 @@ def save_payroll_result(
 
         net_pay = payroll_result["net_pay"]
 
+        # Prefer trace from payroll_result; caller-supplied trace is a fallback
+        component_trace = (
+            payroll_result.get("component_trace_jsonb") or component_trace
+        )
+
     else:
         gross_components = {}
         deductions = {}
         snapshot = {}
         net_pay = 0
+
+    trace_value = _sanitize_json(component_trace) if component_trace else None
 
     db.execute(
         text("""
@@ -67,6 +75,7 @@ def save_payroll_result(
             deductions_jsonb,
             net_pay,
             calculations_snapshot_json,
+            component_trace_jsonb,
             status,
             error_message
         )
@@ -78,6 +87,7 @@ def save_payroll_result(
             :deductions,
             :net_pay,
             :snapshot,
+            :trace,
             :status,
             :error_message
         )
@@ -89,6 +99,7 @@ def save_payroll_result(
             "deductions": Json(deductions),
             "net_pay": net_pay,
             "snapshot": Json(snapshot),
+            "trace": Json(trace_value) if trace_value is not None else None,
             "status": status,
             "error_message": error_message,
         }

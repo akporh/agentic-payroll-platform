@@ -14,6 +14,9 @@ class ComponentMetadata(Base):
     metadata_json = Column(JSONB, nullable=False)
     effective_from = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    component_class = Column(Text, nullable=True)
+    calculation_method = Column(Text, nullable=True)
+    execution_priority = Column(Integer, nullable=True)
 
 
 class ClientComponentMetadata(Base):
@@ -22,4 +25,4 @@ class ClientComponentMetadata(Base):
     client_component_metadata_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), nullable=False)
     component_code = Column(Text, nullable=False)
-    metadata_json = Column(JSONB, nullable=False)
+    overrides_json = Column(JSONB, nullable=False)

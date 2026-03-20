@@ -30,6 +30,8 @@ def execute_payroll_run_pure(
     performed_by: str,
     execution_mode: str = "isolated",
     pay_cycle_definition: dict | None = None,
+    component_metadata: list | None = None,
+    context: dict | None = None,
     tracer=None,
 ) -> dict:
     """Execute a full payroll run end-to-end as a pure function.
@@ -87,6 +89,8 @@ def execute_payroll_run_pure(
             payroll_rule_ids=payroll_rule_ids,
             performed_by=performed_by,
             execution_mode=execution_mode,
+            component_metadata=component_metadata,
+            context=context,
             tracer=tracer,
         )
         totals = batch_result["totals"]

@@ -5,6 +5,7 @@ Exposes endpoints for triggering payroll runs.
 """
 
 import uuid
+from decimal import Decimal
 from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
@@ -47,15 +48,17 @@ def run_payroll(
 
     db = SessionLocal()
 
-    # --- Verify workspace exists ---
+    # --- Verify workspace exists, load country_code ---
     workspace = db.execute(
-        text("SELECT workspace_id FROM workspace WHERE workspace_id = :wid"),
+        text("SELECT workspace_id, country_code FROM workspace WHERE workspace_id = :wid"),
         {"wid": workspace_id},
     ).fetchone()
 
     if not workspace:
         db.close()
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+    country_code = workspace[1]
 
     # --- Idempotency check: return existing run without re-executing ---
     if idempotency_key:
@@ -108,20 +111,37 @@ def run_payroll(
     for e in employees:
         print(e["employee_id"])
 
-    # --- Load Latest Statutory Rule ---
+    # --- Load Statutory Rule — platform-level, resolved by workspace country_code ---
     stat_row = db.execute(text("""
-        SELECT statutory_rule_id, version
-        FROM statutory_rule
-        ORDER BY version DESC
+        SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+        FROM statutory_rule sr
+        JOIN workspace w ON sr.country_code = w.country_code
+        WHERE w.workspace_id = :workspace_id
+        ORDER BY sr.version DESC
         LIMIT 1
-    """)).fetchone()
+    """), {"workspace_id": workspace_id}).fetchone()
 
     if not stat_row:
         db.close()
-        raise HTTPException(status_code=400, detail="No statutory rule found")
+        raise HTTPException(status_code=400, detail="No statutory rule found for this workspace's country")
 
     statutory_rule_id = str(stat_row[0])
     statutory_version = stat_row[1]
+    rules_jsonb       = stat_row[2] or {}
+
+    # Extract pension rates; fall back to PRA 2014 defaults (9% / 10%)
+    pension_config        = rules_jsonb.get("pension", {})
+    pension_employee_rate = Decimal(str(pension_config.get("employee_rate", "0.09")))
+    pension_employer_rate = Decimal(str(pension_config.get("employer_rate", "0.10")))
+
+    # Extract rent relief config (used by sequential executor for PAYE annualisation)
+    rent_relief_cfg = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
+
+    # Extract workspace-level statutory component rates/amounts
+    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
+    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
+    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+    life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # --- Load Tax Bands (scoped to the selected statutory rule) ---
     tax_rows = db.execute(text("""
@@ -157,6 +177,49 @@ def run_payroll(
 
     pay_cycle_definition = pay_cycle_row[0] if pay_cycle_row else None
 
+    # --- Load Component Metadata for sequential executor ---
+    component_metadata_rows = db.execute(text("""
+        SELECT component_code, component_class, calculation_method,
+               execution_priority, is_active, metadata_json
+        FROM component_metadata
+        WHERE country_code = :country_code
+          AND is_active    = TRUE
+        ORDER BY execution_priority
+    """), {"country_code": country_code}).fetchall()
+
+    component_metadata = [
+        {
+            "component_code":     r[0],
+            "component_class":    r[1],
+            "calculation_method": r[2],
+            "execution_priority": r[3],
+            "is_active":          r[4],
+            "metadata_json":      r[5],
+        }
+        for r in component_metadata_rows
+    ]
+
+    # --- Load workspace component overrides (is_active suppression + flat-amount overrides) ---
+    override_rows = db.execute(text("""
+        SELECT component_code, overrides_json
+        FROM client_component_metadata
+        WHERE workspace_id = :wid
+    """), {"wid": workspace_id}).fetchall()
+
+    client_overrides = {r[0]: r[1] for r in override_rows}
+
+    # Remove components the workspace has disabled
+    disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
+    if disabled_codes:
+        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+
+    # Apply flat-amount overrides for workspace-configurable components
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
+
     db.close()
 
     payroll_run_id = str(uuid.uuid4())
@@ -165,6 +228,18 @@ def run_payroll(
     inputs_by_employee = load_inputs_for_run(payroll_run_id)
     for emp in employees:
         emp["inputs"] = inputs_by_employee.get(emp["employee_id"], {})
+
+    context = {
+        "tax_bands":                        tax_bands,
+        "pension_employee_rate":            pension_employee_rate,
+        "pension_employer_rate":            pension_employer_rate,
+        "rent_relief_cfg":                  rent_relief_cfg,
+        "nhf_rate":                         nhf_rate,
+        "health_insurance_employee_amount": health_insurance_employee_amount,
+        "development_levy_amount":          development_levy_amount,
+        "life_insurance_employer_rate":     life_insurance_employer_rate,
+        "client_meta":                      client_overrides,
+    }
 
     try:
         result = execute_and_persist(
@@ -182,6 +257,8 @@ def run_payroll(
             period_end=period_end,
             pay_cycle_definition=pay_cycle_definition,
             retry_strategy=retry_strategy,
+            component_metadata=component_metadata or None,
+            context=context,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

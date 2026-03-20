@@ -31,6 +31,8 @@ def execute_and_persist(
     period_end: str | None = None,
     pay_cycle_definition: dict | None = None,
     retry_strategy: str = "PER_EMPLOYEE",
+    component_metadata: list | None = None,
+    context: dict | None = None,
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -84,6 +86,8 @@ def execute_and_persist(
             performed_by=performed_by,
             execution_mode=execution_mode,
             pay_cycle_definition=pay_cycle_definition,
+            component_metadata=component_metadata,
+            context=context,
             tracer=tracer,
         )
 

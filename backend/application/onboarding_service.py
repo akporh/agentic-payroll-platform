@@ -5,7 +5,7 @@ from backend.infra.db.models import (
     Grade,
     SalaryDefinition,
     PayrollRule,
-    ComponentMetadata,
+    ClientComponentMetadata,
     Workspace,
 )
 
@@ -113,23 +113,15 @@ def create_component_metadata(
     db,
     workspace_id: str,
     component_code: str,
-    version: int,
-    metadata_json: dict,
-    effective_from,
+    overrides_json: dict,
 ):
-
-    workspace = db.query(Workspace).get(workspace_id)
-
-    metadata = ComponentMetadata(
+    override = ClientComponentMetadata(
+        workspace_id=workspace_id,
         component_code=component_code,
-        country_code=workspace.country_code,
-        version=version,
-        metadata_json=metadata_json,
-        effective_from=effective_from,
-        is_active=True,
+        overrides_json=overrides_json,
     )
 
-    db.add(metadata)
+    db.add(override)
     db.commit()
 
-    return metadata
+    return override

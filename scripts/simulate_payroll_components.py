@@ -97,30 +97,31 @@ def _component_meta(
     country_code: str,
 ) -> dict:
     """
-    Return the metadata_json dict for a component code.
-    Checks client_component_metadata first, then platform component_metadata.
+    Return resolved metadata for a component code.
+    Platform component_metadata is always the base. If a client override
+    row exists its overrides_json is shallow-merged on top, so only the
+    keys the workspace explicitly wants to change need to be stored.
     """
-    ccm = (
-        session.query(ClientComponentMetadata)
-        .filter_by(workspace_id=workspace_id, component_code=code)
-        .first()
-    )
-    if ccm and ccm.metadata_json:
-        result = dict(ccm.metadata_json)
-        result["_source"] = "client"
-        return result
-
     cm = (
         session.query(ComponentMetadata)
         .filter_by(component_code=code, country_code=country_code, is_active=True)
         .first()
     )
-    if cm and cm.metadata_json:
-        result = dict(cm.metadata_json)
-        result["_source"] = "platform"
+    base = dict(cm.metadata_json) if cm and cm.metadata_json else {}
+
+    ccm = (
+        session.query(ClientComponentMetadata)
+        .filter_by(workspace_id=workspace_id, component_code=code)
+        .first()
+    )
+    if ccm and ccm.overrides_json:
+        result = {**base, **ccm.overrides_json}
+        result["_source"] = "client"
         return result
 
-    return {}
+    if base:
+        base["_source"] = "platform"
+    return base
 
 
 def _component_meta_debug(

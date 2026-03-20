@@ -29,10 +29,11 @@ def create_workspace(payload: WorkspaceCreateSchema):
     db = SessionLocal()
     try:
         workspace_id = str(uuid.uuid4())
+
         db.execute(
             text("""
-                INSERT INTO workspace (workspace_id, name, country_code, base_currency, status, retry_strategy)
-                VALUES (:wid, :name, :country_code, :base_currency, 'DRAFT', 'PER_EMPLOYEE')
+                INSERT INTO workspace (workspace_id, name, country_code, base_currency, status)
+                VALUES (:wid, :name, :country_code, :base_currency, 'DRAFT')
             """),
             {
                 "wid": workspace_id,
@@ -305,9 +306,7 @@ def create_component_metadata_endpoint(workspace_id: str, payload: ComponentMeta
             db=db,
             workspace_id=workspace_id,
             component_code=payload.component_code,
-            version=payload.version,
-            metadata_json=payload.metadata_json,
-            effective_from=payload.effective_from,
+            overrides_json=payload.overrides_json,
         )
     finally:
         db.close()

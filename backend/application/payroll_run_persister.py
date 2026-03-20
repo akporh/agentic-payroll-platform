@@ -91,12 +91,19 @@ def persist_payroll_run_execution(
                 f"Employee {r['employee_id'][:8]}  →  "
                 f"[bold {'green' if r['status'] == 'SUCCESS' else 'red'}]{r['status']}[/bold {'green' if r['status'] == 'SUCCESS' else 'red'}]"
             )
+            output = r.get("output")
+            component_trace = (
+                output["payroll_result"].get("component_trace_jsonb")
+                if output and output.get("payroll_result")
+                else None
+            )
             save_payroll_result(
                 payroll_run_id=payroll_run_id,
                 employee_id=r["employee_id"],
                 status=r["status"],
-                payroll_output=r.get("output"),
+                payroll_output=output,
                 error_message=r.get("error"),
+                component_trace=component_trace,
             )
 
     # 3️⃣ Insert audit logs

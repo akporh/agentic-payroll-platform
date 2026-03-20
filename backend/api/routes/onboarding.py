@@ -206,15 +206,10 @@ async def commit_onboarding(request: Request):
         salary_def_id_map: dict[str, str] = {}
 
         for sd in payload.get("salary_definitions", []):
-            new_id = str(uuid4())
             sd_name = sd.get("name", "UNKNOWN")
             sd_code = sd.get("code") or sd_name.upper().replace(" ", "_")
 
-            # Register under both name and code for flexible employee lookup
-            salary_def_id_map[sd_name] = new_id
-            salary_def_id_map[sd_code] = new_id
-
-            db.execute(
+            row = db.execute(
                 text("""
                     INSERT INTO salary_definition (
                         salary_definition_id,
@@ -230,15 +225,25 @@ async def commit_onboarding(request: Request):
                         :name,
                         :components
                     )
+                    ON CONFLICT (workspace_id, name)
+                    DO UPDATE SET
+                        code            = EXCLUDED.code,
+                        components_jsonb = EXCLUDED.components_jsonb
+                    RETURNING salary_definition_id
                 """),
                 {
-                    "id": new_id,
+                    "id": str(uuid4()),
                     "workspace_id": workspace_id,
                     "code": sd_code,
                     "name": sd_name,
                     "components": Json(sd.get("components", {})),
                 },
-            )
+            ).first()
+
+            actual_id = str(row[0])
+            # Register under both name and code for flexible employee lookup
+            salary_def_id_map[sd_name] = actual_id
+            salary_def_id_map[sd_code] = actual_id
 
         # Also load any pre-existing salary definitions for this workspace
         # so Excel-uploaded employees can link to them by code.

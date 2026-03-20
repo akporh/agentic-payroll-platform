@@ -94,11 +94,14 @@ def _insert_result(
         ded_out       = _sanitize(pr["deductions_jsonb"])
         snap_out      = _sanitize(pr["calculations_snapshot_json"])
         net_pay       = pr["net_pay"]
+        trace_raw     = pr.get("component_trace_jsonb")
+        trace_out     = _sanitize(trace_raw) if trace_raw else None
     else:
         gross_out     = {}
         ded_out       = {}
         snap_out      = {}
         net_pay       = 0
+        trace_out     = None
 
     db.execute(
         text("""
@@ -110,6 +113,7 @@ def _insert_result(
                 deductions_jsonb,
                 net_pay,
                 calculations_snapshot_json,
+                component_trace_jsonb,
                 status,
                 error_message
             )
@@ -121,6 +125,7 @@ def _insert_result(
                 :deductions,
                 :net_pay,
                 :snapshot,
+                :trace,
                 :status,
                 :error
             )
@@ -132,6 +137,7 @@ def _insert_result(
             "deductions": Json(ded_out),
             "net_pay":    net_pay,
             "snapshot":   Json(snap_out),
+            "trace":      Json(trace_out) if trace_out is not None else None,
             "status":     status,
             "error":      error_message,
         },

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, ForeignKey, Enum
+from sqlalchemy import Column, String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from backend.infra.db.session import Base
 
@@ -13,4 +13,3 @@ class Workspace(Base):
     country_code = Column(String(10))
     base_currency = Column(String(10))
     status = Column(String(50), nullable=False)
-    statutory_rule_id = Column(UUID(as_uuid=True), ForeignKey("statutory_rule.statutory_rule_id"), nullable=True)

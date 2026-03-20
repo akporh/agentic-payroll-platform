@@ -56,4 +56,31 @@ def calculate_paye(gross_income: Decimal, tax_bands: list[dict]) -> Decimal:
         total_tax += taxable * rate
 
     return total_tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    
+
+
+def calculate_monthly_paye(
+    monthly_taxable_income: Decimal,
+    tax_bands: list[dict],
+) -> Decimal:
+    """Calculate monthly PAYE by annualising taxable income and applying bands.
+
+    Nigeria PAYE is assessed on annual income. All pre-PAYE reductions
+    (pension, reliefs) are computed upstream by the sequential executor
+    and reflected in monthly_taxable_income before this is called.
+
+    Steps:
+      1. Annualise taxable income (× 12).
+      2. Apply progressive tax bands to annual taxable income.
+      3. Return monthly PAYE (annual ÷ 12).
+
+    Args:
+        monthly_taxable_income: Already-reduced monthly taxable income
+            (GROSS_PAY − PENSION_EMPLOYEE − any reliefs like RENT_RELIEF).
+        tax_bands: Progressive FIRS tax brackets (same format as calculate_paye).
+
+    Returns:
+        Monthly PAYE rounded to 2 decimal places.
+    """
+    annual_taxable = monthly_taxable_income * 12
+    annual_paye = calculate_paye(annual_taxable, tax_bands)
+    return (annual_paye / 12).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
