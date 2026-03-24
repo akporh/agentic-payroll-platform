@@ -9,13 +9,14 @@ from decimal import Decimal
 from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
+from backend.domain.payroll.period_context import build_period_context
 from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
 from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status
 from backend.infra.repositories.execution_trace_repo import get_trace_steps
-from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, load_inputs_for_run
+from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, load_unclaimed_inputs_by_employee
 
 router = APIRouter()
 
@@ -38,13 +39,21 @@ def run_payroll(
     returning HTTP 409.
     """
 
-    workspace_id   = payload.get("workspace_id")
-    period_start   = payload.get("period_start")
-    period_end     = payload.get("period_end")
-    retry_strategy = payload.get("retry_strategy", "PER_EMPLOYEE")
+    workspace_id       = payload.get("workspace_id")
+    period_start       = payload.get("period_start")
+    period_end         = payload.get("period_end")
+    period_type_raw    = payload.get("period_type")
+    working_days_input = payload.get("working_days")
+    retry_strategy     = payload.get("retry_strategy", "PER_EMPLOYEE")
 
     if not workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id required")
+
+    if period_type_raw and period_type_raw.upper() == "CUSTOM" and not working_days_input:
+        raise HTTPException(
+            status_code=422,
+            detail="working_days is required when period_type is CUSTOM",
+        )
 
     db = SessionLocal()
 
@@ -82,7 +91,7 @@ def run_payroll(
 
     # --- Load Employees ---
     employee_rows = db.execute(text("""
-        SELECT e.employee_id, sd.components_jsonb
+        SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date
         FROM employee e
         JOIN employee_contract ec
           ON e.employee_id = ec.employee_id
@@ -96,11 +105,13 @@ def run_payroll(
     employees = []
     for row in employee_rows:
         employees.append({
-            "employee_id": str(row[0]),
+            "employee_id":     str(row[0]),
             "components": [
                 {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
                 for k, v in row[1].items()
             ],
+            "contract_start": row[2].isoformat() if row[2] else None,
+            "contract_end":   row[3].isoformat() if row[3] else None,
         })
 
     if not employees:
@@ -156,26 +167,49 @@ def run_payroll(
         for r in tax_rows
     ]
 
-    # --- Load Active Payroll Rules ---
+    # --- Load Active Payroll Rules (IDs for snapshot + full dicts for rule evaluator) ---
     rule_rows = db.execute(text("""
-        SELECT rule_id
+        SELECT rule_id, rule_name, rule_definition_json, is_active
         FROM payroll_rule
         WHERE is_active = TRUE
           AND workspace_id = :workspace_id
     """), {"workspace_id": workspace_id}).fetchall()
 
-    payroll_rule_ids = [str(r[0]) for r in rule_rows]
+    payroll_rule_ids  = [str(r[0]) for r in rule_rows]
+    payroll_rules_full = [
+        {
+            "rule_id":              str(r[0]),
+            "rule_name":            r[1],
+            "rule_definition_json": r[2],
+            "is_active":            r[3],
+        }
+        for r in rule_rows
+    ]
 
-    # --- Load Pay Cycle definition_json ---
+    # --- Load Pay Cycle (frequency drives period_type default; definition_json is extension data) ---
     pay_cycle_row = db.execute(text("""
-        SELECT definition_json
+        SELECT frequency, definition_json
         FROM pay_cycle
         WHERE workspace_id = :workspace_id
           AND is_active = TRUE
         LIMIT 1
     """), {"workspace_id": workspace_id}).fetchone()
 
-    pay_cycle_definition = pay_cycle_row[0] if pay_cycle_row else None
+    pay_cycle_frequency  = pay_cycle_row[0] if pay_cycle_row else None
+    pay_cycle_definition = pay_cycle_row[1] if pay_cycle_row else None
+
+    # Build PeriodContext now that we have the workspace's configured frequency.
+    # Priority: explicit API field > workspace pay_cycle.frequency > infer from dates.
+    try:
+        period_ctx = build_period_context(
+            period_start=period_start,
+            period_end=period_end,
+            period_type=period_type_raw or pay_cycle_frequency,
+            working_days_override=working_days_input,
+        )
+    except ValueError as exc:
+        db.close()
+        raise HTTPException(status_code=422, detail=str(exc))
 
     # --- Load Component Metadata for sequential executor ---
     component_metadata_rows = db.execute(text("""
@@ -220,12 +254,39 @@ def run_payroll(
     if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
         health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 
+    # Build client_meta: global component metadata as the base layer with
+    # workspace-specific overrides layered on top (one-level-deep merge).
+    # This makes proration_strategy available for all earning components
+    # even when client_component_metadata has no rows for this workspace.
+    client_meta = {
+        m["component_code"]: dict(m.get("metadata_json") or {})
+        for m in component_metadata
+    }
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                # Deep-merge nested dicts (e.g. calculations_behaviour)
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
     db.close()
 
     payroll_run_id = str(uuid.uuid4())
 
-    link_inputs_to_run(workspace_id, payroll_run_id)
-    inputs_by_employee = load_inputs_for_run(payroll_run_id)
+    # Load unclaimed inputs without linking (payroll_run row doesn't exist yet —
+    # linking here would violate the FK constraint on payroll_input.payroll_run_id).
+    inputs_by_employee = load_unclaimed_inputs_by_employee(
+        workspace_id,
+        period_start=period_ctx.period_start,
+        period_end=period_ctx.period_end,
+    )
     for emp in employees:
         emp["inputs"] = inputs_by_employee.get(emp["employee_id"], {})
 
@@ -238,7 +299,9 @@ def run_payroll(
         "health_insurance_employee_amount": health_insurance_employee_amount,
         "development_levy_amount":          development_levy_amount,
         "life_insurance_employer_rate":     life_insurance_employer_rate,
-        "client_meta":                      client_overrides,
+        "client_meta":                      client_meta,
+        "period":                           period_ctx,
+        "payroll_rules":                    payroll_rules_full,
     }
 
     try:
@@ -287,6 +350,14 @@ def run_payroll(
                 detail={"error": "PAYROLL_NOT_READY", "message": "Payroll readiness check failed."},
             )
         raise
+
+    # payroll_run row now exists — safe to claim inputs against it
+    link_inputs_to_run(
+        workspace_id=workspace_id,
+        payroll_run_id=payroll_run_id,
+        period_start=period_ctx.period_start,
+        period_end=period_ctx.period_end,
+    )
 
     return {
         "status":         "success",

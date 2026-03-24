@@ -20,6 +20,7 @@ def apply_payroll_rules(
     employee_inputs: dict,
     client_meta: dict,
     working_days: int = 22,
+    calendar_days: int = 30,
 ) -> tuple[dict, list]:
     """Apply workspace payroll rules to salary components.
 
@@ -38,6 +39,9 @@ def apply_payroll_rules(
             Used to identify proratable components for daily-rate deductions.
         working_days:
             Standard working days in the period (default 22).
+        calendar_days:
+            Calendar days in the period (default 30).
+            Used by the "calendar_days" proration strategy.
 
     Returns:
         (modified_salary_components, rule_trace)
@@ -52,14 +56,8 @@ def apply_payroll_rules(
     components = dict(salary_components)
     trace = []
 
-    # Base gross for daily-rate calculations (sum of original salary components)
-    base_gross = sum(components.values(), Decimal("0"))
+    # Decimal working_days used as divisor for the "work_days" proration strategy
     wd = Decimal(str(working_days))
-    daily_rate = (
-        (base_gross / wd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if wd
-        else Decimal("0")
-    )
 
     for rule in payroll_rules:
         if not rule.get("is_active"):
@@ -98,37 +96,60 @@ def apply_payroll_rules(
         # ── daily_rate_deduction ──────────────────────────────────────────
         elif method == "daily_rate_deduction":
             if input_val > 0:
-                deduction = (daily_rate * input_val).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-                # Reduce each proratable component proportionally
-                proration_ratio = (
-                    (Decimal("1") - input_val / wd).quantize(
-                        Decimal("0.0001"), rounding=ROUND_HALF_UP
-                    )
-                    if wd
-                    else Decimal("1")
-                )
+                total_deducted = Decimal("0")
+                prorated_codes: list[str] = []
+                skipped_codes:  list[str] = []
                 for code in list(components.keys()):
-                    is_proratable = (
+                    strategy = (
                         client_meta.get(code, {})
                         .get("calculations_behaviour", {})
-                        .get("proration_strategy") is not None
+                        .get("proration_strategy")
                     )
-                    if is_proratable:
-                        original = components[code]
-                        components[code] = (original * proration_ratio).quantize(
-                            Decimal("0.01"), rounding=ROUND_HALF_UP
-                        )
+                    if strategy is None:
+                        skipped_codes.append(code)
+                        continue  # component is not proratable
+
+                    # Dispatch on the strategy value
+                    if strategy == "work_days":
+                        divisor = wd
+                    elif strategy == "calendar_days":
+                        divisor = Decimal(str(calendar_days))
+                    elif strategy == "fixed_30":
+                        divisor = Decimal("30")
+                    else:
+                        # Unrecognised strategy — skip rather than silently corrupt
+                        skipped_codes.append(f"{code}(unknown:{strategy})")
+                        continue
+
+                    if not divisor:
+                        skipped_codes.append(f"{code}(zero_divisor)")
+                        continue
+
+                    comp_daily_rate = (
+                        components[code] / divisor
+                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                    deduction_for_component = (
+                        comp_daily_rate * input_val
+                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                    components[code] = max(
+                        Decimal("0"),
+                        components[code] - deduction_for_component,
+                    )
+                    total_deducted += deduction_for_component
+                    prorated_codes.append(f"{code}({strategy})")
+
+                note = (
+                    f"{input_val} absent days — deducted from: {prorated_codes}"
+                    + (f"; skipped (no proration_strategy): {skipped_codes}" if skipped_codes else "")
+                )
                 trace.append({
                     "rule":   name,
                     "method": method,
                     "status": "applied",
-                    "amount": str(-deduction),
-                    "note":   (
-                        f"{input_val} absent days × {daily_rate}/day daily rate "
-                        f"(ratio {proration_ratio})"
-                    ),
+                    "amount": str(-total_deducted),
+                    "note":   note,
                 })
             else:
                 trace.append({

@@ -115,13 +115,30 @@ def create_component_metadata(
     component_code: str,
     overrides_json: dict,
 ):
-    override = ClientComponentMetadata(
-        workspace_id=workspace_id,
-        component_code=component_code,
-        overrides_json=overrides_json,
-    )
+    import json
+    from sqlalchemy import text
 
-    db.add(override)
+    result = db.execute(
+        text("""
+            INSERT INTO client_component_metadata
+                (client_component_metadata_id, workspace_id, component_code, overrides_json)
+            VALUES (gen_random_uuid(), :wid, :code, CAST(:overrides AS jsonb))
+            ON CONFLICT (workspace_id, component_code)
+            DO UPDATE SET overrides_json = EXCLUDED.overrides_json
+            RETURNING client_component_metadata_id, workspace_id, component_code, overrides_json
+        """),
+        {
+            "wid": workspace_id,
+            "code": component_code,
+            "overrides": json.dumps(overrides_json),
+        },
+    ).fetchone()
+
     db.commit()
 
-    return override
+    return {
+        "client_component_metadata_id": str(result[0]),
+        "workspace_id": str(result[1]),
+        "component_code": result[2],
+        "overrides_json": result[3],
+    }

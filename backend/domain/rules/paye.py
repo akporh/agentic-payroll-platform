@@ -58,6 +58,35 @@ def calculate_paye(gross_income: Decimal, tax_bands: list[dict]) -> Decimal:
     return total_tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def calculate_paye_for_period(
+    period_taxable_income: Decimal,
+    tax_bands: list[dict],
+    annualization_factor: Decimal,
+) -> Decimal:
+    """Calculate PAYE for an arbitrary pay period.
+
+    Annualises period_taxable_income using annualization_factor, applies
+    the progressive bands, then de-annualises.  For a MONTHLY period with
+    annualization_factor=12 this is numerically identical to
+    calculate_monthly_paye().
+
+    Args:
+        period_taxable_income: Already-reduced taxable income for this period
+            (GROSS_PAY − PENSION_EMPLOYEE − any reliefs).
+        tax_bands:             Progressive FIRS tax brackets.
+        annualization_factor:  12 for monthly, 26 for fortnightly,
+                               365/calendar_days for custom periods.
+
+    Returns:
+        Period PAYE rounded to 2 decimal places.
+    """
+    annual_taxable = period_taxable_income * annualization_factor
+    annual_paye    = calculate_paye(annual_taxable, tax_bands)
+    return (annual_paye / annualization_factor).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
 def calculate_monthly_paye(
     monthly_taxable_income: Decimal,
     tax_bands: list[dict],

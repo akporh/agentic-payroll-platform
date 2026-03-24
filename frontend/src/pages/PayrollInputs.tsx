@@ -47,11 +47,12 @@ export function PayrollInputs() {
   const [error,      setError]      = useState<string | null>(null);
 
   // form state
-  const [employeeId, setEmployeeId] = useState('');
-  const [inputCode,  setInputCode]  = useState('');
-  const [quantity,   setQuantity]   = useState('');
-  const [rate,       setRate]       = useState('');
-  const [amount,     setAmount]     = useState('');
+  const [employeeId,      setEmployeeId]      = useState('');
+  const [inputCode,       setInputCode]       = useState('');
+  const [quantity,        setQuantity]        = useState('');
+  const [rate,            setRate]            = useState('');
+  const [amount,          setAmount]          = useState('');
+  const [effectivePeriod, setEffectivePeriod] = useState('');
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -79,12 +80,14 @@ export function PayrollInputs() {
         quantity?: number;
         rate?: number;
         amount?: number;
+        reference_date?: string;
       } = { employee_id: employeeId, input_code: inputCode };
-      if (quantity) payload.quantity = parseFloat(quantity);
-      if (rate)     payload.rate     = parseFloat(rate);
-      if (amount)   payload.amount   = parseFloat(amount);
+      if (quantity)        payload.quantity       = parseFloat(quantity);
+      if (rate)            payload.rate           = parseFloat(rate);
+      if (amount)          payload.amount         = parseFloat(amount);
+      if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
 
-      const res = await payrollInputApi.create(workspaceId, payload);
+      await payrollInputApi.create(workspaceId, payload);
       // Re-fetch list to get full row with employee name
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
@@ -94,6 +97,7 @@ export function PayrollInputs() {
       setQuantity('');
       setRate('');
       setAmount('');
+      setEffectivePeriod('');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to add input');
     } finally {
@@ -229,6 +233,22 @@ export function PayrollInputs() {
             </div>
           )}
 
+          {/* For Period */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500">
+              For period <span className="text-slate-400">(optional)</span>
+            </label>
+            <input
+              type="month"
+              className="border border-slate-200 rounded px-2 py-1.5 text-sm w-36"
+              value={effectivePeriod}
+              onChange={(e) => setEffectivePeriod(e.target.value)}
+            />
+            <span className="text-xs text-slate-400 max-w-[160px] leading-tight">
+              Leave blank for current run. Set for late-arriving events from a previous month.
+            </span>
+          </div>
+
           <Btn type="submit" disabled={submitting || !employeeId || !inputCode}>
             {submitting ? 'Adding…' : 'Add Input'}
           </Btn>
@@ -254,6 +274,7 @@ export function PayrollInputs() {
                   <Th>Qty</Th>
                   <Th>Rate</Th>
                   <Th>Amount</Th>
+                  <Th>For Period</Th>
                   <Th>Source</Th>
                   <Th></Th>
                 </tr>
@@ -280,6 +301,11 @@ export function PayrollInputs() {
                     <Td>{inp.quantity ?? '—'}</Td>
                     <Td>{inp.rate ?? '—'}</Td>
                     <Td>{inp.amount ?? '—'}</Td>
+                    <Td>
+                      {inp.reference_date
+                        ? inp.reference_date.slice(0, 7)   // "YYYY-MM"
+                        : <span className="text-slate-400">current</span>}
+                    </Td>
                     <Td>{inp.source}</Td>
                     <Td>
                       <Btn

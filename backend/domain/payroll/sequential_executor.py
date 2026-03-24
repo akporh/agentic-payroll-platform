@@ -27,10 +27,11 @@ Execution order for Nigeria (NG):
 
 from decimal import Decimal, ROUND_HALF_UP
 
+from backend.domain.payroll.period_context import PeriodContext, build_period_context
 from backend.domain.rules.nhf import calculate_nhf
-from backend.domain.rules.paye import calculate_monthly_paye
+from backend.domain.rules.paye import calculate_monthly_paye, calculate_paye_for_period
 from backend.domain.rules.pension import calculate_pension
-from backend.domain.rules.rent_relief import calculate_rent_relief
+from backend.domain.rules.rent_relief import calculate_rent_relief, calculate_rent_relief_for_period
 
 
 def _check_eligibility(
@@ -152,6 +153,8 @@ def run_sequential_payroll(
     health_insurance_employee_amount = Decimal(str(context.get("health_insurance_employee_amount", "0")))
     development_levy_amount          = Decimal(str(context.get("development_levy_amount", "0")))
     life_insurance_employer_rate     = Decimal(str(context.get("life_insurance_employer_rate", "0")))
+    # Period context: falls back to v1-compatible MONTHLY defaults when absent
+    _period: PeriodContext = context.get("period") or build_period_context()
 
     # ------------------------------------------------------------------ #
     # 3. Execute components sequentially, accumulating results.           #
@@ -218,7 +221,9 @@ def run_sequential_payroll(
             annual_rent_paid = resolved.get("ANNUAL_RENT_PAID", Decimal("0"))
             rate = Decimal(str(rent_relief_cfg.get("rate", "0")))
             cap  = Decimal(str(rent_relief_cfg.get("cap",  "0")))
-            results[code] = calculate_rent_relief(annual_rent_paid, rate, cap)
+            results[code] = calculate_rent_relief_for_period(
+                annual_rent_paid, rate, cap, _period.annualization_factor
+            )
 
         elif method == "taxable_income":
             results[code] = (
@@ -228,8 +233,15 @@ def run_sequential_payroll(
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         elif method == "paye_rule":
-            results[code] = calculate_monthly_paye(
-                results.get("TAXABLE_INCOME", Decimal("0")), tax_bands
+            if not tax_bands:
+                raise ValueError(
+                    "tax_bands is empty — cannot calculate PAYE. "
+                    "Ensure tax bands are seeded for the workspace's statutory rule."
+                )
+            results[code] = calculate_paye_for_period(
+                results.get("TAXABLE_INCOME", Decimal("0")),
+                tax_bands,
+                _period.annualization_factor,
             )
 
         elif method == "nhf_rule":
@@ -258,6 +270,13 @@ def run_sequential_payroll(
             results[code] = (
                 results.get("GROSS_PAY", Decimal("0")) - total_deductions
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        else:
+            results[code] = Decimal("0")
+            raise ValueError(
+                f"Unknown calculation_method {method!r} for component {code!r}. "
+                f"Check component_metadata.calculation_method in the DB."
+            )
 
         execution_trace.append({
             "component": code,

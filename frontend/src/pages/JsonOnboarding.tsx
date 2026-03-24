@@ -25,7 +25,6 @@ function buildConfigTemplate(workspaceId: string): Record<string, unknown> {
     structure: { pay_cycle: {}, grades: [], designations: [] },
     compensation: { salary_definitions: [] },
     rules: { payroll_rules: [] },
-    components: { component_metadata: [] },
   };
 }
 
@@ -83,11 +82,15 @@ export function JsonOnboarding() {
         </span>
         <span className="text-sm px-1 text-slate-300">→</span>
         <span className="px-3 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-400">
-          3. Upload Employees
+          3. Component Settings
+        </span>
+        <span className="text-sm px-1 text-slate-300">→</span>
+        <span className="px-3 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-400">
+          4. Upload Employees
         </span>
         <span className="text-sm px-1 text-slate-300">→</span>
         <span className="px-3 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-300">
-          4. Commit
+          5. Commit
         </span>
       </div>
 

@@ -75,4 +75,26 @@ export const workspaceApi = {
     api.get<{ salary_definition_id: string; code: string; name: string }[]>(
       `/${workspaceId}/salary-definitions`
     ),
+
+  getDesignations: (workspaceId: string) =>
+    api.get<{ designation_id: string; code: string }[]>(
+      `/${workspaceId}/designations`
+    ),
+
+  addSalaryDefinition: (workspaceId: string, code: string, name?: string) =>
+    api.post<{ salary_definition_id: string; code: string; name: string }>(
+      `/${workspaceId}/salary-definitions`,
+      { code, name }
+    ),
+
+  getConfiguration: (workspaceId: string) =>
+    api.get<{ grades: { code: string }[]; designations: { code: string }[] }>(
+      `/${workspaceId}/configuration`
+    ),
+
+  updateEmployeeContract: (
+    workspaceId: string,
+    employeeId: string,
+    payload: { grade_code?: string | null; designation_code?: string | null }
+  ) => api.patch(`/${workspaceId}/employees/${employeeId}/contract`, payload),
 };

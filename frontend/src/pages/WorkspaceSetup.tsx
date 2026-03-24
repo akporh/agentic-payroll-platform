@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
+import { api } from '../api/client';
 import { onboardingApi } from '../api/onboarding';
 import type { ValidateResponse, PreviewResponse, CommitResponse } from '../types/onboarding';
 import type { Workspace } from '../types/workspace';
@@ -10,6 +11,8 @@ import { Btn } from '../components/ui/Btn';
 import { AlertBox } from '../components/ui/AlertBox';
 import { EmployeeUpload } from '../components/onboarding/EmployeeUpload';
 import type { MappedEmployee, SalaryDefinitionOption } from '../components/onboarding/EmployeeUpload';
+import { WorkspaceExcelUpload } from '../components/onboarding/WorkspaceExcelUpload';
+import type { WorkspaceConfig } from '../components/onboarding/WorkspaceExcelUpload';
 import { saveDraft, loadDraft, clearDraft } from '../utils/onboardingDraft';
 import type { OnboardingDraftStep } from '../utils/onboardingDraft';
 
@@ -25,7 +28,6 @@ function buildConfigTemplate(workspaceId: string): Record<string, unknown> {
     structure: { pay_cycle: {}, grades: [], designations: [] },
     compensation: { salary_definitions: [] },
     rules: { payroll_rules: [] },
-    components: { component_metadata: [] },
   };
 }
 
@@ -72,6 +74,10 @@ export function WorkspaceSetup() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // ── Existing config (non-DRAFT workspaces) ────────────────────────────────
+  const [existingConfig, setExistingConfig] = useState<Record<string, unknown> | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+
   // ── Step ──────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<OnboardingDraftStep>('client-config-json');
 
@@ -80,9 +86,18 @@ export function WorkspaceSetup() {
   const [configParsed, setConfigParsed] = useState<Record<string, unknown> | null>(null);
   const [jsonParseError, setJsonParseError] = useState<string | null>(null);
 
-  // ── Step 3 ────────────────────────────────────────────────────────────────
+  // ── Step 3 — Component Settings ─────────────────────────────────────────
+  const [platformComponents, setPlatformComponents] = useState<{ component_code: string; label: string }[]>([]);
+  const [componentOverrides, setComponentOverrides] = useState<Record<string, boolean>>({});
+  const [componentToggles, setComponentToggles] = useState<Record<string, boolean>>({});
+  const [componentLoading, setComponentLoading] = useState(false);
+  const [componentSaving, setComponentSaving] = useState(false);
+  const [componentError, setComponentError] = useState<string | null>(null);
+
+  // ── Step 4 — Employee Upload ───────────────────────────────────────────
   const [employees, setEmployees] = useState<MappedEmployee[]>([]);
   const [dbSalaryDefs, setDbSalaryDefs] = useState<SalaryDefinitionOption[]>([]);
+  const [dbDesignationOptions, setDbDesignationOptions] = useState<string[]>([]);
 
   // ── Commit ────────────────────────────────────────────────────────────────
   const [commitStage, setCommitStage] = useState<CommitStage>('idle');
@@ -95,6 +110,7 @@ export function WorkspaceSetup() {
   // ── UI ────────────────────────────────────────────────────────────────────
   const [sqlOpen, setSqlOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [advancedJsonOpen, setAdvancedJsonOpen] = useState(false);
 
   // Debounce timer for rawJson draft saves
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,11 +137,14 @@ export function WorkspaceSetup() {
         setFetchError('Workspace not found. It may have been deleted.');
         return;
       }
-      // If the workspace is no longer DRAFT (committed elsewhere), clear stale
-      // draft and redirect to the workspace dashboard.
+      // Non-DRAFT workspace: show existing configuration instead of wizard
       if (found.status !== 'DRAFT') {
         clearDraft(workspaceId);
-        navigate(`/workspaces/${workspaceId}`, { replace: true });
+        setWorkspace(found);
+        setConfigLoading(true);
+        api.get<Record<string, unknown>>(`/${workspaceId}/configuration`)
+          .then(setExistingConfig)
+          .finally(() => setConfigLoading(false));
         return;
       }
       setWorkspace(found);
@@ -149,14 +168,45 @@ export function WorkspaceSetup() {
     });
   }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fetch DB salary defs when entering Step 3 ─────────────────────────────
+  // ── Fetch platform components + overrides when entering Step 3 ─────────────
+
+  useEffect(() => {
+    if (step !== 'component-settings' || !workspaceId) return;
+    setComponentLoading(true);
+    setComponentError(null);
+
+    Promise.all([
+      api.get<{ component_code: string; label: string }[]>(`/${workspaceId}/platform-components`),
+      api.get<{ component_code: string; overrides_json: { is_active?: boolean } }[]>(`/${workspaceId}/component-overrides`),
+    ])
+      .then(([components, overrides]) => {
+        setPlatformComponents(components);
+        const overrideMap: Record<string, boolean> = {};
+        for (const o of overrides) {
+          overrideMap[o.component_code] = o.overrides_json.is_active !== false;
+        }
+        setComponentOverrides(overrideMap);
+        // Initialise toggles: use override if exists, otherwise default to true
+        const toggles: Record<string, boolean> = {};
+        for (const c of components) {
+          toggles[c.component_code] = overrideMap[c.component_code] ?? true;
+        }
+        setComponentToggles(toggles);
+      })
+      .catch((e: unknown) => {
+        setComponentError(e instanceof Error ? e.message : 'Failed to load components.');
+      })
+      .finally(() => setComponentLoading(false));
+  }, [step, workspaceId]);
+
+  // ── Fetch DB salary defs when entering Step 4 ─────────────────────────────
 
   useEffect(() => {
     if (step === 'employee-upload' && workspaceId) {
-      workspaceApi
-        .getSalaryDefinitions(workspaceId)
-        .then(setDbSalaryDefs)
-        .catch(() => { /* non-fatal — config JSON defs are the fallback */ });
+      workspaceApi.getSalaryDefinitions(workspaceId).then(setDbSalaryDefs).catch(() => {});
+      workspaceApi.getDesignations(workspaceId)
+        .then((rows) => setDbDesignationOptions(rows.map((r) => r.code)))
+        .catch(() => {});
     }
   }, [step, workspaceId]);
 
@@ -171,13 +221,17 @@ export function WorkspaceSetup() {
   const structure = configParsed?.structure as Record<string, unknown> | undefined;
   const compensation = configParsed?.compensation as Record<string, unknown> | undefined;
   const rules = configParsed?.rules as Record<string, unknown> | undefined;
-  const components = configParsed?.components as Record<string, unknown> | undefined;
+
+  const configDesignationOptions = (structure?.designations as { designation_code: string }[] ?? []).map((d) => d.designation_code);
+  const allDesignationOptions = [
+    ...dbDesignationOptions,
+    ...configDesignationOptions.filter((c) => !dbDesignationOptions.includes(c)),
+  ];
 
   const gradeCount = Array.isArray(structure?.grades) ? (structure.grades as unknown[]).length : 0;
   const designationCount = Array.isArray(structure?.designations) ? (structure.designations as unknown[]).length : 0;
   const salaryDefCount = Array.isArray(compensation?.salary_definitions) ? (compensation.salary_definitions as unknown[]).length : 0;
   const payrollRuleCount = Array.isArray(rules?.payroll_rules) ? (rules.payroll_rules as unknown[]).length : 0;
-  const componentMetaCount = Array.isArray(components?.component_metadata) ? (components.component_metadata as unknown[]).length : 0;
   const payCycleSet = structure?.pay_cycle != null && Object.keys(structure.pay_cycle as object).length > 0;
   const unresolvedMappings = employees.filter((e) => e.mapping_unresolved).length;
   const aiWarnings: string[] = previewResult?.warnings
@@ -199,7 +253,6 @@ export function WorkspaceSetup() {
       // Structural data — processed by the commit route to populate
       // pay_cycle, grade, designation tables and advance the state machine
       structure: configParsed.structure ?? {},
-      components: configParsed.components ?? {},
     };
   }
 
@@ -212,6 +265,14 @@ export function WorkspaceSetup() {
   }
 
   // ── Step 2 handlers ───────────────────────────────────────────────────────
+
+  function handleExcelConfigParsed(config: WorkspaceConfig) {
+    const formatted = JSON.stringify(config, null, 2);
+    setRawJson(formatted);
+    setConfigParsed(config as unknown as Record<string, unknown>);
+    setJsonParseError(null);
+    if (workspaceId) saveDraft(workspaceId, { rawJson: formatted });
+  }
 
   function handleJsonChange(text: string) {
     setRawJson(text);
@@ -245,11 +306,33 @@ export function WorkspaceSetup() {
 
   function handleConfirmConfig() {
     if (!configParsed) { setJsonParseError('Fix JSON syntax errors before continuing.'); return; }
-    setStep('employee-upload');
-    if (workspaceId) saveDraft(workspaceId, { activeStep: 'employee-upload' });
+    setStep('component-settings');
+    if (workspaceId) saveDraft(workspaceId, { activeStep: 'component-settings' });
   }
 
-  // ── Step 3 handlers ───────────────────────────────────────────────────────
+  // ── Step 3 handlers — Component Settings ────────────────────────────────
+
+  async function handleSaveComponents() {
+    if (!workspaceId) return;
+    setComponentSaving(true);
+    setComponentError(null);
+    try {
+      for (const comp of platformComponents) {
+        await api.post(`/${workspaceId}/component-metadata`, {
+          component_code: comp.component_code,
+          overrides_json: { is_active: componentToggles[comp.component_code] ?? true },
+        });
+      }
+      setStep('employee-upload');
+      saveDraft(workspaceId, { activeStep: 'employee-upload' });
+    } catch (e: unknown) {
+      setComponentError(e instanceof Error ? e.message : 'Failed to save component settings.');
+    } finally {
+      setComponentSaving(false);
+    }
+  }
+
+  // ── Step 4 handlers ───────────────────────────────────────────────────────
 
   function handleEmployeesLoaded(rows: MappedEmployee[]) {
     setEmployees(rows);
@@ -323,7 +406,17 @@ export function WorkspaceSetup() {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Existing config view (non-DRAFT workspaces) ──────────────────────────
+
+  if (configLoading) {
+    return <p className="text-sm text-slate-500 mt-6">Loading workspace configuration…</p>;
+  }
+
+  if (existingConfig) {
+    return <ExistingConfigView workspace={workspace} config={existingConfig} />;
+  }
+
+  // ── Render (DRAFT wizard) ────────────────────────────────────────────────
 
   return (
     <div>
@@ -339,9 +432,16 @@ export function WorkspaceSetup() {
           ✓ 1. Create Workspace
         </span>
 
-        {(['client-config-json', 'employee-upload'] as OnboardingDraftStep[]).map((s, i) => {
-          const label = s === 'client-config-json' ? 'Configure Client' : 'Upload Employees';
-          const done = (i === 0 && step === 'employee-upload') || commitStage === 'committed';
+        {(['client-config-json', 'component-settings', 'employee-upload'] as OnboardingDraftStep[]).map((s, i) => {
+          const labels: Record<string, string> = {
+            'client-config-json': 'Configure Client',
+            'component-settings': 'Component Settings',
+            'employee-upload': 'Upload Employees',
+          };
+          const stepOrder: OnboardingDraftStep[] = ['client-config-json', 'component-settings', 'employee-upload'];
+          const currentIdx = stepOrder.indexOf(step);
+          const thisIdx = stepOrder.indexOf(s);
+          const done = thisIdx < currentIdx || commitStage === 'committed';
           const active = s === step;
           return (
             <div key={s} className="flex items-center">
@@ -351,7 +451,7 @@ export function WorkspaceSetup() {
                 : active ? 'bg-slate-800 text-white'
                 : 'bg-slate-100 text-slate-400'
               }`}>
-                {done && !active ? '✓ ' : `${i + 2}. `}{label}
+                {done && !active ? '✓ ' : `${i + 2}. `}{labels[s]}
               </span>
             </div>
           );
@@ -364,7 +464,7 @@ export function WorkspaceSetup() {
             : step === 'employee-upload' ? 'bg-slate-100 text-slate-500'
             : 'bg-slate-100 text-slate-300'
           }`}>
-            {commitStage === 'committed' ? '✓ ' : '4. '}Commit
+            {commitStage === 'committed' ? '✓ ' : '5. '}Commit
           </span>
         </div>
       </div>
@@ -399,37 +499,59 @@ export function WorkspaceSetup() {
       {step === 'client-config-json' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <div className="flex flex-col gap-4">
-            <Card title="Client Setup JSON">
-              <p className="text-xs text-slate-500 mb-1">
-                Define pay cycle, grades, designations, salary definitions (with <code className="bg-slate-100 px-1 rounded">code</code>),
-                payroll rules and component metadata.
-              </p>
-              <p className="text-xs text-amber-600 mb-3">
-                Salary definition codes should match <strong>DESIGNATION_GRADE</strong> (e.g. <code className="bg-slate-100 px-1 rounded">ENGINEER_G5</code>).
-                Employees are uploaded separately in the next step.
-              </p>
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleJsonFileUpload}
-                className="block w-full text-sm text-slate-600 mb-3 file:mr-3 file:py-1 file:px-3 file:rounded file:border file:border-slate-300 file:text-xs file:bg-white file:text-slate-700 hover:file:bg-slate-50"
+            {/* Excel upload */}
+            {workspaceId && (
+              <WorkspaceExcelUpload
+                workspaceId={workspaceId}
+                onConfigParsed={handleExcelConfigParsed}
               />
-              <textarea
-                className="w-full h-96 font-mono text-xs border border-slate-200 rounded p-3 resize-none focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-50"
-                value={rawJson}
-                onChange={(e) => handleJsonChange(e.target.value)}
-                spellCheck={false}
-              />
-              {jsonParseError && <p className="text-red-600 text-xs mt-1">{jsonParseError}</p>}
-              {!configParsed && rawJson && (
-                <p className="text-amber-600 text-xs mt-1">Invalid JSON — fix syntax errors.</p>
+            )}
+
+            {/* Advanced: JSON editor (collapsed by default) */}
+            <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
+              <button
+                className="w-full flex items-center justify-between px-5 py-3 text-left"
+                onClick={() => setAdvancedJsonOpen((v) => !v)}
+              >
+                <span className="text-sm font-semibold text-slate-700">Advanced: Edit JSON directly</span>
+                <span className="text-xs text-slate-400 ml-2">{advancedJsonOpen ? '▲ Hide' : '▼ Show'}</span>
+              </button>
+              {advancedJsonOpen && (
+                <div className="px-5 pb-5 border-t border-slate-100">
+                  <p className="text-xs text-slate-500 mt-3 mb-1">
+                    Define pay cycle, grades, designations, salary definitions (with <code className="bg-slate-100 px-1 rounded">code</code>),
+                    payroll rules and component metadata.
+                  </p>
+                  <p className="text-xs text-amber-600 mb-3">
+                    Salary definition codes should match <strong>DESIGNATION_GRADE</strong> (e.g. <code className="bg-slate-100 px-1 rounded">ENGINEER_G5</code>).
+                    Employees are uploaded separately in the next step.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleJsonFileUpload}
+                    className="block w-full text-sm text-slate-600 mb-3 file:mr-3 file:py-1 file:px-3 file:rounded file:border file:border-slate-300 file:text-xs file:bg-white file:text-slate-700 hover:file:bg-slate-50"
+                  />
+                  <textarea
+                    className="w-full h-96 font-mono text-xs border border-slate-200 rounded p-3 resize-none focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-50"
+                    value={rawJson}
+                    onChange={(e) => handleJsonChange(e.target.value)}
+                    spellCheck={false}
+                  />
+                  {jsonParseError && <p className="text-red-600 text-xs mt-1">{jsonParseError}</p>}
+                  {!configParsed && rawJson && (
+                    <p className="text-amber-600 text-xs mt-1">Invalid JSON — fix syntax errors.</p>
+                  )}
+                </div>
               )}
-              <div className="flex gap-2 mt-3">
-                <Btn onClick={handleConfirmConfig} disabled={!configParsed}>
-                  Confirm Config → Upload Employees
-                </Btn>
-              </div>
-            </Card>
+            </div>
+
+            {/* Confirm button always visible */}
+            <div className="flex gap-2">
+              <Btn onClick={handleConfirmConfig} disabled={!configParsed}>
+                Confirm Config → Component Settings
+              </Btn>
+            </div>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -454,8 +576,6 @@ export function WorkspaceSetup() {
                   <Row label="Salary Definitions" value={String(salaryDefCount)} />
                   <SectionHeader label="Rules" />
                   <Row label="Payroll Rules" value={String(payrollRuleCount)} />
-                  <SectionHeader label="Components" />
-                  <Row label="Component Metadata" value={String(componentMetaCount)} />
                   <SectionHeader label="Employees" />
                   <Row label="Employees" value="Upload in next step" />
                 </div>
@@ -466,7 +586,73 @@ export function WorkspaceSetup() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          STEP 3 — Employee Upload + Mapping + Commit
+          STEP 3 — Component Settings
+      ══════════════════════════════════════════════════════════════════════ */}
+      {step === 'component-settings' && workspace && (
+        <div className="max-w-lg">
+          <Card title="Component Settings">
+            <p className="text-xs text-slate-500 mb-4">
+              Toggle which payroll components are active for this workspace.
+              Disabled components will be excluded from payroll calculations.
+            </p>
+
+            {componentLoading && (
+              <p className="text-sm text-slate-400">Loading components...</p>
+            )}
+
+            {componentError && (
+              <div className="mb-3">
+                <AlertBox type="error" messages={[componentError]} />
+              </div>
+            )}
+
+            {!componentLoading && !componentError && platformComponents.length === 0 && (
+              <p className="text-sm text-slate-400 mb-4">No platform components found.</p>
+            )}
+
+            {!componentLoading && platformComponents.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {platformComponents.map((comp) => (
+                  <label
+                    key={comp.component_code}
+                    className="flex items-center gap-3 px-3 py-2 rounded border border-slate-100 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={componentToggles[comp.component_code] ?? true}
+                      onChange={(e) =>
+                        setComponentToggles((prev) => ({ ...prev, [comp.component_code]: e.target.checked }))
+                      }
+                      className="accent-slate-700 w-4 h-4"
+                    />
+                    <span className="text-sm text-slate-700 font-medium">{comp.label}</span>
+                    <span className="text-xs font-mono text-slate-400 ml-auto">{comp.component_code}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Btn
+                onClick={handleSaveComponents}
+                loading={componentSaving}
+                disabled={componentLoading || platformComponents.length === 0}
+              >
+                Save &amp; Continue
+              </Btn>
+              <button
+                className="text-xs text-slate-400 underline px-2"
+                onClick={() => { setStep('client-config-json'); if (workspaceId) saveDraft(workspaceId, { activeStep: 'client-config-json' }); }}
+              >
+                ← Back to client config
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          STEP 4 — Employee Upload + Mapping + Commit
       ══════════════════════════════════════════════════════════════════════ */}
       {step === 'employee-upload' && workspace && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -475,11 +661,17 @@ export function WorkspaceSetup() {
             <EmployeeUpload
               employees={employees}
               salaryDefinitions={allSalaryDefs}
+              designationOptions={allDesignationOptions}
               onEmployeesLoaded={handleEmployeesLoaded}
               onMappingChange={handleMappingChange}
+              onCreateSalaryDefinition={async (code) => {
+                const created = await workspaceApi.addSalaryDefinition(workspaceId!, code);
+                setDbSalaryDefs((prev) => [...prev, created]);
+                return created;
+              }}
             />
 
-            <Card title="4. Commit Onboarding">
+            <Card title="5. Commit Onboarding">
               <p className="text-xs text-slate-500 mb-3">
                 Validate and preview before committing. The final payload merges
                 the client config JSON with the uploaded employees.
@@ -533,9 +725,9 @@ export function WorkspaceSetup() {
 
               <button
                 className="mt-3 text-xs text-slate-400 underline"
-                onClick={() => { setStep('client-config-json'); resetCommitState(); if (workspaceId) saveDraft(workspaceId, { activeStep: 'client-config-json' }); }}
+                onClick={() => { setStep('component-settings'); resetCommitState(); if (workspaceId) saveDraft(workspaceId, { activeStep: 'component-settings' }); }}
               >
-                ← Back to client config
+                ← Back to component settings
               </button>
             </Card>
 
@@ -640,8 +832,6 @@ export function WorkspaceSetup() {
                 <Row label="Salary Definitions" value={String(salaryDefCount)} />
                 <SectionHeader label="Rules" />
                 <Row label="Payroll Rules" value={String(payrollRuleCount)} />
-                <SectionHeader label="Components" />
-                <Row label="Component Metadata" value={String(componentMetaCount)} />
                 <SectionHeader label="Employees" />
                 <Row label="Employees" value={employees.length > 0 ? String(employees.length) : 'None uploaded yet'} />
                 {unresolvedMappings > 0 && (
@@ -688,6 +878,150 @@ export function WorkspaceSetup() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Existing Config View (non-DRAFT workspaces) ───────────────────────────────
+
+function ExistingConfigView({
+  workspace,
+  config,
+}: {
+  workspace: Workspace | null;
+  config: Record<string, unknown>;
+}) {
+  const ws = config.workspace as Record<string, unknown> | undefined;
+  const payCycle = config.pay_cycle as Record<string, unknown> | null;
+  const grades = (config.grades as { code: string; description: string | null }[]) ?? [];
+  const designations = (config.designations as { code: string; description: string | null }[]) ?? [];
+  const salaryDefs = (config.salary_definitions as {
+    name: string; code: string;
+    components: { component_name: string; amount: number }[];
+  }[]) ?? [];
+  const payrollRules = (config.payroll_rules as { name: string; rule_type: string; method: string }[]) ?? [];
+  const overrides = (config.component_overrides as { component_name: string; is_active: boolean }[]) ?? [];
+
+  return (
+    <div>
+      <PageHeader
+        title="Client Setup"
+        subtitle={workspace ? `${workspace.name} · ${ws?.country_code ?? ''} · ${ws?.currency_code ?? ''}` : 'Loading…'}
+      />
+
+      <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+        This workspace is <strong>{String(ws?.status ?? '')}</strong>. Showing current configuration below.
+      </div>
+
+      <div className="space-y-5">
+        {/* Pay Cycle */}
+        <Card title="Pay Cycle">
+          {payCycle ? (
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              {Object.entries(payCycle).map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-slate-500 text-xs font-medium mb-1 capitalize">{k.replace(/_/g, ' ')}</dt>
+                  <dd className="text-slate-800 font-medium">{String(v)}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : <p className="text-sm text-slate-400">No pay cycle defined.</p>}
+        </Card>
+
+        {/* Grades & Designations */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <Card title={`Grades (${grades.length})`}>
+            {grades.length > 0 ? (
+              <ul className="space-y-1">
+                {grades.map((g) => (
+                  <li key={g.code} className="flex items-center gap-2 bg-slate-50 rounded px-3 py-1.5 text-sm">
+                    <span className="font-mono font-semibold text-slate-700">{g.code}</span>
+                    {g.description && <span className="text-slate-400 text-xs">{g.description}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-slate-400">No grades defined.</p>}
+          </Card>
+
+          <Card title={`Designations (${designations.length})`}>
+            {designations.length > 0 ? (
+              <ul className="space-y-1">
+                {designations.map((d) => (
+                  <li key={d.code} className="flex items-center gap-2 bg-slate-50 rounded px-3 py-1.5 text-sm">
+                    <span className="font-mono font-semibold text-slate-700">{d.code}</span>
+                    {d.description && <span className="text-slate-400 text-xs">{d.description}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-slate-400">No designations defined.</p>}
+          </Card>
+        </div>
+
+        {/* Salary Definitions */}
+        <Card title={`Salary Definitions (${salaryDefs.length})`}>
+          {salaryDefs.length > 0 ? (
+            <div className="space-y-3">
+              {salaryDefs.map((sd) => (
+                <div key={sd.code} className="border border-slate-200 rounded p-3">
+                  <p className="text-sm font-semibold text-slate-700 mb-2">
+                    {sd.name} <span className="font-mono font-normal text-slate-400 text-xs">({sd.code})</span>
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {sd.components.map((c) => (
+                      <div key={c.component_name} className="bg-slate-50 rounded px-2 py-1.5 text-center">
+                        <p className="text-xs text-slate-400">{c.component_name}</p>
+                        <p className="text-xs font-semibold text-slate-700 mt-0.5">
+                          {c.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-slate-400">No salary definitions defined.</p>}
+        </Card>
+
+        {/* Payroll Rules */}
+        <Card title={`Payroll Rules (${payrollRules.length})`}>
+          {payrollRules.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left text-xs text-slate-500 font-medium pb-2 pr-4">Name</th>
+                  <th className="text-left text-xs text-slate-500 font-medium pb-2 pr-4">Type</th>
+                  <th className="text-left text-xs text-slate-500 font-medium pb-2">Method</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payrollRules.map((r, i) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="py-1.5 pr-4 text-slate-700">{r.name}</td>
+                    <td className="py-1.5 pr-4 text-slate-500 text-xs">{r.rule_type}</td>
+                    <td className="py-1.5 text-slate-500 text-xs font-mono">{r.method}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="text-sm text-slate-400">No payroll rules defined.</p>}
+        </Card>
+
+        {/* Component Overrides */}
+        {overrides.length > 0 && (
+          <Card title="Component Settings">
+            <div className="space-y-2">
+              {overrides.map((co) => (
+                <div key={co.component_name} className="flex items-center justify-between py-1.5 px-2 rounded bg-slate-50 text-sm">
+                  <span className="text-slate-700 font-mono text-xs">{co.component_name}</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${co.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>
+                    {co.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
@@ -783,7 +1117,9 @@ function DetailsModal({
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Pay Cycle</h3>
             {payCycle && Object.keys(payCycle).length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {Object.entries(payCycle).map(([k, v]) => (
+                {Object.entries(payCycle)
+                  .filter(([, v]) => v !== null && typeof v !== 'object')
+                  .map(([k, v]) => (
                   <div key={k} className="bg-slate-50 rounded px-3 py-2">
                     <p className="text-xs text-slate-400 capitalize">{k.replace(/_/g, ' ')}</p>
                     <p className="font-medium text-slate-700 mt-0.5">{String(v)}</p>

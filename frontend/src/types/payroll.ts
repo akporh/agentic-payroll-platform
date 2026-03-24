@@ -62,6 +62,7 @@ export interface PayrollInput {
   amount: number | null;
   source: string;
   created_at: string;
+  reference_date: string | null;
 }
 
 export interface ExecutionTraceStep {

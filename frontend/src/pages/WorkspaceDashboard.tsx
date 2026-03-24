@@ -129,9 +129,14 @@ export function WorkspaceDashboard() {
           <Card title="Quick Actions" className="lg:col-span-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <ActionTile
-                label="Import JSON"
-                desc="Bulk-load employees and config"
-                onClick={() => navigate('/onboarding')}
+                label="Client Setup"
+                desc="Re-run workspace setup wizard"
+                onClick={() => navigate(`/workspaces/${workspaceId}/setup`)}
+              />
+              <ActionTile
+                label="Configuration"
+                desc="View workspace settings"
+                onClick={() => navigate(`/workspaces/${workspaceId}/config`)}
               />
               <ActionTile
                 label="Employees"

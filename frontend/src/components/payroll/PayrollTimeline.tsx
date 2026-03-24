@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ExecutionTraceStep } from '../../types/payroll';
 import { Card } from '../ui/Card';
 
@@ -6,6 +7,8 @@ interface Props {
 }
 
 export function PayrollTimeline({ steps }: Props) {
+  const [expanded, setExpanded] = useState(false);
+
   if (steps.length === 0) {
     return (
       <Card title="Execution Timeline">
@@ -14,13 +17,36 @@ export function PayrollTimeline({ steps }: Props) {
     );
   }
 
+  const errorCount = steps.filter((s) => s.status !== 'success').length;
+
   return (
-    <Card title="Execution Timeline">
-      <ol className="space-y-0">
-        {steps.map((step, i) => (
-          <TimelineRow key={i} step={step} isLast={i === steps.length - 1} />
-        ))}
-      </ol>
+    <Card
+      title="Execution Timeline"
+      action={
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-400">
+            {steps.length} steps · {errorCount > 0 ? `${errorCount} error(s)` : 'all passed'}
+          </span>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-slate-500 hover:text-slate-700"
+          >
+            {expanded ? 'Collapse ▲' : 'Expand ▼'}
+          </button>
+        </div>
+      }
+    >
+      {expanded ? (
+        <ol className="space-y-0">
+          {steps.map((step, i) => (
+            <TimelineRow key={i} step={step} isLast={i === steps.length - 1} />
+          ))}
+        </ol>
+      ) : (
+        <p className="text-xs text-slate-400 text-center py-1">
+          Click Expand to view execution steps
+        </p>
+      )}
     </Card>
   );
 }

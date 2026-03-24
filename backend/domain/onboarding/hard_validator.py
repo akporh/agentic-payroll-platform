@@ -1,3 +1,4 @@
+from datetime import date as _date
 from sqlalchemy import text
 from backend.infra.db.repositories.workspace_repo import (
     has_pay_cycle,
@@ -37,6 +38,8 @@ SUPPORTED_METHODS = {
 PENSION_BASE_REQUIRED = {"BASIC", "HOUSING", "TRANSPORT"}
 
 EMPLOYEE_REQUIRED_BIODATA = {"TIN", "BANK", "ACCOUNT_NUMBER", "RSA"}
+
+VALID_PRORATION_STRATEGIES = {"work_days", "calendar_days", "fixed_30"}
 
 
 def validate_client_json(client_json: dict) -> HardValidationResult:
@@ -88,6 +91,53 @@ def validate_client_json(client_json: dict) -> HardValidationResult:
                     message=f"{emp_num}: missing required biodata: {', '.join(sorted(missing_bio))}",
                 )
             )
+
+        # Validate contract dates when provided
+        contract_start_str = emp.get("contract_start")
+        contract_end_str   = emp.get("contract_end")
+        start_date = None
+        if contract_start_str:
+            try:
+                start_date = _date.fromisoformat(str(contract_start_str))
+            except ValueError:
+                errors.append(ValidationError(
+                    category="EMPLOYEE_CONTRACT",
+                    message=f"{emp_num}: contract_start '{contract_start_str}' is not a valid date (use YYYY-MM-DD)",
+                ))
+        if contract_end_str:
+            try:
+                end_date = _date.fromisoformat(str(contract_end_str))
+            except ValueError:
+                errors.append(ValidationError(
+                    category="EMPLOYEE_CONTRACT",
+                    message=f"{emp_num}: contract_end '{contract_end_str}' is not a valid date (use YYYY-MM-DD)",
+                ))
+            else:
+                if start_date and end_date < start_date:
+                    errors.append(ValidationError(
+                        category="EMPLOYEE_CONTRACT",
+                        message=f"{emp_num}: contract_end must be on or after contract_start",
+                    ))
+
+    # Validate component overrides if present in structure
+    structure = client_json.get("structure", {})
+    for co in (structure.get("component_overrides", []) if isinstance(structure, dict) else []):
+        comp_code = str(co.get("component_code") or "").strip()
+        strategy  = str(co.get("proration_strategy") or "").strip().lower()
+        if not comp_code:
+            errors.append(ValidationError(
+                category="COMPONENT_OVERRIDE",
+                message="Component override is missing component_code",
+            ))
+            continue
+        if strategy and strategy not in VALID_PRORATION_STRATEGIES:
+            errors.append(ValidationError(
+                category="COMPONENT_OVERRIDE",
+                message=(
+                    f"Component '{comp_code}': proration_strategy '{strategy}' is invalid. "
+                    f"Valid values: {sorted(VALID_PRORATION_STRATEGIES)}"
+                ),
+            ))
 
     status = "FAIL" if errors else "PASS"
     return HardValidationResult(status=status, errors=errors)

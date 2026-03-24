@@ -10,6 +10,8 @@ import { RunPayroll } from './pages/RunPayroll';
 import { PayrollResults } from './pages/PayrollResults';
 import { Reconciliation } from './pages/Reconciliation';
 import { PayrollInputs } from './pages/PayrollInputs';
+import { PayrollInputsBulkUpload } from './pages/PayrollInputsBulkUpload';
+import { WorkspaceConfig } from './pages/WorkspaceConfig';
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +24,7 @@ export const router = createBrowserRouter([
         path: 'workspaces/:workspaceId',
         children: [
           { index: true, element: <WorkspaceDashboard /> },
+          { path: 'config', element: <WorkspaceConfig /> },
           { path: 'setup', element: <WorkspaceSetup /> },
           { path: 'employees', element: <Employees /> },
           {
@@ -32,6 +35,7 @@ export const router = createBrowserRouter([
               { path: ':runId/results', element: <PayrollResults /> },
               { path: ':runId/reconciliation', element: <Reconciliation /> },
               { path: 'inputs', element: <PayrollInputs /> },
+              { path: 'inputs/bulk', element: <PayrollInputsBulkUpload /> },
             ],
           },
         ],

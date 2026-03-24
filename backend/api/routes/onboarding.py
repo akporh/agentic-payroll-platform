@@ -7,6 +7,7 @@ happen in the domain layer.
 
 Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
 """
+from datetime import date as _date
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -291,12 +292,17 @@ async def commit_onboarding(request: Request):
         structure = payload.get("structure", {})
         pay_cycle_data = structure.get("pay_cycle", {}) if isinstance(structure, dict) else {}
         if pay_cycle_data and isinstance(pay_cycle_data, dict):
-            execution_window = pay_cycle_data.get("execution_window") or {}
+            definition_json = pay_cycle_data.get("definition_json") or {}
+            execution_window = (
+                pay_cycle_data.get("execution_window")
+                or definition_json.get("execution_window")
+                or {}
+            )
             frequency   = pay_cycle_data.get("frequency") or "monthly"
             run_day     = int(pay_cycle_data.get("run_day")     or execution_window.get("run_day", 1))
             cutoff_day  = int(pay_cycle_data.get("cutoff_day")  or execution_window.get("adjustment_cutoff_day", 1))
             payment_day = int(pay_cycle_data.get("payment_day") or execution_window.get("payment_day", 1))
-            definition_json = pay_cycle_data.get("definition_json") or pay_cycle_data
+            definition_json = definition_json or pay_cycle_data
             db.execute(
                 text("""
                     INSERT INTO pay_cycle (
@@ -365,6 +371,36 @@ async def commit_onboarding(request: Request):
                 },
             )
 
+        # ----------------------------
+        # INSERT STRUCTURE: COMPONENT OVERRIDES
+        # Optional — upserts per-component proration_strategy (and other
+        # calculations_behaviour flags) into client_component_metadata.
+        # ----------------------------
+        component_overrides = structure.get("component_overrides", []) if isinstance(structure, dict) else []
+        for co in component_overrides:
+            comp_code = str(co.get("component_code") or "").strip().upper()
+            if not comp_code:
+                continue
+            proration_strategy = str(co.get("proration_strategy") or "").strip().lower()
+            overrides_json: dict = {}
+            if proration_strategy:
+                overrides_json["calculations_behaviour"] = {"proration_strategy": proration_strategy}
+            db.execute(
+                text("""
+                    INSERT INTO client_component_metadata (
+                        workspace_id, component_code, overrides_json
+                    )
+                    VALUES (:wid, :code, :overrides)
+                    ON CONFLICT (workspace_id, component_code)
+                    DO UPDATE SET overrides_json = EXCLUDED.overrides_json
+                """),
+                {
+                    "wid":      workspace_id,
+                    "code":     comp_code,
+                    "overrides": Json(overrides_json),
+                },
+            )
+
         # Build grade and designation code→id maps from all DB rows for this
         # workspace (covers both newly inserted and pre-existing records).
         grade_id_map: dict[str, str] = {}
@@ -372,14 +408,22 @@ async def commit_onboarding(request: Request):
             text("SELECT grade_id, grade_code FROM grade WHERE workspace_id = :wid"),
             {"wid": workspace_id},
         ).fetchall():
-            grade_id_map[str(row[1]).upper()] = str(row[0])
+            key_upper = str(row[1]).upper()
+            grade_id_map[key_upper] = str(row[0])
+            # Also index by spaces→underscores so frontend-normalized codes match
+            # e.g. "STEP 1_Driver" → "STEP_1_DRIVER"
+            key_norm = key_upper.replace(" ", "_")
+            grade_id_map.setdefault(key_norm, str(row[0]))
 
         designation_id_map: dict[str, str] = {}
         for row in db.execute(
             text("SELECT designation_id, designation_code FROM designation WHERE workspace_id = :wid"),
             {"wid": workspace_id},
         ).fetchall():
-            designation_id_map[str(row[1]).upper()] = str(row[0])
+            key_upper = str(row[1]).upper()
+            designation_id_map[key_upper] = str(row[0])
+            key_norm = key_upper.replace(" ", "_")
+            designation_id_map.setdefault(key_norm, str(row[0]))
 
         # ----------------------------
         # INSERT EMPLOYEES + CONTRACTS
@@ -431,29 +475,81 @@ async def commit_onboarding(request: Request):
                     f"Employee '{emp_number}': salary definition '{ref}' not found"
                 )
 
-            # Resolve grade and designation FKs by code (uppercase for consistency)
+            # Resolve grade FK — simple upper() lookup first; if not found, fall
+            # back to deriving from the salary def code (e.g. DRIVER_STEP_1 → STEP_1).
             emp_grade = str(emp.get("grade") or "").upper()
-            emp_desig = str(emp.get("designation") or "").upper()
-            grade_id       = grade_id_map.get(emp_grade)
-            designation_id = designation_id_map.get(emp_desig)
+            grade_id  = grade_id_map.get(emp_grade)
+
+            # Resolve designation FK — try upper() and spaces→underscores first;
+            # if still unresolved, derive from the salary def code.
+            emp_desig_raw = str(emp.get("designation") or "")
+            emp_desig     = emp_desig_raw.strip().upper()
+            designation_id = (
+                designation_id_map.get(emp_desig)
+                or designation_id_map.get(emp_desig.replace(" ", "_"))
+            )
+
+            # Fallback: parse grade + designation directly from the salary def code.
+            # Salary def codes are built as DESIGNATION_GRADE (e.g. DISPATCH_RIDER_STEP_1B).
+            # Sort by descending key length so longer codes are preferred over shorter ones.
+            if not grade_id or not designation_id:
+                sal_upper = (sd_code or "").upper()
+                sorted_grades = sorted(grade_id_map.keys(), key=len, reverse=True)
+
+                if not grade_id:
+                    for g_upper in sorted_grades:
+                        if sal_upper == g_upper or sal_upper.endswith("_" + g_upper):
+                            grade_id = grade_id_map[g_upper]
+                            emp_grade = g_upper
+                            break
+
+                if not designation_id:
+                    if sal_upper.endswith("_" + emp_grade):
+                        des_part = sal_upper[: -(len(emp_grade) + 1)]
+                    elif sal_upper == emp_grade:
+                        des_part = ""
+                    else:
+                        des_part = sal_upper
+                    if des_part:
+                        designation_id = designation_id_map.get(des_part)
+
+            # Resolve contract dates from payload; default start to CURRENT_DATE.
+            emp_start_str = emp.get("contract_start")
+            emp_end_str   = emp.get("contract_end")
+            try:
+                emp_start_date = _date.fromisoformat(emp_start_str) if emp_start_str else None
+            except ValueError:
+                raise Exception(
+                    f"Employee '{emp_number}': invalid contract_start '{emp_start_str}' (use YYYY-MM-DD)"
+                )
+            try:
+                emp_end_date = _date.fromisoformat(emp_end_str) if emp_end_str else None
+            except ValueError:
+                raise Exception(
+                    f"Employee '{emp_number}': invalid contract_end '{emp_end_str}' (use YYYY-MM-DD)"
+                )
 
             db.execute(
                 text("""
                     INSERT INTO employee_contract (
                         contract_id, employee_id, salary_definition_id,
-                        grade_id, designation_id, start_date
+                        grade_id, designation_id, start_date, end_date
                     )
                     VALUES (
                         :cid, :employee_id, :salary_definition_id,
-                        :grade_id, :designation_id, CURRENT_DATE
+                        :grade_id, :designation_id,
+                        COALESCE(:start_date::DATE, CURRENT_DATE),
+                        :end_date::DATE
                     )
                 """),
                 {
-                    "cid": str(uuid4()),
-                    "employee_id": employee_id,
+                    "cid":                  str(uuid4()),
+                    "employee_id":          employee_id,
                     "salary_definition_id": salary_definition_id,
-                    "grade_id": grade_id,
-                    "designation_id": designation_id,
+                    "grade_id":             grade_id,
+                    "designation_id":       designation_id,
+                    "start_date":           emp_start_date,
+                    "end_date":             emp_end_date,
                 },
             )
 

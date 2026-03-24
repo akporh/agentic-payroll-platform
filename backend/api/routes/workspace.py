@@ -196,6 +196,62 @@ def list_employees(workspace_id: str):
         db.close()
 
 
+class EmployeeContractUpdateSchema(BaseModel):
+    grade_code: str | None = None
+    designation_code: str | None = None
+
+
+@router.patch("/{workspace_id}/employees/{employee_id}/contract")
+def update_employee_contract(
+    workspace_id: str, employee_id: str, payload: EmployeeContractUpdateSchema
+):
+    db = SessionLocal()
+    try:
+        grade_id = None
+        if payload.grade_code:
+            row = db.execute(
+                text("SELECT grade_id FROM grade WHERE workspace_id = :wid AND grade_code = :code"),
+                {"wid": workspace_id, "code": payload.grade_code},
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=400, detail=f"Grade '{payload.grade_code}' not found")
+            grade_id = str(row[0])
+
+        designation_id = None
+        if payload.designation_code:
+            row = db.execute(
+                text(
+                    "SELECT designation_id FROM designation WHERE workspace_id = :wid AND designation_code = :code"
+                ),
+                {"wid": workspace_id, "code": payload.designation_code},
+            ).fetchone()
+            if not row:
+                raise HTTPException(
+                    status_code=400, detail=f"Designation '{payload.designation_code}' not found"
+                )
+            designation_id = str(row[0])
+
+        db.execute(
+            text("""
+                UPDATE employee_contract
+                SET grade_id       = COALESCE(:grade_id::uuid, grade_id),
+                    designation_id = COALESCE(:designation_id::uuid, designation_id)
+                WHERE employee_id = :eid
+                  AND (end_date IS NULL OR end_date >= CURRENT_DATE)
+            """),
+            {"grade_id": grade_id, "designation_id": designation_id, "eid": employee_id},
+        )
+        db.commit()
+        return {"status": "updated", "employee_id": employee_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
 @router.get("/{workspace_id}/salary-definitions")
 def list_salary_definitions(workspace_id: str):
     """Return all salary definitions for a workspace with their codes.
@@ -221,6 +277,59 @@ def list_salary_definitions(workspace_id: str):
             }
             for row in rows
         ]
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/designations")
+def list_designations(workspace_id: str):
+    """Return all designation codes for a workspace. Used by the upload UI for designation resolution."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT designation_id, designation_code
+                FROM designation
+                WHERE workspace_id = :wid
+                ORDER BY designation_code
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+        return [{"designation_id": str(row[0]), "code": row[1]} for row in rows]
+    finally:
+        db.close()
+
+
+@router.post("/{workspace_id}/salary-definitions")
+def create_salary_definition_by_code(workspace_id: str, body: dict):
+    """Create a minimal salary definition by code (empty components). Used when a grade code
+    from an uploaded Excel file has no matching salary definition in the workspace."""
+    code = (body.get("code") or "").strip().upper()
+    name = body.get("name") or code
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text("""
+                INSERT INTO salary_definition (salary_definition_id, workspace_id, code, name, components_jsonb)
+                VALUES (gen_random_uuid(), :wid, :code, :name, '{}'::jsonb)
+                ON CONFLICT DO NOTHING
+                RETURNING salary_definition_id, code, name
+            """),
+            {"wid": workspace_id, "code": code, "name": name},
+        ).fetchone()
+        db.commit()
+        if not row:
+            row = db.execute(
+                text("""
+                    SELECT salary_definition_id, code, name
+                    FROM salary_definition
+                    WHERE workspace_id = :wid AND code = :code
+                """),
+                {"wid": workspace_id, "code": code},
+            ).fetchone()
+        return {"salary_definition_id": str(row[0]), "code": row[1], "name": row[2]}
     finally:
         db.close()
 
@@ -308,5 +417,201 @@ def create_component_metadata_endpoint(workspace_id: str, payload: ComponentMeta
             component_code=payload.component_code,
             overrides_json=payload.overrides_json,
         )
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/platform-components")
+def list_platform_components(workspace_id: str):
+    """Return statutory components available for the workspace's country."""
+    db = SessionLocal()
+    try:
+        workspace = db.execute(
+            text("SELECT country_code FROM workspace WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchone()
+
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        country_code = workspace[0]
+
+        rows = db.execute(
+            text("""
+                SELECT component_code, metadata_json, component_class
+                FROM component_metadata
+                WHERE country_code = :cc
+                  AND component_class = 'statutory_deduction'
+                  AND is_active = TRUE
+                ORDER BY execution_priority
+            """),
+            {"cc": country_code},
+        ).fetchall()
+
+        return [
+            {
+                "component_code": row[0],
+                "label": (row[1] or {}).get("label", row[0]),
+                "component_class": row[2],
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/component-overrides")
+def list_component_overrides(workspace_id: str):
+    """Return existing client component overrides for the workspace."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT component_code, overrides_json
+                FROM client_component_metadata
+                WHERE workspace_id = :wid
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        return [
+            {
+                "component_code": row[0],
+                "overrides_json": row[1],
+                "is_active": True,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/configuration")
+def get_workspace_configuration(workspace_id: str):
+    """Aggregate workspace configuration from multiple tables."""
+    db = SessionLocal()
+    try:
+        # Workspace
+        ws = db.execute(
+            text("""
+                SELECT workspace_id, name, country_code, base_currency, status
+                FROM workspace WHERE workspace_id = :wid
+            """),
+            {"wid": workspace_id},
+        ).fetchone()
+
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        # Pay cycle
+        pc = db.execute(
+            text("""
+                SELECT frequency, run_day, cutoff_day, payment_day
+                FROM pay_cycle
+                WHERE workspace_id = :wid AND is_active = TRUE
+                LIMIT 1
+            """),
+            {"wid": workspace_id},
+        ).fetchone()
+
+        # Grades
+        grades = db.execute(
+            text("""
+                SELECT grade_code, description
+                FROM grade WHERE workspace_id = :wid ORDER BY grade_code
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        # Designations
+        designations = db.execute(
+            text("""
+                SELECT designation_code, description
+                FROM designation WHERE workspace_id = :wid ORDER BY designation_code
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        # Salary definitions
+        sal_defs = db.execute(
+            text("""
+                SELECT name, code, components_jsonb
+                FROM salary_definition WHERE workspace_id = :wid ORDER BY code
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        # Payroll rules
+        rules = db.execute(
+            text("""
+                SELECT rule_name, rule_type,
+                       rule_definition_json->>'method' AS method
+                FROM payroll_rule
+                WHERE workspace_id = :wid AND is_active = TRUE
+                ORDER BY rule_name
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        # Component overrides
+        overrides = db.execute(
+            text("""
+                SELECT component_code, overrides_json
+                FROM client_component_metadata WHERE workspace_id = :wid
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        def _components_to_list(components_jsonb: dict) -> list:
+            """Convert {CODE: amount_or_dict} → [{component_name, amount}]."""
+            out = []
+            for code, val in (components_jsonb or {}).items():
+                amount = val.get("amount", val) if isinstance(val, dict) else val
+                try:
+                    amount = float(amount)
+                except (TypeError, ValueError):
+                    amount = 0.0
+                out.append({"component_name": code, "amount": amount})
+            return out
+
+        return {
+            "workspace": {
+                "id": str(ws[0]),
+                "name": ws[1],
+                "country_code": ws[2],
+                "currency_code": ws[3],
+                "status": ws[4],
+            },
+            "pay_cycle": {
+                "frequency": pc[0],
+                "run_day": pc[1],
+                "cutoff_day": pc[2],
+                "payment_day": pc[3],
+            } if pc else None,
+            "grades": [
+                {"code": r[0], "description": r[1]} for r in grades
+            ],
+            "designations": [
+                {"code": r[0], "description": r[1]} for r in designations
+            ],
+            "salary_definitions": [
+                {
+                    "name": r[0],
+                    "code": r[1],
+                    "components": _components_to_list(r[2]),
+                }
+                for r in sal_defs
+            ],
+            "payroll_rules": [
+                {"name": r[0], "rule_type": r[1], "method": r[2] or "—"} for r in rules
+            ],
+            "component_overrides": [
+                {
+                    "component_name": r[0],
+                    "is_active": (r[1] or {}).get("is_active", True),
+                }
+                for r in overrides
+            ],
+        }
     finally:
         db.close()

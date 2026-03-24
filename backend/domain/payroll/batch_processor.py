@@ -70,9 +70,11 @@ def process_payroll_run(
 
     for emp in employees:
 
-        emp_id = emp["employee_id"]
-        components = emp["components"]
-        inputs = emp.get("inputs", {})
+        emp_id         = emp["employee_id"]
+        components     = emp["components"]
+        inputs         = emp.get("inputs", {})
+        contract_start = emp.get("contract_start")
+        contract_end   = emp.get("contract_end")
         short_id = emp_id[:8]
 
         tracer.info(f"[bold]Employee {short_id}[/bold]")
@@ -99,6 +101,8 @@ def process_payroll_run(
                 inputs=inputs,
                 component_metadata=component_metadata,
                 context=context,
+                contract_start=contract_start,
+                contract_end=contract_end,
                 tracer=tracer,
             )
 

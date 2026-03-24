@@ -83,6 +83,11 @@ def validate_payroll_run_ready(run_id: str) -> dict:
             errors.append(
                 "Pay period end date must not be before period start date"
             )
+        elif (period_end - period_start).days + 1 > 366:
+            errors.append(
+                f"Pay period span of {(period_end - period_start).days + 1} days "
+                "exceeds the maximum allowed (366). Check period_start and period_end."
+            )
 
         # -------------------------------------------------------------------
         # 4. No existing payroll_result rows for this run.

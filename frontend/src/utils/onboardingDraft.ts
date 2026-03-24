@@ -1,6 +1,6 @@
 import type { MappedEmployee } from '../components/onboarding/EmployeeUpload';
 
-export type OnboardingDraftStep = 'client-config-json' | 'employee-upload';
+export type OnboardingDraftStep = 'client-config-json' | 'component-settings' | 'employee-upload';
 
 export interface OnboardingDraft {
   version: 1;

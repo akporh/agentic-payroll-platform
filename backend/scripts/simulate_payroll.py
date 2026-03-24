@@ -28,6 +28,8 @@ from rich.panel import Panel  # noqa: E402
 
 from backend.infra.db.session import SessionLocal  # noqa: E402
 from backend.domain.payroll.sequential_executor import run_sequential_payroll  # noqa: E402
+from backend.domain.payroll.rule_evaluator import apply_payroll_rules  # noqa: E402
+from backend.domain.payroll.period_context import build_period_context  # noqa: E402
 
 console = Console(highlight=False, width=120)
 I = "     "  # indent
@@ -528,7 +530,8 @@ def _print_summary(salary_components, results, client_overrides, pension_employe
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def simulate(employee_id=None, employee_number=None, workspace_id=None):
+def simulate(employee_id=None, employee_number=None, workspace_id=None,
+             period_start=None, period_end=None):
     db = SessionLocal()
     try:
         emp          = _load_employee(db, employee_id, employee_number, workspace_id)
@@ -542,12 +545,17 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None):
         sal_def, salary_components = _load_salary_components(db, str(emp["employee_id"]))
 
         sr, pension_employee_rate, pension_employer_rate = _load_statutory_rule(db, workspace_id)
+        rules_jsonb = sr.get("rules_jsonb") or {}
         tax_bands        = _load_tax_bands(db, str(sr["statutory_rule_id"]))
         all_platform_meta = _load_component_metadata(db, country_code)
         client_overrides  = _load_client_overrides(db, workspace_id)
         payroll_rules     = _load_payroll_rules(db, workspace_id)
         employee_inputs   = _load_payroll_inputs(db, str(emp["employee_id"]))
-        rent_relief_cfg   = (sr.get("rules_jsonb") or {}).get("reliefs", {}).get("rent_relief", {})
+        rent_relief_cfg   = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
+        nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
+        health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
+        development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+        life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
     finally:
         db.close()
 
@@ -556,12 +564,54 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None):
     engine_metadata = [m for m in all_platform_meta if m["component_code"] not in disabled_codes]
     meta_map        = {m["component_code"]: m for m in all_platform_meta}
 
+    # Build client_meta: global component_metadata.metadata_json as base layer,
+    # workspace overrides on top — mirrors the production /payroll/run route.
+    client_meta = {m["component_code"]: dict(m.get("metadata_json") or {}) for m in engine_metadata}
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
+    # Period context — use CLI args if supplied, otherwise current month
+    period_ctx = build_period_context(
+        period_start=period_start,
+        period_end=period_end,
+        period_type=pay_cycle.get("frequency"),
+    )
+
+    # Apply workspace payroll rules to salary_components before the engine
+    # (mirrors the production _run_sequential path in executor.py)
+    if payroll_rules:
+        salary_components, _rule_trace = apply_payroll_rules(
+            salary_components=salary_components,
+            payroll_rules=payroll_rules,
+            employee_inputs=employee_inputs,
+            client_meta=client_meta,
+            working_days=period_ctx.working_days,
+            calendar_days=period_ctx.calendar_days,
+        )
+
     context = {
-        "tax_bands":             tax_bands,
-        "pension_employee_rate": pension_employee_rate,
-        "pension_employer_rate": pension_employer_rate,
-        "rent_relief_cfg":       rent_relief_cfg,
-        "employee_inputs":       employee_inputs,
+        "tax_bands":                        tax_bands,
+        "pension_employee_rate":            pension_employee_rate,
+        "pension_employer_rate":            pension_employer_rate,
+        "rent_relief_cfg":                  rent_relief_cfg,
+        "nhf_rate":                         nhf_rate,
+        "health_insurance_employee_amount": health_insurance_employee_amount,
+        "development_levy_amount":          development_levy_amount,
+        "life_insurance_employer_rate":     life_insurance_employer_rate,
+        "employee_inputs":                  employee_inputs,
+        "client_meta":                      client_meta,
+        "period":                           period_ctx,
+        "payroll_rules":                    payroll_rules,
     }
 
     output  = run_sequential_payroll(salary_components, engine_metadata, context)
@@ -595,10 +645,18 @@ Examples:
     parser.add_argument("--employee-id",     dest="employee_id_flag", metavar="UUID")
     parser.add_argument("--employee-number", metavar="CODE")
     parser.add_argument("--workspace-id",    metavar="UUID")
+    parser.add_argument("--period-start",    metavar="YYYY-MM-DD", help="Period start date (default: first of current month)")
+    parser.add_argument("--period-end",      metavar="YYYY-MM-DD", help="Period end date (default: last of period_start month)")
     args = parser.parse_args()
 
     eid = args.employee_id_flag or args.employee_id
-    simulate(employee_id=eid, employee_number=args.employee_number, workspace_id=args.workspace_id)
+    simulate(
+        employee_id=eid,
+        employee_number=args.employee_number,
+        workspace_id=args.workspace_id,
+        period_start=args.period_start,
+        period_end=args.period_end,
+    )
 
 
 if __name__ == "__main__":

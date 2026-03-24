@@ -26,6 +26,7 @@ from rich.table import Table
 from backend.infra.db.session import SessionLocal
 from backend.domain.payroll.sequential_executor import run_sequential_payroll
 from backend.domain.payroll.rule_evaluator import apply_payroll_rules
+from backend.domain.payroll.period_context import build_period_context
 
 console = Console(highlight=False)
 
@@ -347,21 +348,40 @@ def run(employee_id: str):
         """),
         {"wid": workspace_id},
     ).mappings().all()
-    client_meta = {r["component_code"]: r["overrides_json"] for r in ccm_rows}
+    client_overrides = {r["component_code"]: r["overrides_json"] for r in ccm_rows}
+
+    # Build client_meta: global component_metadata.metadata_json as base,
+    # workspace overrides on top — mirrors the production /payroll/run route.
+    client_meta = {m["component_code"]: dict(m.get("metadata_json") or {}) for m in component_metadata}
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
     for code, meta in client_meta.items():
         lr = meta.get("legal_role", {})
         cb = meta.get("calculations_behaviour", {})
+        is_ws_override = code in client_overrides
         console.print(
             f"  [dim]  {code:<28} "
             f"is_pensionable={lr.get('is_pensionable')}  "
             f"is_taxable={lr.get('is_taxable')}  "
             f"is_active={meta.get('is_active', True)}  "
-            f"proration={cb.get('proration_strategy')}[/dim]"
+            f"proration={cb.get('proration_strategy')}"
+            f"{'  [ws override]' if is_ws_override else '  [global default]'}[/dim]"
         )
 
     # Suppress disabled components (mirrors production payroll.py behaviour)
     disabled_codes = {
-        code for code, ov in client_meta.items()
+        code for code, ov in client_overrides.items()
         if not ov.get("is_active", True)
     }
     if disabled_codes:
@@ -443,6 +463,14 @@ def run(employee_id: str):
     console.print()
     console.rule("[bold magenta]PHASE 2 — ASSEMBLE INPUTS[/bold magenta]", style="magenta")
 
+    # Build PeriodContext using pay_cycle frequency (defaults to current month)
+    pay_cycle_row = session.execute(
+        text("SELECT frequency FROM pay_cycle WHERE workspace_id = :wid AND is_active = TRUE LIMIT 1"),
+        {"wid": workspace_id},
+    ).mappings().first()
+    pay_cycle_frequency = pay_cycle_row["frequency"] if pay_cycle_row else None
+    period_ctx = build_period_context(period_type=pay_cycle_frequency)
+
     step(
         "context dict",
         "context = {\n"
@@ -451,7 +479,8 @@ def run(employee_id: str):
         "    'pension_employer_rate': pension_employer_rate,\n"
         "    'rent_relief_cfg':       rent_relief_cfg,\n"
         "    'employee_inputs':       employee_inputs,\n"
-        "    'client_meta':           client_meta,\n"
+        "    'client_meta':           client_meta,   # global defaults + workspace overrides\n"
+        "    'period':                period_ctx,\n"
         "}",
     )
     context = {
@@ -461,13 +490,16 @@ def run(employee_id: str):
         "rent_relief_cfg":       rent_relief_cfg,
         "employee_inputs":       employee_inputs,
         "client_meta":           client_meta,
+        "period":                period_ctx,
     }
     console.print(f"  [dim]pension_employee_rate = {context['pension_employee_rate']}[/dim]")
     console.print(f"  [dim]pension_employer_rate = {context['pension_employer_rate']}[/dim]")
     console.print(f"  [dim]rent_relief_cfg        = {rent_relief_cfg}[/dim]")
     console.print(f"  [dim]employee_inputs        = {len(employee_inputs)} input(s)[/dim]")
-    console.print(f"  [dim]client_meta            = {len(client_meta)} component(s)[/dim]")
+    console.print(f"  [dim]client_meta            = {len(client_meta)} component(s) (merged)[/dim]")
     console.print(f"  [dim]tax_bands              = {len(tax_bands)} band(s)[/dim]")
+    console.print(f"  [dim]period                 = {period_ctx.period_start} → {period_ctx.period_end}  "
+                  f"({period_ctx.period_type.value}, {period_ctx.working_days} working days)[/dim]")
 
     # ── PHASE 2.5 : PAYROLL RULES ─────────────────────────────────────────────
     console.print()

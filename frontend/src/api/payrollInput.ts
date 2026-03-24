@@ -15,6 +15,7 @@ export const payrollInputApi = {
       quantity?: number;
       rate?: number;
       amount?: number;
+      reference_date?: string;
     }
   ) =>
     api.post<{ status: string; payroll_input_id: string }>(

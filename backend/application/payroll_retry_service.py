@@ -60,11 +60,13 @@ reject any writes, but the early ValueError is cleaner.
 """
 
 import json
+from decimal import Decimal
 
 from psycopg2.extras import Json
 from sqlalchemy import text
 
 from backend.domain.payroll.executor import execute_single_employee_payroll
+from backend.domain.payroll.period_context import build_period_context
 from backend.infra.db.session import SessionLocal
 
 
@@ -75,6 +77,187 @@ from backend.infra.db.session import SessionLocal
 def _sanitize(obj: dict) -> dict:
     """Coerce Decimal / UUID / date values to JSON-safe types."""
     return json.loads(json.dumps(obj, default=str))
+
+
+def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
+    """Build the same execution context that the original /payroll/run route builds.
+
+    Loads period dates from the payroll_run row, resolves statutory rule via
+    country_code, loads component_metadata, client_meta, payroll_rules, and all
+    statutory rate parameters.  Returns a dict with keys:
+
+        "context"            — full context dict for execute_single_employee_payroll
+        "component_metadata" — list of component dicts for the sequential executor
+        "tax_bands"          — list of tax band dicts
+        "statutory_rule_id"  — str
+        "statutory_version"  — int
+        "payroll_rule_ids"   — list[str]  (for rules_context_snapshot)
+    """
+    # ── Load workspace country_code and run period dates ──────────────────────
+    row = db.execute(
+        text("""
+            SELECT w.country_code, pr.period_start, pr.period_end
+            FROM   payroll_run pr
+            JOIN   workspace   w  ON pr.workspace_id = w.workspace_id
+            WHERE  pr.payroll_run_id = :run_id
+        """),
+        {"run_id": payroll_run_id},
+    ).fetchone()
+
+    if row is None:
+        raise ValueError(f"Payroll run not found: {payroll_run_id}")
+
+    country_code  = row[0]
+    period_start  = row[1]
+    period_end    = row[2]
+
+    period_ctx = build_period_context(
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+    # ── Statutory rule (joined to workspace country_code, same as /payroll/run) ─
+    stat_row = db.execute(
+        text("""
+            SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+            FROM   statutory_rule sr
+            WHERE  sr.country_code = :cc
+            ORDER  BY sr.version DESC
+            LIMIT  1
+        """),
+        {"cc": country_code},
+    ).fetchone()
+
+    if stat_row is None:
+        raise ValueError(f"No statutory rule found for country_code '{country_code}'")
+
+    statutory_rule_id = str(stat_row[0])
+    statutory_version = stat_row[1]
+    rules_jsonb       = stat_row[2] or {}
+
+    pension_config        = rules_jsonb.get("pension", {})
+    pension_employee_rate = Decimal(str(pension_config.get("employee_rate", "0.09")))
+    pension_employer_rate = Decimal(str(pension_config.get("employer_rate", "0.10")))
+    rent_relief_cfg       = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
+    nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
+    health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
+    dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+    life_ins_rate         = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
+
+    # ── Tax bands ─────────────────────────────────────────────────────────────
+    tax_rows = db.execute(
+        text("""
+            SELECT lower_limit, upper_limit, rate
+            FROM   tax_band
+            WHERE  statutory_rule_id = :sr_id
+            ORDER  BY lower_limit
+        """),
+        {"sr_id": statutory_rule_id},
+    ).fetchall()
+
+    tax_bands = [{"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]} for r in tax_rows]
+
+    # ── Component metadata ────────────────────────────────────────────────────
+    comp_rows = db.execute(
+        text("""
+            SELECT component_code, component_class, calculation_method,
+                   execution_priority, is_active, metadata_json
+            FROM   component_metadata
+            WHERE  country_code = :cc
+              AND  is_active     = TRUE
+            ORDER  BY execution_priority
+        """),
+        {"cc": country_code},
+    ).fetchall()
+
+    component_metadata = [
+        {
+            "component_code":     r[0],
+            "component_class":    r[1],
+            "calculation_method": r[2],
+            "execution_priority": r[3],
+            "is_active":          r[4],
+            "metadata_json":      r[5],
+        }
+        for r in comp_rows
+    ]
+
+    # ── Workspace component overrides (disable + flat-amount + proration) ─────
+    override_rows = db.execute(
+        text("SELECT component_code, overrides_json FROM client_component_metadata WHERE workspace_id = :wid"),
+        {"wid": workspace_id},
+    ).fetchall()
+
+    client_overrides = {r[0]: r[1] for r in override_rows}
+
+    disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
+    if disabled_codes:
+        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        dev_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_ins_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
+
+    # Build client_meta: global defaults as base, workspace overrides on top
+    client_meta = {m["component_code"]: dict(m.get("metadata_json") or {}) for m in component_metadata}
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
+    # ── Active payroll rules (full objects, not just IDs) ─────────────────────
+    rule_rows = db.execute(
+        text("""
+            SELECT rule_id, rule_name, rule_definition_json, is_active
+            FROM   payroll_rule
+            WHERE  is_active    = TRUE
+              AND  workspace_id = :wid
+        """),
+        {"wid": workspace_id},
+    ).fetchall()
+
+    payroll_rule_ids  = [str(r[0]) for r in rule_rows]
+    payroll_rules_full = [
+        {
+            "rule_id":              str(r[0]),
+            "rule_name":            r[1],
+            "rule_definition_json": r[2],
+            "is_active":            r[3],
+        }
+        for r in rule_rows
+    ]
+
+    context = {
+        "tax_bands":                        tax_bands,
+        "pension_employee_rate":            pension_employee_rate,
+        "pension_employer_rate":            pension_employer_rate,
+        "rent_relief_cfg":                  rent_relief_cfg,
+        "nhf_rate":                         nhf_rate,
+        "health_insurance_employee_amount": health_ins_amount,
+        "development_levy_amount":          dev_levy_amount,
+        "life_insurance_employer_rate":     life_ins_rate,
+        "client_meta":                      client_meta,
+        "period":                           period_ctx,
+        "payroll_rules":                    payroll_rules_full,
+    }
+
+    return {
+        "context":           context,
+        "component_metadata": component_metadata,
+        "tax_bands":         tax_bands,
+        "statutory_rule_id": statutory_rule_id,
+        "statutory_version": statutory_version,
+        "payroll_rule_ids":  payroll_rule_ids,
+    }
 
 
 def _insert_result(
@@ -172,40 +355,13 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
     Called inside the same transaction and DB session as the caller.
     """
 
-    # 1. Load shared inputs (same pattern as the original run)
-    stat_row = db.execute(
-        text("SELECT statutory_rule_id, version FROM statutory_rule ORDER BY version DESC LIMIT 1")
-    ).fetchone()
-
-    if stat_row is None:
-        raise ValueError("No statutory rule found")
-
-    statutory_rule_id = str(stat_row[0])
-    statutory_version = stat_row[1]
-
-    tax_rows = db.execute(
-        text("""
-            SELECT lower_limit, upper_limit, rate
-            FROM   tax_band
-            WHERE  statutory_rule_id = :sr_id
-            ORDER  BY lower_limit
-        """),
-        {"sr_id": statutory_rule_id},
-    ).fetchall()
-
-    tax_bands = [{"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]} for r in tax_rows]
-
-    rule_rows = db.execute(
-        text("SELECT rule_id FROM payroll_rule WHERE is_active = TRUE AND workspace_id = :wid"),
-        {"wid": workspace_id},
-    ).fetchall()
-
-    payroll_rule_ids = [str(r[0]) for r in rule_rows]
+    # 1. Build the same shared execution context the original /payroll/run route built.
+    shared_ctx = _build_shared_context(db, workspace_id, payroll_run_id)
 
     # 2. Load ALL active employees for the workspace with current salary data
     emp_rows = db.execute(
         text("""
-            SELECT e.employee_id, sd.components_jsonb
+            SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date
             FROM   employee e
             JOIN   employee_contract ec ON e.employee_id = ec.employee_id
             JOIN   salary_definition sd ON ec.salary_definition_id = sd.salary_definition_id
@@ -235,17 +391,23 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
             {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
             for k, v in emp[1].items()
         ]
+        contract_start = emp[2].isoformat() if emp[2] else None
+        contract_end   = emp[3].isoformat() if emp[3] else None
 
         try:
             calc_result = execute_single_employee_payroll(
                 payroll_run_id    = payroll_run_id,
                 employee_id       = employee_id,
                 components        = components,
-                tax_bands         = tax_bands,
-                statutory_rule_id = statutory_rule_id,
-                statutory_version = statutory_version,
-                payroll_rule_ids  = payroll_rule_ids,
+                tax_bands         = shared_ctx["tax_bands"],
+                statutory_rule_id = shared_ctx["statutory_rule_id"],
+                statutory_version = shared_ctx["statutory_version"],
+                payroll_rule_ids  = shared_ctx["payroll_rule_ids"],
                 performed_by      = "admin@internal",
+                component_metadata = shared_ctx["component_metadata"],
+                context            = shared_ctx["context"],
+                contract_start     = contract_start,
+                contract_end       = contract_end,
             )
             calc_error = None
         except Exception as exc:
@@ -393,50 +555,11 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
         failed_employee_ids = [str(r[0]) for r in failed_rows]
 
         # -------------------------------------------------------------------
-        # Step 3 — Load shared inputs (statutory rule, tax bands, rules).
-        #          Same query as the original /payroll/run route.
+        # Step 3 — Build shared execution context (period, statutory rates,
+        #          component_metadata, client_meta, payroll_rules) using the
+        #          same logic as the original /payroll/run route.
         # -------------------------------------------------------------------
-        stat_row = db.execute(
-            text("""
-                SELECT statutory_rule_id, version
-                FROM   statutory_rule
-                ORDER  BY version DESC
-                LIMIT  1
-            """)
-        ).fetchone()
-
-        if stat_row is None:
-            raise ValueError("No statutory rule found")
-
-        statutory_rule_id = str(stat_row[0])
-        statutory_version = stat_row[1]
-
-        tax_rows = db.execute(
-            text("""
-                SELECT lower_limit, upper_limit, rate
-                FROM   tax_band
-                WHERE  statutory_rule_id = :sr_id
-                ORDER  BY lower_limit
-            """),
-            {"sr_id": statutory_rule_id},
-        ).fetchall()
-
-        tax_bands = [
-            {"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]}
-            for r in tax_rows
-        ]
-
-        rule_rows = db.execute(
-            text("""
-                SELECT rule_id
-                FROM   payroll_rule
-                WHERE  is_active     = TRUE
-                  AND  workspace_id  = :wid
-            """),
-            {"wid": workspace_id},
-        ).fetchall()
-
-        payroll_rule_ids = [str(r[0]) for r in rule_rows]
+        shared_ctx = _build_shared_context(db, workspace_id, payroll_run_id)
 
         # -------------------------------------------------------------------
         # Step 4 — Process each FAILED employee.
@@ -456,13 +579,13 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
 
         for employee_id in failed_employee_ids:
 
-            # Load the employee's CURRENT salary components.
+            # Load the employee's CURRENT salary components and contract dates.
             # If the data was corrected since the original run (the normal
             # "fix then retry" workflow), the corrected values are picked up
             # here automatically.
             emp_row = db.execute(
                 text("""
-                    SELECT sd.components_jsonb
+                    SELECT sd.components_jsonb, ec.start_date, ec.end_date
                     FROM   employee e
                     JOIN   employee_contract ec
                            ON e.employee_id = ec.employee_id
@@ -487,16 +610,22 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
                     {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
                     for k, v in emp_row[0].items()
                 ]
+                contract_start = emp_row[1].isoformat() if emp_row[1] else None
+                contract_end   = emp_row[2].isoformat() if emp_row[2] else None
                 try:
                     calc_result = execute_single_employee_payroll(
-                        payroll_run_id    = payroll_run_id,
-                        employee_id       = employee_id,
-                        components        = components,
-                        tax_bands         = tax_bands,
-                        statutory_rule_id = statutory_rule_id,
-                        statutory_version = statutory_version,
-                        payroll_rule_ids  = payroll_rule_ids,
-                        performed_by      = "admin@internal",
+                        payroll_run_id     = payroll_run_id,
+                        employee_id        = employee_id,
+                        components         = components,
+                        tax_bands          = shared_ctx["tax_bands"],
+                        statutory_rule_id  = shared_ctx["statutory_rule_id"],
+                        statutory_version  = shared_ctx["statutory_version"],
+                        payroll_rule_ids   = shared_ctx["payroll_rule_ids"],
+                        performed_by       = "admin@internal",
+                        component_metadata = shared_ctx["component_metadata"],
+                        context            = shared_ctx["context"],
+                        contract_start     = contract_start,
+                        contract_end       = contract_end,
                     )
                     calc_error = None
                 except Exception as exc:
