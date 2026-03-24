@@ -1,12 +1,14 @@
 from backend.domain.payroll.status import PayrollRunStatus
 
 
-def test_enum_has_exactly_five_values():
-    assert len(PayrollRunStatus) == 5
+def test_enum_has_expected_values():
+    expected = {"DRAFT", "CALCULATING", "CALCULATED", "APPROVED", "LOCKED", "PARTIAL", "PAID"}
+    actual = {s.value for s in PayrollRunStatus}
+    assert actual == expected
 
 
 def test_enum_contains_expected_values():
-    expected = {"DRAFT", "CALCULATING", "CALCULATED", "APPROVED", "LOCKED"}
+    expected = {"DRAFT", "CALCULATING", "CALCULATED", "APPROVED", "LOCKED", "PARTIAL", "PAID"}
     actual = {s.value for s in PayrollRunStatus}
     assert actual == expected
 

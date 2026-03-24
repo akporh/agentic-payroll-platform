@@ -16,7 +16,11 @@ TAX_BANDS = [
 
 def test_build_payroll_result():
     result = build_payroll_result(COMPONENTS, TAX_BANDS)
-    assert result["gross_components_jsonb"] == COMPONENTS
+    # gross_components_jsonb is a dict keyed by component code
+    assert result["gross_components_jsonb"] == {
+        "BASIC":   {"amount": 500000},
+        "HOUSING": {"amount": 300000},
+    }
     assert result["deductions_jsonb"] == {"PAYE": Decimal("84000.00")}
     assert result["net_pay"] == Decimal("716000.00")
     assert result["calculations_snapshot_json"] == {
