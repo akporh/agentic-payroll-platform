@@ -26,7 +26,7 @@ from decimal import Decimal
 
 import pytest
 
-from backend.domain.payroll.sequential_executor import run_sequential_payroll
+from backend.domain.payroll.sequential_executor import run_sequential_payroll, register_handler
 from backend.domain.payroll.period_context import build_period_context
 
 # ---------------------------------------------------------------------------
@@ -272,3 +272,141 @@ class TestDeterminism:
         out1 = run()
         out2 = run()
         assert out1["results"] == out2["results"]
+
+
+# ---------------------------------------------------------------------------
+# Handler registry
+# ---------------------------------------------------------------------------
+
+class TestHandlerRegistry:
+
+    def test_custom_handler_registered_and_executed(self):
+        """A handler registered via register_handler() runs without editing the executor."""
+        from decimal import Decimal as D
+
+        def _handle_flat_fee(code, meta_json, results, salary_components, ctx):
+            return {code: D("999.00")}
+
+        register_handler("flat_fee", _handle_flat_fee)
+
+        meta_with_custom = COMPONENT_METADATA + [{
+            "component_code":     "ADMIN_FEE",
+            "component_class":    "statutory_deduction",
+            "calculation_method": "flat_fee",
+            "execution_priority": 450,
+            "is_active":          True,
+            "metadata_json":      {},
+        }]
+
+        out = run(meta=meta_with_custom)
+        assert out["results"]["ADMIN_FEE"] == D("999.00")
+        # ADMIN_FEE is a statutory_deduction so it reduces NET_PAY
+        assert out["results"]["NET_PAY"] == Decimal("386500.00") - D("999.00")
+
+    def test_unknown_method_raises_with_helpful_message(self):
+        """Error message names the method and tells the developer what to do."""
+        bad_meta = COMPONENT_METADATA + [{
+            "component_code":     "MYSTERY",
+            "component_class":    "earning",
+            "calculation_method": "unknown_magic",
+            "execution_priority": 15,
+            "is_active":          True,
+            "metadata_json":      {},
+        }]
+        with pytest.raises(ValueError, match="unknown_magic"):
+            run(meta=bad_meta)
+
+        with pytest.raises(ValueError, match="register_handler"):
+            run(meta=bad_meta)
+
+
+# ---------------------------------------------------------------------------
+# Configurable component names (non-standard salary structures)
+# ---------------------------------------------------------------------------
+
+class TestConfigurableComponentNames:
+
+    def test_nhf_configurable_base_component(self):
+        """A client using BASIC_SALARY instead of BASIC: set meta_json.base_component."""
+        salary_alt = {
+            "BASIC_SALARY": Decimal("300000"),
+            "HOUSING":      Decimal("150000"),
+            "TRANSPORT":    Decimal("50000"),
+        }
+        meta_alt = [
+            {**m, "component_code": "BASIC_SALARY"} if m["component_code"] == "BASIC" else m
+            for m in COMPONENT_METADATA
+        ]
+        # NHF component now points to the renamed base
+        meta_alt = [
+            {**m, "metadata_json": {"base_component": "BASIC_SALARY"}}
+            if m["component_code"] == "NHF_CONTRIBUTION" else m
+            for m in meta_alt
+        ]
+        out = run_sequential_payroll(
+            salary_components=salary_alt,
+            component_metadata=meta_alt,
+            context=BASE_CONTEXT,
+        )
+        # NHF should still be 300,000 × 2.5% = 7,500
+        assert out["results"]["NHF_CONTRIBUTION"] == Decimal("7500.00")
+
+    def test_nhf_default_base_is_basic(self):
+        """Without meta_json.base_component, NHF defaults to BASIC."""
+        out = run()
+        assert out["results"]["NHF_CONTRIBUTION"] == Decimal("7500.00")
+
+    def test_pension_configurable_statutory_base(self):
+        """Client with BASIC_SALARY naming: statutory_base_components overrides the default."""
+        salary_alt = {
+            "BASIC_SALARY": Decimal("300000"),
+            "HOUSING":      Decimal("150000"),
+            "TRANSPORT":    Decimal("50000"),
+        }
+        meta_alt = [
+            {**m, "component_code": "BASIC_SALARY"} if m["component_code"] == "BASIC" else m
+            for m in COMPONENT_METADATA
+        ]
+        # Pension component's metadata_json points to BASIC_SALARY in the fallback set
+        meta_alt = [
+            {**m, "metadata_json": {"statutory_base_components": ["BASIC_SALARY", "HOUSING", "TRANSPORT"]}}
+            if m["component_code"] == "PENSION_EMPLOYEE" else m
+            for m in meta_alt
+        ]
+        out = run_sequential_payroll(
+            salary_components=salary_alt,
+            component_metadata=meta_alt,
+            context={**BASE_CONTEXT, "client_meta": {}},
+        )
+        # Pension base = 300,000 + 150,000 + 50,000 = 500,000 × 8% = 40,000
+        assert out["results"]["PENSION_EMPLOYEE"] == Decimal("40000.00")
+
+    def test_taxable_income_configurable_deductions(self):
+        """Adding a new pre-PAYE relief via meta_json.deduct_components (no code change)."""
+        # Inject a new relief into results by adding a custom component at priority 290
+        def _handle_extra_relief(code, meta_json, results, salary_components, ctx):
+            return {code: Decimal("10000.00")}
+
+        register_handler("extra_relief", _handle_extra_relief)
+
+        meta_with_relief = [
+            # TAXABLE_INCOME now deducts EXTRA_RELIEF as well
+            {**m, "metadata_json": {"deduct_components": ["PENSION_EMPLOYEE", "RENT_RELIEF", "EXTRA_RELIEF"]}}
+            if m["component_code"] == "TAXABLE_INCOME" else m
+            for m in COMPONENT_METADATA
+        ] + [{
+            "component_code":     "EXTRA_RELIEF",
+            "component_class":    "derived",
+            "calculation_method": "extra_relief",
+            "execution_priority": 290,
+            "is_active":          True,
+            "metadata_json":      {},
+        }]
+
+        out = run_sequential_payroll(
+            salary_components=SALARY,
+            component_metadata=meta_with_relief,
+            context=BASE_CONTEXT,
+        )
+        # TAXABLE_INCOME = GROSS(500k) - PENSION(40k) - EXTRA_RELIEF(10k) = 450,000
+        assert out["results"]["TAXABLE_INCOME"] == Decimal("450000.00")

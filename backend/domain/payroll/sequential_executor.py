@@ -2,11 +2,10 @@
 Sequential Payroll Executor.
 
 Executes payroll components in execution_priority order, driven by
-component_metadata.  Each component's calculation_method determines
-what computation is performed and which prior results it consumes.
-
-This is a pure deterministic function — no database access, no side effects.
-All monetary values are Decimal throughout.
+component_metadata.  Each component's calculation_method is dispatched
+through a **handler registry** (_HANDLERS dict) rather than a hard-coded
+if/elif chain.  New statutory contributions can be added by calling
+``register_handler()`` without touching this file.
 
 Execution order for Nigeria (NG):
   10  BASIC                  salary_component
@@ -16,23 +15,92 @@ Execution order for Nigeria (NG):
  100  GROSS_PAY              sum_earnings
  200  PENSION_EMPLOYEE       pension_rule
  250  RENT_RELIEF            rent_relief      (skipped if ANNUAL_RENT_PAID absent)
- 300  TAXABLE_INCOME         taxable_income   (GROSS - PENSION - RENT_RELIEF)
+ 300  TAXABLE_INCOME         taxable_income   (configurable deduct_components)
  400  PAYE                   paye_rule        (bands applied to TAXABLE_INCOME)
- 410  NHF_CONTRIBUTION       nhf_rule
+ 410  NHF_CONTRIBUTION       nhf_rule         (configurable base_component)
  420  HEALTH_INSURANCE_EMPLOYEE health_insurance_flat
  430  DEVELOPMENT_LEVY       development_levy_flat
  440  LIFE_INSURANCE         life_insurance_rule
  500  NET_PAY                net_formula
+
+Adding a new statutory component (e.g. NSITF):
+  1.  Write a pure calculation function (e.g. backend/domain/rules/nsitf.py).
+  2.  Register a handler at module level:
+        from backend.domain.payroll.sequential_executor import register_handler
+        register_handler("nsitf_rule", _handle_nsitf)
+  3.  Insert a row in component_metadata with calculation_method="nsitf_rule".
+  No changes to this file are needed.
 """
 
+from __future__ import annotations
+
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Callable
 
 from backend.domain.payroll.period_context import PeriodContext, build_period_context
 from backend.domain.rules.nhf import calculate_nhf
-from backend.domain.rules.paye import calculate_monthly_paye, calculate_paye_for_period
+from backend.domain.rules.paye import calculate_paye_for_period
 from backend.domain.rules.pension import calculate_pension
-from backend.domain.rules.rent_relief import calculate_rent_relief, calculate_rent_relief_for_period
+from backend.domain.rules.rent_relief import calculate_rent_relief_for_period
 
+
+# ---------------------------------------------------------------------------
+# Handler type and registry
+# ---------------------------------------------------------------------------
+
+# Signature: (primary_code, meta_json, accumulated_results, salary_components, ctx)
+#   primary_code      — component_code being executed (from component_metadata row)
+#   meta_json         — component_metadata.metadata_json for this component
+#   accumulated_results — {code: Decimal} built up so far in this run
+#   salary_components — original {code: Decimal} salary map (pre-rules)
+#   ctx               — merged execution context; includes everything from the
+#                       caller's context dict plus two executor-injected keys:
+#                         "_component_map": {code: metadata dict}
+#                         "period":         PeriodContext (pre-resolved)
+#
+# Returns: {component_code: Decimal} — all entries are merged into results.
+#   Single-output handlers return {primary_code: value}.
+#   Multi-output handlers (e.g. pension) may return additional entries
+#   (e.g. PENSION_EMPLOYER) as side effects.
+
+_Handler = Callable[
+    [str, dict, dict[str, Decimal], dict[str, Decimal], dict],
+    dict[str, Decimal],
+]
+
+_HANDLERS: dict[str, _Handler] = {}
+
+
+def register_handler(method_name: str, fn: _Handler) -> None:
+    """Register a calculation method handler.
+
+    Call this at module level to add new statutory contributions without
+    modifying the executor.
+
+    Args:
+        method_name: Value of component_metadata.calculation_method that this
+                     handler should be invoked for.
+        fn:          Handler function with the signature described in the module
+                     docstring.
+
+    Example::
+
+        from backend.domain.payroll.sequential_executor import register_handler
+        from decimal import Decimal, ROUND_HALF_UP
+
+        def _handle_nsitf(code, meta_json, results, salary_components, ctx):
+            rate = Decimal(str(ctx.get("nsitf_rate", "0.01")))
+            return {code: (results.get("GROSS_PAY", Decimal("0")) * rate)
+                         .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}
+
+        register_handler("nsitf_rule", _handle_nsitf)
+    """
+    _HANDLERS[method_name] = fn
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers (shared between executor and handlers)
+# ---------------------------------------------------------------------------
 
 def _check_eligibility(
     conditions: list,
@@ -89,6 +157,206 @@ def _resolve_inputs(input_requirements: dict, employee_inputs: dict) -> dict:
     return resolved
 
 
+# ---------------------------------------------------------------------------
+# Built-in handlers
+# ---------------------------------------------------------------------------
+
+def _handle_salary_component(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    return {code: Decimal(str(salary_components.get(code, "0")))}
+
+
+def _handle_sum_earnings(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    component_map = ctx["_component_map"]
+    total = sum(
+        (v for k, v in results.items()
+         if component_map.get(k, {}).get("component_class") == "earning"),
+        Decimal("0"),
+    )
+    return {code: total}
+
+
+def _handle_pension_rule(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """Pension contribution.
+
+    Pensionable base is determined in priority order:
+      1. client_meta components flagged legal_role.is_pensionable = True
+      2. meta_json.statutory_base_components  (configurable fallback)
+      3. Hard statutory default: BASIC + HOUSING + TRANSPORT (PRA 2014)
+
+    Configuring a non-standard salary structure:
+      Set component_metadata.metadata_json = {
+          "statutory_base_components": ["BASIC_SALARY", "HOUSE_ALLOW", "TRANSPORT_ALLOW"]
+      }
+    """
+    client_meta = ctx.get("client_meta") or {}
+    statutory_base = meta_json.get(
+        "statutory_base_components", ["BASIC", "HOUSING", "TRANSPORT"]
+    )
+
+    if client_meta:
+        pensionable_codes = {
+            c for c, m in client_meta.items()
+            if m.get("legal_role", {}).get("is_pensionable", False)
+        }
+        if not pensionable_codes:
+            pensionable_codes = set(statutory_base)
+    else:
+        pensionable_codes = set(statutory_base)
+
+    pensionable_base = sum(
+        (results.get(c, Decimal("0")) for c in pensionable_codes if c in results),
+        Decimal("0"),
+    )
+    pension_employee_rate = Decimal(str(ctx.get("pension_employee_rate", "0.09")))
+    pension_employer_rate = Decimal(str(ctx.get("pension_employer_rate", "0.10")))
+    emp, er = calculate_pension(pensionable_base, pension_employee_rate, pension_employer_rate)
+    # PENSION_EMPLOYEE is the statutory deduction; PENSION_EMPLOYER is an employer cost.
+    # Both are stored in results. The trace entry is keyed to PENSION_EMPLOYEE (code).
+    return {"PENSION_EMPLOYEE": emp, "PENSION_EMPLOYER": er}
+
+
+def _handle_rent_relief(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    employee_inputs = ctx.get("employee_inputs") or {}
+    resolved        = _resolve_inputs(meta_json.get("input_requirements", {}), employee_inputs)
+    annual_rent_paid = resolved.get("ANNUAL_RENT_PAID", Decimal("0"))
+    rent_relief_cfg  = ctx.get("rent_relief_cfg") or {}
+    rate = Decimal(str(rent_relief_cfg.get("rate", "0")))
+    cap  = Decimal(str(rent_relief_cfg.get("cap",  "0")))
+    period: PeriodContext = ctx["period"]
+    return {code: calculate_rent_relief_for_period(annual_rent_paid, rate, cap, period.annualization_factor)}
+
+
+def _handle_taxable_income(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """Taxable income = GROSS_PAY minus all pre-PAYE deductions.
+
+    The set of deduction components is configurable via meta_json so that
+    new pre-PAYE reliefs can be added through DB config alone:
+      component_metadata.metadata_json = {
+          "deduct_components": ["PENSION_EMPLOYEE", "RENT_RELIEF", "MY_NEW_RELIEF"]
+      }
+    Default: ["PENSION_EMPLOYEE", "RENT_RELIEF"]
+    """
+    deduct_components = meta_json.get(
+        "deduct_components", ["PENSION_EMPLOYEE", "RENT_RELIEF"]
+    )
+    value = results.get("GROSS_PAY", Decimal("0")) - sum(
+        (results.get(d, Decimal("0")) for d in deduct_components),
+        Decimal("0"),
+    )
+    return {code: value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}
+
+
+def _handle_paye_rule(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    tax_bands = ctx.get("tax_bands", [])
+    if not tax_bands:
+        raise ValueError(
+            "tax_bands is empty — cannot calculate PAYE. "
+            "Ensure tax bands are seeded for the workspace's statutory rule."
+        )
+    period: PeriodContext = ctx["period"]
+    return {code: calculate_paye_for_period(
+        results.get("TAXABLE_INCOME", Decimal("0")),
+        tax_bands,
+        period.annualization_factor,
+    )}
+
+
+def _handle_nhf_rule(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """NHF contribution.
+
+    Base component is configurable via meta_json so that clients using a
+    non-standard code for basic salary still get correct NHF:
+      component_metadata.metadata_json = {"base_component": "BASIC_SALARY"}
+    Default: "BASIC"
+    """
+    base_component = meta_json.get("base_component", "BASIC")
+    nhf_rate = Decimal(str(ctx.get("nhf_rate", "0.025")))
+    return {code: calculate_nhf(results.get(base_component, Decimal("0")), nhf_rate)}
+
+
+def _handle_health_insurance_flat(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    amount = Decimal(str(ctx.get("health_insurance_employee_amount", "0")))
+    return {code: amount}
+
+
+def _handle_development_levy_flat(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    amount = Decimal(str(ctx.get("development_levy_amount", "0")))
+    return {code: amount}
+
+
+def _handle_life_insurance_rule(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    rate = Decimal(str(ctx.get("life_insurance_employer_rate", "0")))
+    return {code: (results.get("GROSS_PAY", Decimal("0")) * rate).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )}
+
+
+def _handle_net_formula(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    component_map = ctx["_component_map"]
+    total_deductions = sum(
+        (v for k, v in results.items()
+         if component_map.get(k, {}).get("component_class") == "statutory_deduction"),
+        Decimal("0"),
+    )
+    return {code: (results.get("GROSS_PAY", Decimal("0")) - total_deductions).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )}
+
+
+# ---------------------------------------------------------------------------
+# Register all built-in handlers
+# ---------------------------------------------------------------------------
+
+register_handler("salary_component",          _handle_salary_component)
+register_handler("sum_earnings",              _handle_sum_earnings)
+register_handler("pension_rule",              _handle_pension_rule)
+register_handler("rent_relief",               _handle_rent_relief)
+register_handler("taxable_income",            _handle_taxable_income)
+register_handler("paye_rule",                 _handle_paye_rule)
+register_handler("nhf_rule",                  _handle_nhf_rule)
+register_handler("health_insurance_flat",     _handle_health_insurance_flat)
+register_handler("development_levy_flat",     _handle_development_levy_flat)
+register_handler("life_insurance_rule",       _handle_life_insurance_rule)
+register_handler("net_formula",               _handle_net_formula)
+
+
+# ---------------------------------------------------------------------------
+# Public executor
+# ---------------------------------------------------------------------------
+
 def run_sequential_payroll(
     salary_components: dict,
     component_metadata: list,
@@ -107,10 +375,10 @@ def run_sequential_payroll(
             calculation_method, execution_priority, is_active.
 
         context:
-            Runtime context required by statutory calculation methods:
-                - tax_bands (list[dict]): PAYE progressive brackets.
-                - pension_employee_rate (Decimal): Employee pension rate.
-                - pension_employer_rate (Decimal): Employer pension rate.
+            Runtime context required by statutory calculation methods.  Keys used
+            by the built-in handlers are documented in each handler's docstring.
+            Custom handlers registered via register_handler() may read additional
+            keys from context.
 
     Returns:
         {
@@ -124,10 +392,13 @@ def run_sequential_payroll(
                 ...
             ]
         }
+
+    Raises:
+        ValueError: If a component's calculation_method has no registered handler,
+                    or if a handler raises (e.g. empty tax_bands for paye_rule).
     """
     # ------------------------------------------------------------------ #
     # 1. Filter to active components and sort by execution_priority.      #
-    #    Components with NULL priority are informational and skipped.     #
     # ------------------------------------------------------------------ #
     active_meta = [m for m in component_metadata if m.get("is_active")]
 
@@ -136,25 +407,19 @@ def run_sequential_payroll(
         key=lambda m: m["execution_priority"],
     )
 
-    # Fast lookup map: component_code → metadata dict
     component_map = {m["component_code"]: m for m in active_meta}
 
     # ------------------------------------------------------------------ #
-    # 2. Unpack context.                                                   #
+    # 2. Build execution context.                                         #
+    #    Pre-resolve PeriodContext once; inject component_map for         #
+    #    handlers that need it (sum_earnings, net_formula).               #
     # ------------------------------------------------------------------ #
-    tax_bands             = context.get("tax_bands", [])
-    pension_employee_rate = Decimal(str(context.get("pension_employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(context.get("pension_employer_rate", "0.10")))
-    rent_relief_cfg       = context.get("rent_relief_cfg") or {}
-    employee_inputs       = context.get("employee_inputs") or {}
-    # client_meta: {component_code: metadata_json} — drives pensionable base
-    client_meta           = context.get("client_meta") or {}
-    nhf_rate                         = Decimal(str(context.get("nhf_rate", "0.025")))
-    health_insurance_employee_amount = Decimal(str(context.get("health_insurance_employee_amount", "0")))
-    development_levy_amount          = Decimal(str(context.get("development_levy_amount", "0")))
-    life_insurance_employer_rate     = Decimal(str(context.get("life_insurance_employer_rate", "0")))
-    # Period context: falls back to v1-compatible MONTHLY defaults when absent
     _period: PeriodContext = context.get("period") or build_period_context()
+    ctx = {
+        **context,
+        "period":          _period,
+        "_component_map":  component_map,   # private — for internal handlers only
+    }
 
     # ------------------------------------------------------------------ #
     # 3. Execute components sequentially, accumulating results.           #
@@ -173,110 +438,23 @@ def run_sequential_payroll(
             eligible = _check_eligibility(
                 eligibility_cfg.get("conditions", []),
                 eligibility_cfg.get("logic", "ALL"),
-                employee_inputs,
+                ctx.get("employee_inputs") or {},
                 results,
             )
             if not eligible and eligibility_cfg.get("on_ineligible") == "skip":
                 continue
 
-        if method == "salary_component":
-            results[code] = Decimal(str(salary_components.get(code, "0")))
-
-        elif method == "sum_earnings":
-            results[code] = sum(
-                (v for k, v in results.items()
-                 if component_map.get(k, {}).get("component_class") == "earning"),
-                Decimal("0"),
-            )
-
-        elif method == "pension_rule":
-            # Pensionable base: driven by client_meta.legal_role.is_pensionable.
-            # Falls back to the PRA 2014 statutory set if client_meta is absent
-            # OR if client_meta exists but no components are flagged is_pensionable.
-            if client_meta:
-                pensionable_codes = {
-                    code for code, meta in client_meta.items()
-                    if meta.get("legal_role", {}).get("is_pensionable", False)
-                }
-                if not pensionable_codes:
-                    pensionable_codes = {"BASIC", "HOUSING", "TRANSPORT"}
-            else:
-                pensionable_codes = {"BASIC", "HOUSING", "TRANSPORT"}
-            pensionable_base = sum(
-                (results.get(c, Decimal("0")) for c in pensionable_codes if c in results),
-                Decimal("0"),
-            )
-            pension_employee, pension_employer = calculate_pension(
-                pensionable_base,
-                pension_employee_rate,
-                pension_employer_rate,
-            )
-            results["PENSION_EMPLOYEE"] = pension_employee
-            results["PENSION_EMPLOYER"] = pension_employer
-            # The trace entry records the employee contribution (the deduction)
-            code = "PENSION_EMPLOYEE"
-
-        elif method == "rent_relief":
-            resolved         = _resolve_inputs(meta_json.get("input_requirements", {}), employee_inputs)
-            annual_rent_paid = resolved.get("ANNUAL_RENT_PAID", Decimal("0"))
-            rate = Decimal(str(rent_relief_cfg.get("rate", "0")))
-            cap  = Decimal(str(rent_relief_cfg.get("cap",  "0")))
-            results[code] = calculate_rent_relief_for_period(
-                annual_rent_paid, rate, cap, _period.annualization_factor
-            )
-
-        elif method == "taxable_income":
-            results[code] = (
-                results.get("GROSS_PAY",        Decimal("0"))
-                - results.get("PENSION_EMPLOYEE", Decimal("0"))
-                - results.get("RENT_RELIEF",      Decimal("0"))
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-        elif method == "paye_rule":
-            if not tax_bands:
-                raise ValueError(
-                    "tax_bands is empty — cannot calculate PAYE. "
-                    "Ensure tax bands are seeded for the workspace's statutory rule."
-                )
-            results[code] = calculate_paye_for_period(
-                results.get("TAXABLE_INCOME", Decimal("0")),
-                tax_bands,
-                _period.annualization_factor,
-            )
-
-        elif method == "nhf_rule":
-            results[code] = calculate_nhf(
-                results.get("BASIC", Decimal("0")),
-                nhf_rate,
-            )
-
-        elif method == "health_insurance_flat":
-            results[code] = health_insurance_employee_amount
-
-        elif method == "development_levy_flat":
-            results[code] = development_levy_amount
-
-        elif method == "life_insurance_rule":
-            results[code] = (
-                results.get("GROSS_PAY", Decimal("0")) * life_insurance_employer_rate
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-        elif method == "net_formula":
-            total_deductions = sum(
-                (v for k, v in results.items()
-                 if component_map.get(k, {}).get("component_class") == "statutory_deduction"),
-                Decimal("0"),
-            )
-            results[code] = (
-                results.get("GROSS_PAY", Decimal("0")) - total_deductions
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-        else:
-            results[code] = Decimal("0")
+        # --- Dispatch to registered handler ---
+        handler = _HANDLERS.get(method)
+        if handler is None:
             raise ValueError(
                 f"Unknown calculation_method {method!r} for component {code!r}. "
-                f"Check component_metadata.calculation_method in the DB."
+                f"Register a handler with register_handler({method!r}, fn) or "
+                f"check component_metadata.calculation_method in the DB."
             )
+
+        output = handler(code, meta_json, results, salary_components, ctx)
+        results.update(output)
 
         execution_trace.append({
             "component": code,
