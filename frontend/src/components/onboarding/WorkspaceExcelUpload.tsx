@@ -92,14 +92,22 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salaryDefsData), 'Salary Definitions');
 
   // Payroll Rules
+  // calculation_method must be one of: unit_multiplier | daily_rate_deduction | fixed_amount
+  //   unit_multiplier    — requires: input_field, rate  (e.g. overtime_days × rate)
+  //   daily_rate_deduction — requires: input_field       (e.g. absent_days deducted from salary)
+  //   fixed_amount       — requires: amount              (e.g. flat bonus, optionally with condition)
   const rulesData = [
     {
-      rule_name: 'PAYE Tax',
-      rule_code: 'PAYE',
-      method: 'percentage',
-      input_field: 'GROSS',
-      applies_to: 'all',
-      adjustment_type: 'deduction',
+      rule_name:          'OVERTIME_PAY',
+      calculation_method: 'unit_multiplier',
+      input_field:        'overtime_days',
+      rate:               5000,
+      unit:               'days',
+    },
+    {
+      rule_name:          'Absence Deduction',
+      calculation_method: 'daily_rate_deduction',
+      input_field:        'absent_days',
     },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rulesData), 'Payroll Rules');

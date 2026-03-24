@@ -545,7 +545,7 @@ def get_workspace_configuration(workspace_id: str):
         rules = db.execute(
             text("""
                 SELECT rule_name, rule_type,
-                       rule_definition_json->>'method' AS method
+                       rule_definition_json->>'calculation_method' AS method
                 FROM payroll_rule
                 WHERE workspace_id = :wid AND is_active = TRUE
                 ORDER BY rule_name
