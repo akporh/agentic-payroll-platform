@@ -19,11 +19,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "employee",
-        sa.Column("employee_number", sa.String(length=50), nullable=True),
-    )
+    pass  # employee_number already added in 6c2ecc683076
 
 def downgrade() -> None:
-    op.drop_column("employee", "employee_number")
+    pass
 
