@@ -24,14 +24,14 @@ def upgrade():
     op.execute("""
     ALTER TABLE salary_definition
     ADD CONSTRAINT chk_salary_components_is_object
-    CHECK (jsonb_typeof(components_jsonb) = 'object');
+    CHECK (jsonb_typeof(components_jsonb::jsonb) = 'object');
     """)
 
     # Require BASIC key exists
     op.execute("""
     ALTER TABLE salary_definition
     ADD CONSTRAINT chk_salary_definition_basic_required
-    CHECK (components_jsonb ? 'BASIC');
+    CHECK (components_jsonb::jsonb ? 'BASIC');
     """)
 
 
