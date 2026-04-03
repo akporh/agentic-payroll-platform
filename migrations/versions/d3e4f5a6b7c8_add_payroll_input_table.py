@@ -64,7 +64,7 @@ def upgrade():
             name='fk_input_run',
         ),
         sa.CheckConstraint(
-            "input_json IS NULL OR jsonb_typeof(input_json) = 'object'",
+            "input_json IS NULL OR jsonb_typeof(input_json::jsonb) = 'object'",
             name='ck_payroll_input_json_object',
         ),
     )

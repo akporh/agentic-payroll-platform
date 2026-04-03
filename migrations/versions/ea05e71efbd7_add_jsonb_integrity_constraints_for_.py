@@ -39,21 +39,21 @@ def upgrade():
     op.execute("""
     ALTER TABLE payroll_result
     ADD CONSTRAINT chk_gross_components_is_object
-    CHECK (jsonb_typeof(gross_components_jsonb) = 'object');
+    CHECK (jsonb_typeof(gross_components_jsonb::jsonb) = 'object');
     """)
 
     # Deductions breakdown must be a JSON object
     op.execute("""
     ALTER TABLE payroll_result
     ADD CONSTRAINT chk_deductions_is_object
-    CHECK (jsonb_typeof(deductions_jsonb) = 'object');
+    CHECK (jsonb_typeof(deductions_jsonb::jsonb) = 'object');
     """)
 
     # Calculation reasoning snapshot must be a JSON object
     op.execute("""
     ALTER TABLE payroll_result
     ADD CONSTRAINT chk_calculation_snapshot_is_object
-    CHECK (jsonb_typeof(calculations_snapshot_json) = 'object');
+    CHECK (jsonb_typeof(calculations_snapshot_json::jsonb) = 'object');
     """)
 
     # =========================================================
@@ -63,7 +63,7 @@ def upgrade():
     op.execute("""
     ALTER TABLE payroll_rule
     ADD CONSTRAINT chk_rule_definition_is_object
-    CHECK (jsonb_typeof(rule_definition_json) = 'object');
+    CHECK (jsonb_typeof(rule_definition_json::jsonb) = 'object');
     """)
 
     # =========================================================
