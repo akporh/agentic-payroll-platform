@@ -57,7 +57,7 @@ from sqlalchemy import text
 
 from backend.api.main import app
 from backend.application.payroll_readiness_service import validate_payroll_run_ready
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -100,7 +100,6 @@ def _create_base_prerequisites(
         name="Readiness Test Workspace",
         country_code="NG",
         base_currency="NGN",
-        retry_strategy="FULL_RUN",
         status="LIVE",
     ))
 
@@ -128,14 +127,15 @@ def _create_base_prerequisites(
             {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
         )
 
-    db.add(ComponentMetadata(
-        component_metadata_id=component_metadata_id,
-        country_code="NG",
-        version=1,
-        rules_jsonb={},
-        effective_from=date.today(),
-        is_active=True,
-    ))
+    db.execute(
+        text("""
+            INSERT INTO component_metadata
+                (component_metadata_id, component_code, country_code, version,
+                 metadata_json, effective_from, is_active)
+            VALUES (:cm_id, 'TEST_SEED', 'NG', :ver, '{}', CURRENT_DATE, true)
+        """),
+        {"cm_id": component_metadata_id, "ver": stat_version},
+    )
 
     db.commit()
 

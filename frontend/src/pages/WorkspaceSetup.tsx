@@ -39,6 +39,8 @@ function employeesToCommitShape(employees: MappedEmployee[]) {
     grade: emp.grade,
     designation: emp.designation,
     salary_definition_code: emp.salary_definition_code,
+    contract_start: emp.contract_start || undefined,
+    contract_end: emp.contract_end || undefined,
     biodata: {
       FULL_NAME: `${emp.first_name} ${emp.last_name}`.trim(),
       TIN: emp.tin,
@@ -902,6 +904,48 @@ function ExistingConfigView({
   const payrollRules = (config.payroll_rules as { name: string; rule_type: string; method: string }[]) ?? [];
   const overrides = (config.component_overrides as { component_name: string; is_active: boolean }[]) ?? [];
 
+  const workspaceId = workspace?.workspace_id;
+
+  // ── Employee re-upload state ──────────────────────────────────────────────
+  const [uploadEmployees, setUploadEmployees] = useState<MappedEmployee[]>([]);
+  const [salaryDefOptions, setSalaryDefOptions] = useState<SalaryDefinitionOption[]>([]);
+  const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ updated: number; not_found: string[] } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi.getSalaryDefinitions(workspaceId).then(setSalaryDefOptions).catch(() => {});
+    workspaceApi.getDesignations(workspaceId)
+      .then((rows) => setDesignationOptions(rows.map((r) => r.code)))
+      .catch(() => {});
+  }, [workspaceId]);
+
+  async function handleEmployeeUploadSubmit() {
+    if (!workspaceId || uploadEmployees.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploadResult(null);
+    try {
+      const body = uploadEmployees.map((emp) => ({
+        employee_number: emp.employee_id,
+        contract_start:  emp.contract_start || undefined,
+        contract_end:    emp.contract_end   || undefined,
+      }));
+      const result = await api.patch<{ updated: number; not_found: string[] }>(
+        `/${workspaceId}/employees/contracts`,
+        body,
+      );
+      setUploadResult(result);
+      setUploadEmployees([]);
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -910,7 +954,8 @@ function ExistingConfigView({
       />
 
       <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-        This workspace is <strong>{String(ws?.status ?? '')}</strong>. Showing current configuration below.
+        This workspace is <strong>{String(ws?.status ?? '')}</strong>. Configuration is read-only.
+        Use the section below to correct employee contract dates.
       </div>
 
       <div className="space-y-5">
@@ -1021,6 +1066,60 @@ function ExistingConfigView({
             </div>
           </Card>
         )}
+
+        {/* ── Employee re-upload ─────────────────────────────────────────── */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3 mt-2">
+            Update Employee Contracts
+          </h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Upload your employee file to correct contract start/end dates.
+            Existing employees are matched by <strong>employee_id</strong> column.
+            New employees in the file will be ignored — only existing employees are updated.
+          </p>
+
+          <EmployeeUpload
+            employees={uploadEmployees}
+            salaryDefinitions={salaryDefOptions}
+            designationOptions={designationOptions}
+            onEmployeesLoaded={setUploadEmployees}
+            onMappingChange={setUploadEmployees}
+          />
+
+          {uploadEmployees.length > 0 && (
+            <div className="mt-4 flex items-center gap-3">
+              <Btn
+                onClick={handleEmployeeUploadSubmit}
+                loading={uploading}
+              >
+                Update {uploadEmployees.length} Employee Contract{uploadEmployees.length !== 1 ? 's' : ''}
+              </Btn>
+              <span className="text-xs text-slate-400">
+                Only contract_start and contract_end will be changed.
+              </span>
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className="mt-3">
+              <AlertBox
+                type="success"
+                messages={[
+                  `${uploadResult.updated} contract${uploadResult.updated !== 1 ? 's' : ''} updated.`,
+                  ...(uploadResult.not_found.length > 0
+                    ? [`Not found (${uploadResult.not_found.length}): ${uploadResult.not_found.slice(0, 5).join(', ')}${uploadResult.not_found.length > 5 ? '…' : ''}`]
+                    : []),
+                ]}
+              />
+            </div>
+          )}
+
+          {uploadError && (
+            <div className="mt-3">
+              <AlertBox type="error" messages={[uploadError]} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

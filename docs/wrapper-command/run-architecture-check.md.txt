@@ -1,0 +1,18 @@
+Use the engineering playbook.
+
+/ head space
+We are analyzing the following issue:
+
+{{PROBLEM}}
+
+Apply SYSTEM ARCHITECTURE MODE with full instrumentation.
+
+Focus especially on:
+- Guarantees
+- Execution & Retry
+- Data Model
+
+Return full SYSTEM ANALYSIS.
+
+
+#©

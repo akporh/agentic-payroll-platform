@@ -10,7 +10,7 @@ Validates the full retry lifecycle:
   calculate_gross().  The batch processor captures the failure and the
   run ends with status=PARTIAL.
 
-    Employee A  →  SUCCESS  (net_pay = 716 000)
+    Employee A  →  SUCCESS  (net_pay = 578 273.33)
     Employee B  →  FAILED   (error_message non-empty)
 
   Phase 2 — Fix data + retry
@@ -21,7 +21,7 @@ Validates the full retry lifecycle:
   row, and transitions the run to CALCULATED.
 
     Employee A  →  unchanged SUCCESS
-    Employee B  →  SUCCESS after retry  (net_pay = 368 000)
+    Employee B  →  SUCCESS after retry  (net_pay = 292 553.33)
     payroll_run →  status = CALCULATED
 
   Idempotency check
@@ -42,7 +42,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -50,7 +49,7 @@ from psycopg2.extras import Json
 from sqlalchemy import text
 
 from backend.api.main import app
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -63,11 +62,12 @@ HOUSING_A   = 200_000
 TRANSPORT_A = 100_000
 GROSS_A     = BASIC_A + HOUSING_A + TRANSPORT_A   # 800_000
 
-# Band 1:   0 – 300 000  @ 7%  →  21 000
-# Band 2: 300k – 600 000 @ 11% →  33 000
-# Band 3: 600k – 800 000 @ 15% →  30 000
-EXPECTED_PAYE_A = 84_000
-EXPECTED_NET_A  = GROSS_A - EXPECTED_PAYE_A   # 716_000
+# 5-band PAYE + 8% explicit pension (rules_jsonb pension.employee_rate=0.08) + 2.5% NHF:
+#   Pension_A = 800k × 8% = 64 000;  NHF_A = 500k × 2.5% = 12 500
+#   Annual taxable_A = (800k - 64k) × 12 = 8 832 000 → Monthly PAYE = 145 226.67
+#   NET_A = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+EXPECTED_PAYE_A = 145_226.67
+EXPECTED_NET_A  = 578_273.33
 
 # ---------------------------------------------------------------------------
 # Employee B — fixed salary (after correction)
@@ -76,10 +76,13 @@ BASIC_B   = 300_000
 HOUSING_B = 100_000
 GROSS_B   = BASIC_B + HOUSING_B   # 400_000
 
-# Band 1:   0 – 300 000  @ 7%  →  21 000
-# Band 2: 300k – 400 000 @ 11% →  11 000
-EXPECTED_PAYE_B = 32_000
-EXPECTED_NET_B  = GROSS_B - EXPECTED_PAYE_B   # 368_000
+# 5-band PAYE + 8% explicit pension + 2.5% NHF (no TRANSPORT for B):
+#   Pension_B = 400k × 8% = 32 000;  NHF_B = 300k × 2.5% = 7 500
+#   Annual taxable_B = (400k - 32k) × 12 = 4 416 000
+#   → Monthly PAYE = 815 360 / 12 = 67 946.67
+#   NET_B = 400 000 - 32 000 - 67 946.67 - 7 500 = 292 553.33
+EXPECTED_PAYE_B = 67_946.67
+EXPECTED_NET_B  = 292_553.33
 
 
 def test_payroll_retry_e2e():
@@ -117,7 +120,6 @@ def test_payroll_retry_e2e():
             name="Retry Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
             status="DRAFT",
         ))
 
@@ -125,8 +127,9 @@ def test_payroll_retry_e2e():
         # are not running concurrently
         db.execute(
             text("""
-                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-                VALUES (:id, 'NATIONAL', 9997, '{}')
+                INSERT INTO statutory_rule
+                    (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+                VALUES (:id, 'NATIONAL', 9997, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
             """),
             {"id": statutory_rule_id},
         )
@@ -149,14 +152,15 @@ def test_payroll_retry_e2e():
                 {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
             )
 
-        db.add(ComponentMetadata(
-            component_metadata_id=component_metadata_id,
-            country_code="NG",
-            version=1,
-            rules_jsonb={},
-            effective_from=date.today(),
-            is_active=True,
-        ))
+        db.execute(
+            text("""
+                INSERT INTO component_metadata
+                    (component_metadata_id, component_code, country_code, version,
+                     metadata_json, effective_from, is_active)
+                VALUES (:cm_id, 'TEST_SEED', 'NG', 9997, '{}', CURRENT_DATE, true)
+            """),
+            {"cm_id": component_metadata_id},
+        )
 
         db.commit()
 
@@ -191,6 +195,7 @@ def test_payroll_retry_e2e():
                     "employee_number":        "EMP001",
                     "full_name":              "Jane Okeke",
                     "salary_definition_name": "STANDARD",
+                    "contract_start":         "2025-01-01",
                     "biodata": {
                         "TIN":            "1234567890",
                         "BANK":           "GTBank",
@@ -226,9 +231,9 @@ def test_payroll_retry_e2e():
         db.execute(
             text("""
                 INSERT INTO salary_definition (
-                    salary_definition_id, workspace_id, name, components_jsonb
+                    salary_definition_id, workspace_id, name, code, components_jsonb
                 )
-                VALUES (:id, :wid, 'BROKEN', :components)
+                VALUES (:id, :wid, 'BROKEN', 'BROKEN', :components)
             """),
             {
                 "id":         broken_sal_def_id,
@@ -250,7 +255,7 @@ def test_payroll_retry_e2e():
                 INSERT INTO employee_contract (
                     contract_id, employee_id, salary_definition_id, start_date
                 )
-                VALUES (gen_random_uuid(), :eid, :sdid, CURRENT_DATE)
+                VALUES (gen_random_uuid(), :eid, :sdid, '2025-01-01')
             """),
             {"eid": employee_b_id, "sdid": broken_sal_def_id},
         )

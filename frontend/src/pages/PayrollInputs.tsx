@@ -8,40 +8,28 @@ import { Card } from '../components/ui/Card';
 import { Btn } from '../components/ui/Btn';
 import { AlertBox } from '../components/ui/AlertBox';
 
-const INPUT_CODES = [
-  'SPECIAL_OVERTIME',
-  'REGULAR_OVERTIME',
-  'WEEKEND_ALLOWANCE',
-  'ABSENCE',
-  'SUSPENSION',
-  'ACCIDENT_FREE_BONUS',
-  'BONUS',
-  'ADJUSTMENT',
-] as const;
+interface InputCodeDef {
+  code: string;
+  category: string;
+  rule_name: string;
+  calculation_method: string;
+}
 
-const CODE_CATEGORY: Record<string, string> = {
-  SPECIAL_OVERTIME:    'EARNING',
-  REGULAR_OVERTIME:    'EARNING',
-  WEEKEND_ALLOWANCE:   'EARNING',
-  ABSENCE:             'DEDUCTION',
-  SUSPENSION:          'DEDUCTION',
-  ACCIDENT_FREE_BONUS: 'EARNING',
-  BONUS:               'EARNING',
-  ADJUSTMENT:          'EARNING',
-};
-
-const QTY_RATE_CODES = new Set(['SPECIAL_OVERTIME', 'REGULAR_OVERTIME', 'ABSENCE', 'SUSPENSION']);
-const QTY_ONLY_CODES = new Set(['ABSENCE', 'SUSPENSION']);
-const AMOUNT_CODES   = new Set(['WEEKEND_ALLOWANCE', 'ACCIDENT_FREE_BONUS', 'BONUS', 'ADJUSTMENT']);
-
-function showsQty(code: string)  { return QTY_RATE_CODES.has(code); }
-function showsRate(code: string) { return QTY_RATE_CODES.has(code) && !QTY_ONLY_CODES.has(code); }
-function showsAmt(code: string)  { return AMOUNT_CODES.has(code); }
+function showsQty(def: InputCodeDef | undefined) {
+  return def?.calculation_method === 'unit_multiplier' || def?.calculation_method === 'daily_rate_deduction';
+}
+function showsRate(def: InputCodeDef | undefined) {
+  return def?.calculation_method === 'unit_multiplier';
+}
+function showsAmt(def: InputCodeDef | undefined) {
+  return def?.calculation_method === 'fixed_amount';
+}
 
 export function PayrollInputs() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const [inputs,     setInputs]     = useState<PayrollInput[]>([]);
   const [employees,  setEmployees]  = useState<Employee[]>([]);
+  const [inputDefs,  setInputDefs]  = useState<InputCodeDef[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
@@ -59,10 +47,12 @@ export function PayrollInputs() {
     Promise.all([
       workspaceApi.getEmployees(workspaceId),
       payrollInputApi.list(workspaceId),
+      workspaceApi.getInputCodes(workspaceId),
     ])
-      .then(([emps, data]) => {
+      .then(([emps, data, codesData]) => {
         setEmployees(emps);
         setInputs(data.inputs);
+        setInputDefs(codesData.input_codes);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -115,7 +105,8 @@ export function PayrollInputs() {
     }
   }
 
-  const category = CODE_CATEGORY[inputCode] ?? '';
+  const selectedDef = inputDefs.find((d) => d.code === inputCode);
+  const category = selectedDef?.category ?? '';
 
   return (
     <div>
@@ -166,8 +157,10 @@ export function PayrollInputs() {
               required
             >
               <option value="">Select code…</option>
-              {INPUT_CODES.map((code) => (
-                <option key={code} value={code}>{code}</option>
+              {inputDefs.map((def) => (
+                <option key={def.code} value={def.code}>
+                  {def.rule_name}{def.code !== def.rule_name ? ` (${def.code})` : ''}
+                </option>
               ))}
             </select>
           </div>
@@ -189,7 +182,7 @@ export function PayrollInputs() {
           )}
 
           {/* Quantity */}
-          {inputCode && showsQty(inputCode) && (
+          {inputCode && showsQty(selectedDef) && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500">Quantity</label>
               <input
@@ -204,7 +197,7 @@ export function PayrollInputs() {
           )}
 
           {/* Rate */}
-          {inputCode && showsRate(inputCode) && (
+          {inputCode && showsRate(selectedDef) && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500">Rate</label>
               <input
@@ -219,7 +212,7 @@ export function PayrollInputs() {
           )}
 
           {/* Amount */}
-          {inputCode && showsAmt(inputCode) && (
+          {inputCode && showsAmt(selectedDef) && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500">Amount</label>
               <input

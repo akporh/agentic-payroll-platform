@@ -27,7 +27,10 @@ from rich.console import Console  # noqa: E402
 from rich.panel import Panel  # noqa: E402
 
 from backend.infra.db.session import SessionLocal  # noqa: E402
-from backend.domain.payroll.sequential_executor import run_sequential_payroll  # noqa: E402
+from backend.domain.payroll.sequential_executor import (  # noqa: E402
+    build_runtime_component_registry,
+    run_sequential_payroll,
+)
 from backend.domain.payroll.rule_evaluator import apply_payroll_rules  # noqa: E402
 from backend.domain.payroll.period_context import build_period_context  # noqa: E402
 
@@ -136,21 +139,26 @@ def _load_salary_components(db, employee_id):
 
 
 def _load_statutory_rule(db, workspace_id):
+    from datetime import date as _date
     row = db.execute(text("""
         SELECT sr.*
         FROM   statutory_rule sr
         JOIN   workspace w ON sr.country_code = w.country_code
         WHERE  w.workspace_id = :wid
-        ORDER  BY sr.version DESC
+          AND  sr.effective_from <= :today
+        ORDER  BY sr.effective_from DESC, sr.version DESC
         LIMIT  1
-    """), {"wid": workspace_id}).mappings().first()
+    """), {"wid": workspace_id, "today": str(_date.today())}).mappings().first()
     if not row:
         console.print("[bold red]No statutory rule found for this workspace's country.[/bold red]")
         sys.exit(1)
     sr = dict(row)
-    pension_cfg           = (sr.get("rules_jsonb") or {}).get("pension", {})
-    pension_employee_rate = Decimal(str(pension_cfg.get("employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(pension_cfg.get("employer_rate", "0.10")))
+    pension_cfg = (sr.get("rules_jsonb") or {}).get("pension")
+    if not pension_cfg or "employee_rate" not in pension_cfg or "employer_rate" not in pension_cfg:
+        console.print("[bold red]Statutory rule is missing pension rates. Run the pension rates migration.[/bold red]")
+        sys.exit(1)
+    pension_employee_rate = Decimal(str(pension_cfg["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_cfg["employer_rate"]))
     return sr, pension_employee_rate, pension_employer_rate
 
 
@@ -186,23 +194,73 @@ def _load_client_overrides(db, workspace_id):
 
 
 def _load_payroll_rules(db, workspace_id):
+    from datetime import date as _date
+    today = str(_date.today())
+    rs_row = db.execute(text("""
+        SELECT rule_set_id FROM rule_set
+        WHERE  workspace_id  = :wid
+          AND  effective_from <= :today
+        ORDER  BY effective_from DESC, created_at DESC
+        LIMIT  1
+    """), {"wid": workspace_id, "today": today}).fetchone()
+
+    if rs_row:
+        rows = db.execute(text("""
+            SELECT rule_name, rule_definition_json, rule_type
+            FROM   rule_set_item
+            WHERE  rule_set_id = :rs_id
+        """), {"rs_id": str(rs_row[0])}).fetchall()
+        return [{"rule_name": r[0], "rule_definition_json": r[1], "rule_type": r[2]} for r in rows]
+
     rows = db.execute(text("""
         SELECT rule_name, rule_definition_json, is_active
         FROM   payroll_rule
-        WHERE  workspace_id = :wid
+        WHERE  workspace_id = :wid AND is_active = TRUE
         ORDER  BY rule_name
     """), {"wid": workspace_id}).mappings().all()
     return [dict(r) for r in rows]
 
 
-def _load_payroll_inputs(db, employee_id):
+def _load_payroll_inputs(db, employee_id, workspace_id, period_start, period_end):
+    """Load inputs for this employee that would be claimed in this period.
+
+    reference_date records when the earning/deduction occurred.  Classification:
+      - reference_date IS NULL  → period-agnostic, always included
+      - reference_date <= pe    → CURRENT or LATE, always included
+      - reference_date > pe     → FUTURE, excluded
+
+    Includes claimed inputs (payroll_run_id IS NOT NULL) — the simulation is
+    read-only, and hiding already-claimed inputs would falsely report NOT APPLIED.
+    """
     rows = db.execute(text("""
-        SELECT input_code, input_category, quantity, rate, amount
+        SELECT input_code, input_category, quantity, reference_date, payroll_run_id
         FROM   payroll_input
-        WHERE  employee_id = :eid AND payroll_run_id IS NULL
+        WHERE  employee_id  = :eid
+          AND  workspace_id = :wid
+          AND  (
+                 reference_date IS NULL    -- period-agnostic
+              OR reference_date <= :pe     -- CURRENT or LATE (never FUTURE)
+               )
         ORDER  BY input_code
-    """), {"eid": employee_id}).fetchall()
-    return {r[0]: {"category": r[1], "quantity": r[2], "rate": r[3], "amount": r[4]} for r in rows}
+    """), {
+        "eid": employee_id,
+        "wid": workspace_id,
+        "ps":  period_start,
+        "pe":  period_end,
+    }).fetchall()
+    result: dict = {}
+    for r in rows:
+        code = r[0]
+        if code not in result:
+            result[code] = []
+        result[code].append({
+            "category":       r[1],
+            "quantity":       float(r[2]) if r[2] is not None else None,
+            "reference_date": r[3],
+            "claimed":        r[4] is not None,
+            "payroll_run_id": str(r[4]) if r[4] is not None else None,
+        })
+    return result
 
 
 # ── Print sections ─────────────────────────────────────────────────────────────
@@ -360,10 +418,23 @@ def _print_payroll_rules(payroll_rules, employee_inputs, currency):
         amount = defn.get("amount")
         active = rule.get("is_active", True)
 
-        input_val = None
+        input_val   = None
+        claim_note  = ""
         if field and field in employee_inputs:
-            inp = employee_inputs[field]
-            input_val = inp.get("quantity") or inp.get("amount")
+            events     = employee_inputs[field]  # list of event dicts
+            quantities = [e.get("quantity") for e in events if e.get("quantity") is not None]
+            input_val  = sum(quantities) if quantities else None
+            claimed_events  = [e for e in events if e.get("claimed")]
+            unclaimed_events = [e for e in events if not e.get("claimed")]
+            if claimed_events and not unclaimed_events:
+                claim_note = f"  [dim][{len(claimed_events)} event(s) claimed][/dim]"
+            elif claimed_events:
+                claim_note = (
+                    f"  [dim][{len(claimed_events)} claimed, "
+                    f"{len(unclaimed_events)} unclaimed — will be swept on next run][/dim]"
+                )
+            else:
+                claim_note = f"  [dim][{len(unclaimed_events)} event(s) unclaimed — will be swept on next run][/dim]"
 
         if not active:
             status = "INACTIVE — rule disabled"
@@ -373,7 +444,7 @@ def _print_payroll_rules(payroll_rules, employee_inputs, currency):
             impact = Decimal("0")
         elif field and input_val is not None:
             impact = (Decimal(str(input_val)) * Decimal(str(rate))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if rate else Decimal(str(amount or 0))
-            status = f"APPLIED — {input_val} unit(s)"
+            status = f"APPLIED — {input_val} unit(s){claim_note}"
             applied += 1
         else:
             status = "NOT APPLIED — no employee event data supplied for this run"
@@ -535,7 +606,7 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
     db = SessionLocal()
     try:
         emp          = _load_employee(db, employee_id, employee_number, workspace_id)
-        workspace_id = str(emp["workspace_id"])
+        workspace_id = workspace_id or str(emp["workspace_id"])
         ws           = _load_workspace(db, workspace_id)
         currency     = ws.get("base_currency") or "NGN"
         country_code = ws.get("country_code") or "NG"
@@ -550,7 +621,20 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
         all_platform_meta = _load_component_metadata(db, country_code)
         client_overrides  = _load_client_overrides(db, workspace_id)
         payroll_rules     = _load_payroll_rules(db, workspace_id)
-        employee_inputs   = _load_payroll_inputs(db, str(emp["employee_id"]))
+        # Build period context here so _load_payroll_inputs can scope by date.
+        # build_period_context needs no DB connection — safe to call inside the session.
+        period_ctx = build_period_context(
+            period_start=period_start,
+            period_end=period_end,
+            period_type=pay_cycle.get("frequency"),
+        )
+        employee_inputs   = _load_payroll_inputs(
+            db,
+            str(emp["employee_id"]),
+            workspace_id,
+            period_ctx.period_start,
+            period_ctx.period_end,
+        )
         rent_relief_cfg   = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
         nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
         health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
@@ -563,6 +647,12 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
     disabled_codes  = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
     engine_metadata = [m for m in all_platform_meta if m["component_code"] not in disabled_codes]
     meta_map        = {m["component_code"]: m for m in all_platform_meta}
+
+    # Apply flat-amount client_component_metadata overrides (mirrors production payroll.py)
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 
     # Build client_meta: global component_metadata.metadata_json as base layer,
     # workspace overrides on top — mirrors the production /payroll/run route.
@@ -580,14 +670,8 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
             else:
                 client_meta[code][key] = val
 
-    # Period context — use CLI args if supplied, otherwise current month
-    period_ctx = build_period_context(
-        period_start=period_start,
-        period_end=period_end,
-        period_type=pay_cycle.get("frequency"),
-    )
-
-    # Apply workspace payroll rules to salary_components before the engine
+    # Apply workspace payroll rules to salary_components before the engine.
+    # employee_inputs is {code: [events]} — each event carries its own reference_date.
     # (mirrors the production _run_sequential path in executor.py)
     if payroll_rules:
         salary_components, _rule_trace = apply_payroll_rules(
@@ -612,8 +696,18 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
         "client_meta":                      client_meta,
         "period":                           period_ctx,
         "payroll_rules":                    payroll_rules,
+        # Simulation has no cross-period inputs; stubs match production context shape.
+        "historical_rule_sets":            [],
+        "historical_period_contexts":      {},
+        "current_rule_set_id":             None,
+        "current_rule_set_effective_from": None,
     }
 
+    engine_metadata = build_runtime_component_registry(
+        platform_metadata=engine_metadata,
+        payroll_rules=payroll_rules,
+        employee_inputs=employee_inputs,
+    )
     output  = run_sequential_payroll(salary_components, engine_metadata, context)
     results = output["results"]
 

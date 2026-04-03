@@ -23,9 +23,12 @@ def link_inputs_to_run(
 ) -> int:
     """Claim unclaimed payroll_input rows for a workspace, optionally scoped to a period.
 
-    When period_start and period_end are provided:
-      - Claims rows where reference_date BETWEEN period_start AND period_end.
-      - Also claims rows where reference_date IS NULL (period-agnostic inputs).
+    reference_date records when the earning/deduction occurred, not which period
+    it belongs to.  Classification by period window:
+      - reference_date IS NULL              → period-agnostic, always claimed
+      - reference_date <= period_end        → CURRENT or LATE, always claimed
+      - reference_date > period_end         → FUTURE, never claimed
+
     When period_start/period_end are absent: claims ALL unclaimed rows for the
     workspace (v1 behaviour — backward compatible).
 
@@ -48,21 +51,8 @@ def link_inputs_to_run(
                     WHERE workspace_id   = :wid
                       AND payroll_run_id IS NULL
                       AND (
-                            -- period-agnostic inputs (always sweep into current run)
-                            reference_date IS NULL
-                            -- current-period inputs
-                         OR reference_date BETWEEN :ps AND :pe
-                            -- late inputs: past period that already has a closed run
-                         OR (
-                              reference_date < :ps
-                              AND EXISTS (
-                                  SELECT 1 FROM payroll_run pr
-                                  WHERE pr.workspace_id = :wid
-                                    AND pr.period_start <= reference_date
-                                    AND pr.period_end   >= reference_date
-                                    AND pr.status IN ('CALCULATED', 'APPROVED', 'LOCKED', 'PAID')
-                              )
-                            )
+                            reference_date IS NULL    -- period-agnostic
+                         OR reference_date <= :pe     -- CURRENT or LATE (never FUTURE)
                       )
                 """),
                 {
@@ -96,13 +86,13 @@ def load_inputs_for_run(payroll_run_id: str) -> dict:
         payroll_run_id: The run whose inputs to load.
 
     Returns:
-        Nested dict: {employee_id_str: {input_code: {quantity, rate, amount, category}}}
+        Nested dict: {employee_id_str: {input_code: {quantity, category, reference_date}}}
     """
     db = SessionLocal()
     try:
         rows = db.execute(
             text("""
-                SELECT employee_id, input_code, input_category, quantity, rate, amount
+                SELECT employee_id, input_code, input_category, quantity, reference_date
                 FROM payroll_input
                 WHERE payroll_run_id = :run_id
                 ORDER BY employee_id, input_code
@@ -116,12 +106,13 @@ def load_inputs_for_run(payroll_run_id: str) -> dict:
             code = row[1]
             if emp_id not in inputs_by_employee:
                 inputs_by_employee[emp_id] = {}
-            inputs_by_employee[emp_id][code] = {
-                "quantity": float(row[3]) if row[3] is not None else None,
-                "rate":     float(row[4]) if row[4] is not None else None,
-                "amount":   float(row[5]) if row[5] is not None else None,
-                "category": row[2],
-            }
+            if code not in inputs_by_employee[emp_id]:
+                inputs_by_employee[emp_id][code] = []
+            inputs_by_employee[emp_id][code].append({
+                "quantity":       float(row[3]) if row[3] is not None else None,
+                "category":       row[2],
+                "reference_date": row[4],
+            })
         return inputs_by_employee
     finally:
         db.close()
@@ -137,38 +128,29 @@ def load_unclaimed_inputs_by_employee(
     Does NOT claim (link) the inputs — no DB writes.  Used to populate
     employee inputs before the payroll_run row exists in the database.
 
-    When period_start and period_end are provided only rows with
-    reference_date IS NULL or reference_date within the period are returned.
-    When absent, all unclaimed rows are returned (v1 behaviour).
+    reference_date records when the earning/deduction occurred.  Classification:
+      - reference_date IS NULL    → period-agnostic, always included
+      - reference_date <= pe      → CURRENT or LATE, always included
+      - reference_date > pe       → FUTURE, excluded
+    When period_start/period_end are absent, all unclaimed rows are returned
+    (v1 behaviour).
 
     Returns:
-        Nested dict: {employee_id_str: {input_code: {quantity, rate, amount, category}}}
+        Nested dict: {employee_id_str: {input_code: {quantity, category, reference_date}}}
+        reference_date is a datetime.date or None (period-agnostic inputs).
     """
     db = SessionLocal()
     try:
         if period_start is not None and period_end is not None:
             rows = db.execute(
                 text("""
-                    SELECT employee_id, input_code, input_category, quantity, rate, amount
+                    SELECT employee_id, input_code, input_category, quantity, reference_date
                     FROM payroll_input
                     WHERE workspace_id   = :wid
                       AND payroll_run_id IS NULL
                       AND (
-                            -- period-agnostic inputs (always sweep into current run)
-                            reference_date IS NULL
-                            -- current-period inputs
-                         OR reference_date BETWEEN :ps AND :pe
-                            -- late inputs: past period that already has a closed run
-                         OR (
-                              reference_date < :ps
-                              AND EXISTS (
-                                  SELECT 1 FROM payroll_run pr
-                                  WHERE pr.workspace_id = :wid
-                                    AND pr.period_start <= reference_date
-                                    AND pr.period_end   >= reference_date
-                                    AND pr.status IN ('CALCULATED', 'APPROVED', 'LOCKED', 'PAID')
-                              )
-                            )
+                            reference_date IS NULL    -- period-agnostic
+                         OR reference_date <= :pe     -- CURRENT or LATE (never FUTURE)
                       )
                     ORDER BY employee_id, input_code
                 """),
@@ -177,7 +159,7 @@ def load_unclaimed_inputs_by_employee(
         else:
             rows = db.execute(
                 text("""
-                    SELECT employee_id, input_code, input_category, quantity, rate, amount
+                    SELECT employee_id, input_code, input_category, quantity, reference_date
                     FROM payroll_input
                     WHERE workspace_id = :wid AND payroll_run_id IS NULL
                     ORDER BY employee_id, input_code
@@ -191,12 +173,13 @@ def load_unclaimed_inputs_by_employee(
             code = row[1]
             if emp_id not in inputs_by_employee:
                 inputs_by_employee[emp_id] = {}
-            inputs_by_employee[emp_id][code] = {
-                "quantity": float(row[3]) if row[3] is not None else None,
-                "rate":     float(row[4]) if row[4] is not None else None,
-                "amount":   float(row[5]) if row[5] is not None else None,
-                "category": row[2],
-            }
+            if code not in inputs_by_employee[emp_id]:
+                inputs_by_employee[emp_id][code] = []
+            inputs_by_employee[emp_id][code].append({
+                "quantity":       float(row[3]) if row[3] is not None else None,
+                "category":       row[2],
+                "reference_date": row[4],
+            })
         return inputs_by_employee
     finally:
         db.close()
@@ -209,7 +192,7 @@ def list_unclaimed_inputs(workspace_id: str) -> list[dict]:
         rows = db.execute(
             text("""
                 SELECT pi.payroll_input_id, pi.employee_id, e.full_name, e.employee_number,
-                       pi.input_code, pi.input_category, pi.quantity, pi.rate, pi.amount,
+                       pi.input_code, pi.input_category, pi.quantity,
                        pi.source, pi.created_at, pi.reference_date
                 FROM payroll_input pi
                 JOIN employee e ON e.employee_id = pi.employee_id
@@ -228,11 +211,9 @@ def list_unclaimed_inputs(workspace_id: str) -> list[dict]:
                 "input_code":       r[4],
                 "input_category":   r[5],
                 "quantity":         float(r[6]) if r[6] is not None else None,
-                "rate":             float(r[7]) if r[7] is not None else None,
-                "amount":           float(r[8]) if r[8] is not None else None,
-                "source":           r[9] or "MANUAL",
-                "created_at":       str(r[10]) if r[10] else None,
-                "reference_date":   str(r[11]) if r[11] else None,
+                "source":           r[7] or "MANUAL",
+                "created_at":       str(r[8]) if r[8] else None,
+                "reference_date":   str(r[9]) if r[9] else None,
             }
             for r in rows
         ]
@@ -246,8 +227,6 @@ def create_input(
     input_code: str,
     input_category: str,
     quantity,
-    rate,
-    amount,
     reference_date: date | None = None,
 ) -> dict:
     """Insert an unclaimed payroll_input row. Returns the new ID."""
@@ -257,10 +236,10 @@ def create_input(
             text("""
                 INSERT INTO payroll_input (
                     payroll_input_id, workspace_id, employee_id,
-                    input_code, input_category, quantity, rate, amount, source, reference_date
+                    input_code, input_category, quantity, source, reference_date
                 ) VALUES (
                     gen_random_uuid(), :wid, :emp_id,
-                    :code, :category, :qty, :rate, :amount, 'MANUAL', :reference_date
+                    :code, :category, :qty, 'MANUAL', :reference_date
                 )
                 RETURNING payroll_input_id
             """),
@@ -270,8 +249,6 @@ def create_input(
                 "code":           input_code,
                 "category":       input_category,
                 "qty":            quantity,
-                "rate":           rate,
-                "amount":         amount,
                 "reference_date": reference_date,
             },
         ).fetchone()

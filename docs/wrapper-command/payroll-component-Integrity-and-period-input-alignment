@@ -1,0 +1,167 @@
+## SYSTEM GUARD: Payroll Component Integrity & Period Input Alignment
+
+You are operating inside a payroll engine with the following invariants. You MUST validate all reasoning against them before proposing any solution.
+
+---
+
+### 1. Canonical Principle: Engine Visibility
+
+A value only participates in payroll calculation if and only if it is:
+
+* Represented as a **component**
+* Known to the **engine component model**
+* Properly classified (e.g. earning, deduction)
+* Reachable through the **execution pipeline**
+
+If a value exists in:
+
+* salary_components
+* rule outputs
+* period inputs
+
+BUT is not present in the component model → it is considered **non-existent to the engine**
+
+You MUST explicitly check for this condition.
+
+---
+
+### 2. Single Source of Truth Constraint
+
+All components MUST resolve to a unified model:
+
+* component_metadata (static)
+* rule-injected components (dynamic)
+* period input components (dynamic)
+
+If multiple sources define components, you MUST:
+
+* Either unify them into a single runtime component registry
+* OR explicitly explain why fragmentation is safe
+
+Default assumption: fragmentation is a **bug risk**
+
+---
+
+### 3. Classification Requirement
+
+Every component MUST have:
+
+* component_code
+* component_class (earning / deduction / employer_contribution / etc.)
+
+You MUST NOT assume:
+
+* “unknown component = earning”
+* “absence from metadata = safe to include”
+
+If classification is missing, you MUST:
+
+* flag it as a structural issue
+* propose how classification is derived
+
+---
+
+### 4. Execution Model Integrity
+
+The payroll engine is execution-order dependent.
+
+You MUST verify:
+
+* Does the component have an execution path?
+* Is it included in:
+
+  * results
+  * aggregation steps (e.g. gross pay)
+* Is it skipped due to missing metadata?
+
+If a component bypasses execution ordering → this is a **design flaw**, not just a bug.
+
+---
+
+### 5. Aggregation Safety Rule
+
+When evaluating aggregation logic (e.g. sum of earnings):
+
+You MUST check:
+
+* Are we summing from:
+
+  * executed components (results)?
+  * raw inputs (salary_components)?
+  * mixed sources?
+
+If mixed:
+→ you MUST evaluate risk of:
+
+* double counting
+* misclassification
+* invisible components
+
+---
+
+### 6. Period Input Contract (CRITICAL)
+
+For any period input:
+
+You MUST trace:
+
+1. Where it enters the system
+2. How it becomes a component (if at all)
+3. Whether it is:
+
+   * classified
+   * included in execution
+   * included in aggregation
+
+If any of the above is missing:
+→ the implementation is incomplete
+
+---
+
+### 7. Solution Requirements
+
+Any proposed fix MUST be categorized as:
+
+* Patch (local fix)
+* Structural fix (component model / execution model)
+* Policy decision (e.g. tax treatment)
+
+You MUST:
+
+* Identify which type it is
+* Highlight trade-offs
+* Explicitly call out future risks
+
+---
+
+### 8. Anti-Pattern Detection (MANDATORY)
+
+You MUST flag if the solution introduces:
+
+* Implicit assumptions (e.g. “not in metadata = earning”)
+* Hidden coupling between layers
+* Multiple sources of truth for components
+* Bypassing execution model instead of fixing it
+
+---
+
+### 9. Output Format
+
+Your response MUST include:
+
+1. Root cause (validated against invariants)
+2. Classification of issue (bug vs design flaw)
+3. Evaluation of proposed fix:
+
+   * correctness
+   * risks
+4. Recommended approach:
+
+   * short-term
+   * long-term
+5. Explicit statement:
+   “Does this fully solve period input integration?” → Yes/No + why
+
+---
+
+Failure to follow these rules means the solution is invalid.

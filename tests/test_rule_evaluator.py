@@ -8,11 +8,16 @@ service BEFORE the sequential executor — it modifies salary_components by
 adding earnings (unit_multiplier) or reducing proratable components
 (daily_rate_deduction).
 """
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from backend.domain.payroll.rule_evaluator import apply_payroll_rules
+from backend.domain.payroll.rule_evaluator import (
+    apply_payroll_rules,
+    _resolve_rule,
+    _resolve_period_ctx,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +316,282 @@ class TestRuleGuards:
         assert len(trace) == 2
         rule_names = {t["rule"] for t in trace}
         assert rule_names == {"OVERTIME_PAY", "FLAT_BONUS"}
+
+    def test_rule_set_item_format_no_is_active_treated_as_active(self):
+        """rule_set_item rows have no is_active key — treated as active."""
+        rule_without_is_active = {
+            "rule_name":            "OVERTIME_PAY",
+            "rule_definition_json": {"calculation_method": "unit_multiplier",
+                                     "input_field": "overtime_days", "rate": 5000},
+            # is_active key intentionally absent
+        }
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("300000")},
+            payroll_rules=[rule_without_is_active],
+            employee_inputs={"overtime_days": 2},
+            client_meta={},
+        )
+        assert components["OVERTIME_PAY"] == Decimal("10000.00")
+        assert len(trace) == 1
+
+
+# ---------------------------------------------------------------------------
+# Trace temporal fields
+# ---------------------------------------------------------------------------
+
+class TestTraceTemporalFields:
+
+    def test_trace_entry_contains_temporal_fields(self):
+        """Every trace entry now includes resolution metadata fields."""
+        _, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("300000")},
+            payroll_rules=[_rule("OVERTIME_PAY", "unit_multiplier",
+                                 input_field="overtime_days", rate=5000)],
+            employee_inputs={"overtime_days": 2},
+            client_meta={},
+            current_rule_set_id="rs-123",
+            current_rule_set_effective_from="2024-01-01",
+        )
+        entry = trace[0]
+        assert "rule_set_id"         in entry
+        assert "rule_effective_from" in entry
+        assert "reference_date"      in entry
+        assert "rate_used"           in entry
+        assert "resolution_source"   in entry
+
+    def test_current_resolution_source_when_no_reference_date(self):
+        """No reference_date → resolution_source = 'current'."""
+        _, trace = apply_payroll_rules(
+            salary_components={},
+            payroll_rules=[_rule("FLAT_BONUS", "fixed_amount", amount=1000)],
+            employee_inputs={},
+            client_meta={},
+            current_rule_set_id="rs-1",
+        )
+        assert trace[0]["resolution_source"] == "current"
+        assert trace[0]["rule_set_id"] == "rs-1"
+
+
+# ---------------------------------------------------------------------------
+# Temporal resolution — _resolve_rule
+# ---------------------------------------------------------------------------
+
+CURRENT_RS_ID  = "rs-current"
+HIST_RS_ID     = "rs-hist"
+PERIOD_START   = date(2024, 3, 1)
+PERIOD_END     = date(2024, 3, 31)
+
+CURRENT_RULES = {
+    "OVERTIME_PAY": {
+        "rule_definition_json": {
+            "calculation_method": "unit_multiplier",
+            "input_field": "overtime_days",
+            "rate": 6000,
+        }
+    }
+}
+
+HISTORICAL_RULE_SETS = [
+    {
+        "id": HIST_RS_ID,
+        "effective_from": "2024-01-01",
+        "items": [
+            {
+                "rule_name": "OVERTIME_PAY",
+                "rule_definition_json": {
+                    "calculation_method": "unit_multiplier",
+                    "input_field": "overtime_days",
+                    "rate": 5000,    # January rate (lower)
+                },
+            }
+        ],
+    }
+]
+
+
+class TestResolveRule:
+
+    def test_current_period_uses_current_rate(self):
+        """Reference date within current period → current rule definition."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY",
+            date(2024, 3, 15),   # within period
+            CURRENT_RULES,
+            HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert defn["rate"] == 6000
+        assert meta["resolution_source"] == "current"
+
+    def test_no_reference_date_uses_current(self):
+        """None reference_date (period-agnostic) → current rule definition."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY", None,
+            CURRENT_RULES, HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert defn["rate"] == 6000
+        assert meta["resolution_source"] == "current"
+
+    def test_historical_date_uses_historical_rate(self):
+        """Reference date in January → historical rule set → rate 5000."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY",
+            date(2024, 1, 15),   # before period_start
+            CURRENT_RULES,
+            HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert defn["rate"] == 5000
+        assert meta["resolution_source"] == "historical"
+        assert meta["rule_set_id"] == HIST_RS_ID
+
+    def test_historical_date_no_matching_set_falls_back_to_current(self):
+        """Historical date but no rule set covers it → current_fallback."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY",
+            date(2020, 6, 1),    # before any historical rule set
+            CURRENT_RULES,
+            HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert meta["resolution_source"] == "current_fallback"
+        assert defn["rate"] == 6000
+
+    def test_unknown_rule_returns_empty_defn(self):
+        """Rule not in any rule set → empty definition, resolution still works."""
+        defn, meta = _resolve_rule(
+            "UNKNOWN_RULE", None,
+            CURRENT_RULES, HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert defn == {}
+        assert meta["resolution_source"] == "current"
+
+
+# ---------------------------------------------------------------------------
+# Temporal resolution — _resolve_period_ctx
+# ---------------------------------------------------------------------------
+
+class TestResolvePeriodCtx:
+
+    def test_current_period_returns_current_stats(self):
+        wd, cd = _resolve_period_ctx(
+            date(2024, 3, 15), 23, 31, {},
+            PERIOD_START, PERIOD_END,
+        )
+        assert wd == 23
+        assert cd == 31
+
+    def test_none_date_returns_current(self):
+        wd, cd = _resolve_period_ctx(None, 22, 30, {}, PERIOD_START, PERIOD_END)
+        assert wd == 22
+        assert cd == 30
+
+    def test_historical_date_returns_historical_stats(self):
+        hist_ctx = {(2024, 1): {"working_days": 23, "calendar_days": 31}}
+        wd, cd = _resolve_period_ctx(
+            date(2024, 1, 15), 22, 28, hist_ctx,
+            PERIOD_START, PERIOD_END,
+        )
+        assert wd == 23
+        assert cd == 31
+
+    def test_historical_date_no_context_falls_back_to_current(self):
+        wd, cd = _resolve_period_ctx(
+            date(2024, 1, 15), 22, 28, {},
+            PERIOD_START, PERIOD_END,
+        )
+        assert wd == 22
+        assert cd == 28
+
+
+# ---------------------------------------------------------------------------
+# end-to-end: historical rate applied via apply_payroll_rules
+# ---------------------------------------------------------------------------
+
+class TestTemporalRateResolution:
+
+    def test_cross_period_input_uses_historical_rate(self):
+        """January overtime input should use January rule set (rate=5000)
+        not March's (rate=6000)."""
+        rules = [
+            {
+                "rule_name":            "OVERTIME_PAY",
+                "rule_definition_json": {
+                    "calculation_method": "unit_multiplier",
+                    "input_field":        "overtime_days",
+                    "rate":               6000,   # March rate
+                },
+            }
+        ]
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("300000")},
+            payroll_rules=rules,
+            employee_inputs={"overtime_days": [{"quantity": 2, "reference_date": date(2024, 1, 15)}]},
+            client_meta={},
+            historical_rule_sets=HISTORICAL_RULE_SETS,
+            period_start=PERIOD_START,
+            period_end=PERIOD_END,
+            current_rule_set_id=CURRENT_RS_ID,
+            current_rule_set_effective_from="2024-03-01",
+        )
+        # 2 days × 5000 (January rate) = 10000
+        assert components["OVERTIME_PAY"] == Decimal("10000.00")
+        assert trace[0]["resolution_source"] == "historical"
+
+    def test_current_period_input_uses_current_rate(self):
+        """March input uses current rule set (rate=6000)."""
+        rules = [
+            {
+                "rule_name":            "OVERTIME_PAY",
+                "rule_definition_json": {
+                    "calculation_method": "unit_multiplier",
+                    "input_field":        "overtime_days",
+                    "rate":               6000,
+                },
+            }
+        ]
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("300000")},
+            payroll_rules=rules,
+            employee_inputs={"overtime_days": [{"quantity": 2, "reference_date": date(2024, 3, 15)}]},
+            client_meta={},
+            historical_rule_sets=HISTORICAL_RULE_SETS,
+            period_start=PERIOD_START,
+            period_end=PERIOD_END,
+            current_rule_set_id=CURRENT_RS_ID,
+            current_rule_set_effective_from="2024-03-01",
+        )
+        # 2 days × 6000 (March rate) = 12000
+        assert components["OVERTIME_PAY"] == Decimal("12000.00")
+        assert trace[0]["resolution_source"] == "current"
+
+    def test_cross_period_deduction_uses_historical_working_days(self):
+        """January absence input uses January working_days (23) not March's (21)."""
+        client_meta = {
+            "BASIC": {"calculations_behaviour": {"proration_strategy": "work_days"}}
+        }
+        rules = [_rule("Absence Deduction", "daily_rate_deduction", input_field="absent_days")]
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("230000")},
+            payroll_rules=rules,
+            employee_inputs={"absent_days": [{"quantity": 1, "reference_date": date(2024, 1, 15)}]},
+            client_meta=client_meta,
+            working_days=21,   # March
+            calendar_days=31,
+            historical_period_contexts={(2024, 1): {"working_days": 23, "calendar_days": 31}},
+            period_start=PERIOD_START,
+            period_end=PERIOD_END,
+        )
+        # daily rate for January = 230000 / 23 = 10000.00
+        # deduction = 10000.00 × 1 = 10000.00
+        # BASIC after = 230000 - 10000 = 220000
+        assert components["BASIC"] == Decimal("220000.00")
+
+

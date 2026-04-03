@@ -68,7 +68,6 @@ def _create_prerequisites(db):
         name="Status Transition Test Workspace",
         country_code="NG",
         base_currency="NGN",
-        retry_strategy="FULL_RUN",
         status="DRAFT",
     ))
     db.commit()
@@ -293,21 +292,20 @@ def test_insert_requires_draft_status():
       2. trg_enforce_payroll_run_initial_status — requires status = 'DRAFT'
       3. trg_enforce_workspace_live      — requires workspace.status = 'LIVE'
 
-    This test sets up minimal prerequisites so that trigger (1) passes.
-    Trigger (2) then fires and blocks with "must be created with status DRAFT"
-    before trigger (3) even runs, so the workspace can stay in DRAFT status.
+    This test sets up the prerequisites that the current validate_payroll_readiness()
+    function requires (workspace LIVE, statutory rule, tax bands, component metadata)
+    so that trigger (1) passes.  trg_enforce_payroll_run_initial_status fires next
+    and blocks every non-DRAFT INSERT with "must be created with status DRAFT".
 
     Prerequisites inserted directly (no need for onboarding endpoint):
-      - salary_definition with NULL effective dates (always covers any period)
-      - payroll_rule with is_active = true
-      - employee with status = 'ACTIVE' + an open-ended employee_contract
+      - workspace with status = 'LIVE'
+      - statutory_rule + tax_bands  (NO_STATUTORY_RULE / NO_TAX_BANDS checks)
+      - component_metadata for 'NG' (NO_ACTIVE_COMPONENT_METADATA check)
     """
     db = SessionLocal()
-    account_id    = uuid.uuid4()
-    workspace_id  = uuid.uuid4()
-    sal_def_id    = uuid.uuid4()
-    payroll_rule_id = uuid.uuid4()
-    employee_id   = uuid.uuid4()
+    account_id           = uuid.uuid4()
+    workspace_id         = uuid.uuid4()
+    statutory_rule_id    = uuid.uuid4()
 
     try:
         db.add(Account(account_id=account_id, name="Insert Guard Test Corp"))
@@ -317,54 +315,38 @@ def test_insert_requires_draft_status():
             name="Insert Guard Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
-            status="DRAFT",
+            status="LIVE",
         ))
-        db.commit()
 
-        # Salary definition — NULL effective dates satisfy the readiness check
-        # for any (NULL) period.
         db.execute(
             text("""
-                INSERT INTO salary_definition
-                    (salary_definition_id, workspace_id, name, components_jsonb)
-                VALUES (:id, :wid, 'STANDARD', '{"BASIC": {"amount": 500000}}')
+                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
+                VALUES (:id, 'NATIONAL', 9994, '{}')
             """),
-            {"id": sal_def_id, "wid": workspace_id},
+            {"id": statutory_rule_id},
         )
 
-        # Active payroll rule.
-        db.execute(
-            text("""
-                INSERT INTO payroll_rule
-                    (rule_id, workspace_id, rule_name, rule_definition_json, is_active)
-                VALUES (gen_random_uuid(), :wid, 'Pension', '{}', true)
-            """),
-            {"wid": workspace_id},
-        )
-
-        # Active employee + open-ended contract.
-        db.execute(
-            text("""
-                INSERT INTO employee (employee_id, workspace_id, full_name, status)
-                VALUES (:eid, :wid, 'Test Employee', 'ACTIVE')
-            """),
-            {"eid": employee_id, "wid": workspace_id},
-        )
-        db.execute(
-            text("""
-                INSERT INTO employee_contract
-                    (contract_id, employee_id, salary_definition_id, start_date)
-                VALUES (gen_random_uuid(), :eid, :sdid, CURRENT_DATE)
-            """),
-            {"eid": employee_id, "sdid": sal_def_id},
-        )
+        for lower, upper, rate in [
+            (0,         300_000,   0.07),
+            (300_000,   600_000,   0.11),
+            (600_000,   1_100_000, 0.15),
+            (1_100_000, 1_600_000, 0.19),
+            (1_600_000, None,      0.21),
+        ]:
+            db.execute(
+                text("""
+                    INSERT INTO tax_band
+                        (tax_band_id, statutory_rule_id, lower_limit, upper_limit, rate)
+                    VALUES (gen_random_uuid(), :sr_id, :lower, :upper, :rate)
+                """),
+                {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
+            )
 
         db.commit()
 
-        # trg_enforce_payroll_readiness now passes (salary def + rule + strategy
-        # + active employee with contract).  trg_enforce_payroll_run_initial_status
-        # fires next and blocks every non-DRAFT INSERT.
+        # validate_payroll_readiness() now passes (LIVE workspace, statutory rule,
+        # tax bands, component metadata).  trg_enforce_payroll_run_initial_status
+        # fires and blocks every non-DRAFT INSERT.
         for invalid_status in ("CALCULATED", "APPROVED", "PAID", "VALIDATED"):
             with pytest.raises(InternalError, match="must be created with status DRAFT"):
                 db.execute(
@@ -382,22 +364,12 @@ def test_insert_requires_draft_status():
         db.rollback()
         db.execute(text("SET LOCAL session_replication_role = replica"))
         db.execute(
-            text("""
-                DELETE FROM employee_contract WHERE employee_id = :eid
-            """),
-            {"eid": employee_id},
+            text("DELETE FROM tax_band WHERE statutory_rule_id = :sr_id"),
+            {"sr_id": statutory_rule_id},
         )
         db.execute(
-            text("DELETE FROM employee WHERE workspace_id = :wid"),
-            {"wid": workspace_id},
-        )
-        db.execute(
-            text("DELETE FROM payroll_rule WHERE workspace_id = :wid"),
-            {"wid": workspace_id},
-        )
-        db.execute(
-            text("DELETE FROM salary_definition WHERE workspace_id = :wid"),
-            {"wid": workspace_id},
+            text("DELETE FROM statutory_rule WHERE statutory_rule_id = :sr_id"),
+            {"sr_id": statutory_rule_id},
         )
         db.execute(
             text("DELETE FROM workspace WHERE workspace_id = :wid"),

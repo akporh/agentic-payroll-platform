@@ -83,20 +83,24 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     """Build the same execution context that the original /payroll/run route builds.
 
     Loads period dates from the payroll_run row, resolves statutory rule via
-    country_code, loads component_metadata, client_meta, payroll_rules, and all
-    statutory rate parameters.  Returns a dict with keys:
+    country_code and statutory_effective_date (temporal selection), loads
+    component_metadata, client_meta, payroll_rules (from rule_set_id if present),
+    and all statutory rate parameters.  Returns a dict with keys:
 
         "context"            — full context dict for execute_single_employee_payroll
         "component_metadata" — list of component dicts for the sequential executor
         "tax_bands"          — list of tax band dicts
         "statutory_rule_id"  — str
         "statutory_version"  — int
-        "payroll_rule_ids"   — list[str]  (for rules_context_snapshot)
+        "payroll_rule_ids"   — list[str]  (legacy v1 snapshot only; empty for v2)
+        "rules_context_snapshot" — original run snapshot (for snapshot-driven retry)
     """
-    # ── Load workspace country_code and run period dates ──────────────────────
+    # ── Load workspace country_code, run period dates, and new temporal columns ─
     row = db.execute(
         text("""
-            SELECT w.country_code, pr.period_start, pr.period_end
+            SELECT w.country_code, pr.period_start, pr.period_end,
+                   pr.rule_set_id, pr.statutory_effective_date,
+                   pr.rules_context_snapshot
             FROM   payroll_run pr
             JOIN   workspace   w  ON pr.workspace_id = w.workspace_id
             WHERE  pr.payroll_run_id = :run_id
@@ -107,26 +111,45 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     if row is None:
         raise ValueError(f"Payroll run not found: {payroll_run_id}")
 
-    country_code  = row[0]
-    period_start  = row[1]
-    period_end    = row[2]
+    country_code              = row[0]
+    period_start              = row[1]
+    period_end                = row[2]
+    rule_set_id               = str(row[3]) if row[3] else None
+    statutory_effective_date  = row[4]
+    original_snapshot         = row[5] or {}
 
     period_ctx = build_period_context(
         period_start=period_start,
         period_end=period_end,
     )
 
-    # ── Statutory rule (joined to workspace country_code, same as /payroll/run) ─
-    stat_row = db.execute(
-        text("""
-            SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
-            FROM   statutory_rule sr
-            WHERE  sr.country_code = :cc
-            ORDER  BY sr.version DESC
-            LIMIT  1
-        """),
-        {"cc": country_code},
-    ).fetchone()
+    # ── Statutory rule — temporal selection ──────────────────────────────────
+    # Use statutory_effective_date from the original run so that retry picks the
+    # same statutory rule as the run that created the snapshot.  Fall back to
+    # latest-version query for legacy runs without the column.
+    if statutory_effective_date:
+        stat_row = db.execute(
+            text("""
+                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+                FROM   statutory_rule sr
+                WHERE  sr.country_code    = :cc
+                  AND  sr.effective_from <= :as_of_date
+                ORDER  BY sr.effective_from DESC, sr.version DESC
+                LIMIT  1
+            """),
+            {"cc": country_code, "as_of_date": statutory_effective_date},
+        ).fetchone()
+    else:
+        stat_row = db.execute(
+            text("""
+                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+                FROM   statutory_rule sr
+                WHERE  sr.country_code = :cc
+                ORDER  BY sr.version DESC
+                LIMIT  1
+            """),
+            {"cc": country_code},
+        ).fetchone()
 
     if stat_row is None:
         raise ValueError(f"No statutory rule found for country_code '{country_code}'")
@@ -135,9 +158,14 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     statutory_version = stat_row[1]
     rules_jsonb       = stat_row[2] or {}
 
-    pension_config        = rules_jsonb.get("pension", {})
-    pension_employee_rate = Decimal(str(pension_config.get("employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(pension_config.get("employer_rate", "0.10")))
+    pension_config = rules_jsonb.get("pension")
+    if not pension_config or "employee_rate" not in pension_config or "employer_rate" not in pension_config:
+        raise ValueError(
+            "Statutory rule is missing pension rates (employee_rate / employer_rate). "
+            "Run the pension rates migration."
+        )
+    pension_employee_rate = Decimal(str(pension_config["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_config["employer_rate"]))
     rent_relief_cfg       = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
     nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
     health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
@@ -214,27 +242,65 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
             else:
                 client_meta[code][key] = val
 
-    # ── Active payroll rules (full objects, not just IDs) ─────────────────────
-    rule_rows = db.execute(
-        text("""
-            SELECT rule_id, rule_name, rule_definition_json, is_active
-            FROM   payroll_rule
-            WHERE  is_active    = TRUE
-              AND  workspace_id = :wid
-        """),
-        {"wid": workspace_id},
-    ).fetchall()
+    # ── Payroll rules ─────────────────────────────────────────────────────────
+    # When the run has a rule_set_id (v2 temporal runs) load items from
+    # rule_set_item — these are immutable and always match the original run.
+    # Fall back to the legacy is_active query for runs created before rule sets.
+    if rule_set_id:
+        rule_rows = db.execute(
+            text("""
+                SELECT rsi.rule_set_id, rsi.rule_name, rsi.rule_definition_json, rsi.rule_type
+                FROM   rule_set_item rsi
+                WHERE  rsi.rule_set_id = :rs_id
+            """),
+            {"rs_id": rule_set_id},
+        ).fetchall()
 
-    payroll_rule_ids  = [str(r[0]) for r in rule_rows]
-    payroll_rules_full = [
-        {
-            "rule_id":              str(r[0]),
-            "rule_name":            r[1],
-            "rule_definition_json": r[2],
-            "is_active":            r[3],
-        }
-        for r in rule_rows
-    ]
+        payroll_rule_ids = []   # no legacy rule_id for rule_set_item format
+        payroll_rules_full = [
+            {
+                "rule_set_id":          str(r[0]),
+                "rule_name":            r[1],
+                "rule_definition_json": r[2],
+                "rule_type":            r[3],
+            }
+            for r in rule_rows
+        ]
+        # rule_set effective_from comes from the snapshot (already in original_snapshot)
+        current_rule_set_effective_from = (
+            original_snapshot.get("rule_set", {}).get("effective_from")
+        )
+    else:
+        rule_rows = db.execute(
+            text("""
+                SELECT rule_id, rule_name, rule_definition_json, is_active
+                FROM   payroll_rule
+                WHERE  is_active    = TRUE
+                  AND  workspace_id = :wid
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        payroll_rule_ids = [str(r[0]) for r in rule_rows]
+        payroll_rules_full = [
+            {
+                "rule_id":              str(r[0]),
+                "rule_name":            r[1],
+                "rule_definition_json": r[2],
+                "is_active":            r[3],
+            }
+            for r in rule_rows
+        ]
+        current_rule_set_effective_from = None
+
+    # ── Historical rule sets — read from original snapshot (F2 fix) ───────────
+    # Retry must never re-query live rule tables for historical rate resolution.
+    # The snapshot embedded in the payroll_run row is the authoritative source.
+    snapshot_version = original_snapshot.get("snapshot_version", 1)
+    if snapshot_version == 2:
+        historical_rule_sets = original_snapshot.get("historical_rule_sets", [])
+    else:
+        historical_rule_sets = []
 
     context = {
         "tax_bands":                        tax_bands,
@@ -248,15 +314,19 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "client_meta":                      client_meta,
         "period":                           period_ctx,
         "payroll_rules":                    payroll_rules_full,
+        "historical_rule_sets":             historical_rule_sets,
+        "current_rule_set_id":              rule_set_id,
+        "current_rule_set_effective_from":  current_rule_set_effective_from,
     }
 
     return {
-        "context":           context,
-        "component_metadata": component_metadata,
-        "tax_bands":         tax_bands,
-        "statutory_rule_id": statutory_rule_id,
-        "statutory_version": statutory_version,
-        "payroll_rule_ids":  payroll_rule_ids,
+        "context":                context,
+        "component_metadata":     component_metadata,
+        "tax_bands":              tax_bands,
+        "statutory_rule_id":      statutory_rule_id,
+        "statutory_version":      statutory_version,
+        "payroll_rule_ids":       payroll_rule_ids,
+        "rules_context_snapshot": original_snapshot or None,
     }
 
 
@@ -396,18 +466,19 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
 
         try:
             calc_result = execute_single_employee_payroll(
-                payroll_run_id    = payroll_run_id,
-                employee_id       = employee_id,
-                components        = components,
-                tax_bands         = shared_ctx["tax_bands"],
-                statutory_rule_id = shared_ctx["statutory_rule_id"],
-                statutory_version = shared_ctx["statutory_version"],
-                payroll_rule_ids  = shared_ctx["payroll_rule_ids"],
-                performed_by      = "admin@internal",
-                component_metadata = shared_ctx["component_metadata"],
-                context            = shared_ctx["context"],
-                contract_start     = contract_start,
-                contract_end       = contract_end,
+                payroll_run_id         = payroll_run_id,
+                employee_id            = employee_id,
+                components             = components,
+                tax_bands              = shared_ctx["tax_bands"],
+                statutory_rule_id      = shared_ctx["statutory_rule_id"],
+                statutory_version      = shared_ctx["statutory_version"],
+                payroll_rule_ids       = shared_ctx["payroll_rule_ids"],
+                performed_by           = "admin@internal",
+                component_metadata     = shared_ctx["component_metadata"],
+                context                = shared_ctx["context"],
+                contract_start         = contract_start,
+                contract_end           = contract_end,
+                rules_context_snapshot = shared_ctx["rules_context_snapshot"],
             )
             calc_error = None
         except Exception as exc:
@@ -614,18 +685,19 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
                 contract_end   = emp_row[2].isoformat() if emp_row[2] else None
                 try:
                     calc_result = execute_single_employee_payroll(
-                        payroll_run_id     = payroll_run_id,
-                        employee_id        = employee_id,
-                        components         = components,
-                        tax_bands          = shared_ctx["tax_bands"],
-                        statutory_rule_id  = shared_ctx["statutory_rule_id"],
-                        statutory_version  = shared_ctx["statutory_version"],
-                        payroll_rule_ids   = shared_ctx["payroll_rule_ids"],
-                        performed_by       = "admin@internal",
-                        component_metadata = shared_ctx["component_metadata"],
-                        context            = shared_ctx["context"],
-                        contract_start     = contract_start,
-                        contract_end       = contract_end,
+                        payroll_run_id          = payroll_run_id,
+                        employee_id             = employee_id,
+                        components              = components,
+                        tax_bands               = shared_ctx["tax_bands"],
+                        statutory_rule_id       = shared_ctx["statutory_rule_id"],
+                        statutory_version       = shared_ctx["statutory_version"],
+                        payroll_rule_ids        = shared_ctx["payroll_rule_ids"],
+                        performed_by            = "admin@internal",
+                        component_metadata      = shared_ctx["component_metadata"],
+                        context                 = shared_ctx["context"],
+                        contract_start          = contract_start,
+                        contract_end            = contract_end,
+                        rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
                     )
                     calc_error = None
                 except Exception as exc:

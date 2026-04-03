@@ -4,12 +4,15 @@ Payroll API Routes.
 Exposes endpoints for triggering payroll runs.
 """
 
+import calendar
 import uuid
+from datetime import date
 from decimal import Decimal
 from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
 from backend.domain.payroll.period_context import build_period_context
+from backend.domain.rules.snapshot import build_rules_context_snapshot
 from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
@@ -45,6 +48,9 @@ def run_payroll(
     period_type_raw    = payload.get("period_type")
     working_days_input = payload.get("working_days")
     retry_strategy     = payload.get("retry_strategy", "PER_EMPLOYEE")
+    run_type           = payload.get("run_type", "REGULAR").upper()
+    # Optional rule_set_id override for ADJUSTMENT runs targeting a specific rule set
+    override_rule_set_id = payload.get("rule_set_id")
 
     if not workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id required")
@@ -53,6 +59,18 @@ def run_payroll(
         raise HTTPException(
             status_code=422,
             detail="working_days is required when period_type is CUSTOM",
+        )
+
+    # ── Compute statutory_effective_date early (needed for temporal rule queries) ─
+    # Use period_end when provided; otherwise last day of the current month.
+    if period_end:
+        statutory_effective_date = (
+            date.fromisoformat(period_end) if isinstance(period_end, str) else period_end
+        )
+    else:
+        _today = date.today()
+        statutory_effective_date = _today.replace(
+            day=calendar.monthrange(_today.year, _today.month)[1]
         )
 
     db = SessionLocal()
@@ -118,32 +136,38 @@ def run_payroll(
         db.close()
         raise HTTPException(status_code=400, detail="No active employees found")
 
-    print("Employees being processed:", len(employees))
-    for e in employees:
-        print(e["employee_id"])
-
-    # --- Load Statutory Rule — platform-level, resolved by workspace country_code ---
+    # ── A1-A2: Statutory rule — temporal selection using statutory_effective_date ─
+    # SELECT the rule whose effective_from is <= statutory_effective_date,
+    # breaking ties by most recently published (effective_from DESC, version DESC).
     stat_row = db.execute(text("""
-        SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+        SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb, sr.effective_from
         FROM statutory_rule sr
         JOIN workspace w ON sr.country_code = w.country_code
         WHERE w.workspace_id = :workspace_id
-        ORDER BY sr.version DESC
+          AND sr.effective_from <= :as_of_date
+        ORDER BY sr.effective_from DESC, sr.version DESC
         LIMIT 1
-    """), {"workspace_id": workspace_id}).fetchone()
+    """), {"workspace_id": workspace_id, "as_of_date": statutory_effective_date}).fetchone()
 
     if not stat_row:
         db.close()
         raise HTTPException(status_code=400, detail="No statutory rule found for this workspace's country")
 
-    statutory_rule_id = str(stat_row[0])
-    statutory_version = stat_row[1]
-    rules_jsonb       = stat_row[2] or {}
+    statutory_rule_id      = str(stat_row[0])
+    statutory_version      = stat_row[1]
+    rules_jsonb            = stat_row[2] or {}
+    stat_effective_from    = str(stat_row[3]) if stat_row[3] else None
 
-    # Extract pension rates; fall back to PRA 2014 defaults (9% / 10%)
-    pension_config        = rules_jsonb.get("pension", {})
-    pension_employee_rate = Decimal(str(pension_config.get("employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(pension_config.get("employer_rate", "0.10")))
+    # Extract pension rates from statutory rule — required, no hardcoded fallback.
+    pension_config = rules_jsonb.get("pension")
+    if not pension_config or "employee_rate" not in pension_config or "employer_rate" not in pension_config:
+        db.close()
+        raise HTTPException(
+            status_code=500,
+            detail="Statutory rule is missing pension rates (employee_rate / employer_rate). Run the pension rates migration.",
+        )
+    pension_employee_rate = Decimal(str(pension_config["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_config["employer_rate"]))
 
     # Extract rent relief config (used by sequential executor for PAYE annualisation)
     rent_relief_cfg = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
@@ -163,27 +187,12 @@ def run_payroll(
     """), {"sr_id": statutory_rule_id}).fetchall()
 
     tax_bands = [
-        {"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]}
-        for r in tax_rows
-    ]
-
-    # --- Load Active Payroll Rules (IDs for snapshot + full dicts for rule evaluator) ---
-    rule_rows = db.execute(text("""
-        SELECT rule_id, rule_name, rule_definition_json, is_active
-        FROM payroll_rule
-        WHERE is_active = TRUE
-          AND workspace_id = :workspace_id
-    """), {"workspace_id": workspace_id}).fetchall()
-
-    payroll_rule_ids  = [str(r[0]) for r in rule_rows]
-    payroll_rules_full = [
         {
-            "rule_id":              str(r[0]),
-            "rule_name":            r[1],
-            "rule_definition_json": r[2],
-            "is_active":            r[3],
+            "lower_limit": float(r[0]) if r[0] is not None else None,
+            "upper_limit": float(r[1]) if r[1] is not None else None,
+            "rate":        float(r[2]) if r[2] is not None else None,
         }
-        for r in rule_rows
+        for r in tax_rows
     ]
 
     # --- Load Pay Cycle (frequency drives period_type default; definition_json is extension data) ---
@@ -210,6 +219,75 @@ def run_payroll(
     except ValueError as exc:
         db.close()
         raise HTTPException(status_code=422, detail=str(exc))
+
+    # ── A3-A4: Rule set resolution ────────────────────────────────────────────
+    # Find the rule set effective on statutory_effective_date.
+    # ADJUSTMENT runs may supply a specific rule_set_id override.
+    # Falls back to legacy is_active query when no rule set exists yet.
+    if override_rule_set_id:
+        rs_row = db.execute(text("""
+            SELECT rs.rule_set_id, rs.effective_from
+            FROM rule_set rs
+            WHERE rs.rule_set_id  = :rs_id
+              AND rs.workspace_id = :wid
+        """), {"rs_id": override_rule_set_id, "wid": workspace_id}).fetchone()
+    else:
+        rs_row = db.execute(text("""
+            SELECT rs.rule_set_id, rs.effective_from
+            FROM rule_set rs
+            WHERE rs.workspace_id  = :wid
+              AND rs.effective_from <= :as_of_date
+            ORDER BY rs.effective_from DESC, rs.created_at DESC
+            LIMIT 1
+        """), {"wid": workspace_id, "as_of_date": statutory_effective_date}).fetchone()
+
+    if rs_row:
+        rule_set_id              = str(rs_row[0])
+        rule_set_effective_from  = str(rs_row[1])
+
+        rule_item_rows = db.execute(text("""
+            SELECT rsi.rule_set_id, rsi.rule_name, rsi.rule_definition_json, rsi.rule_type
+            FROM rule_set_item rsi
+            WHERE rsi.rule_set_id = :rs_id
+        """), {"rs_id": rule_set_id}).fetchall()
+
+        payroll_rule_ids   = []     # no legacy rule_id for rule_set_item format
+        payroll_rules_full = [
+            {
+                "rule_set_id":          str(r[0]),
+                "rule_name":            r[1],
+                "rule_definition_json": r[2],
+                "rule_type":            r[3],
+            }
+            for r in rule_item_rows
+        ]
+        rule_set_items_for_snapshot = [
+            {"rule_name": r[1], "rule_definition_json": r[2], "rule_type": r[3]}
+            for r in rule_item_rows
+        ]
+    else:
+        # Legacy path — no rule sets published yet for this workspace
+        rule_set_id             = None
+        rule_set_effective_from = None
+        rule_set_items_for_snapshot = []
+
+        rule_rows = db.execute(text("""
+            SELECT rule_id, rule_name, rule_definition_json, is_active
+            FROM payroll_rule
+            WHERE is_active = TRUE
+              AND workspace_id = :workspace_id
+        """), {"workspace_id": workspace_id}).fetchall()
+
+        payroll_rule_ids  = [str(r[0]) for r in rule_rows]
+        payroll_rules_full = [
+            {
+                "rule_id":              str(r[0]),
+                "rule_name":            r[1],
+                "rule_definition_json": r[2],
+                "is_active":            r[3],
+            }
+            for r in rule_rows
+        ]
 
     # --- Load Component Metadata for sequential executor ---
     component_metadata_rows = db.execute(text("""
@@ -280,8 +358,7 @@ def run_payroll(
 
     payroll_run_id = str(uuid.uuid4())
 
-    # Load unclaimed inputs without linking (payroll_run row doesn't exist yet —
-    # linking here would violate the FK constraint on payroll_input.payroll_run_id).
+    # ── Load unclaimed inputs (own session — payroll_run row doesn't exist yet) ─
     inputs_by_employee = load_unclaimed_inputs_by_employee(
         workspace_id,
         period_start=period_ctx.period_start,
@@ -289,6 +366,97 @@ def run_payroll(
     )
     for emp in employees:
         emp["inputs"] = inputs_by_employee.get(emp["employee_id"], {})
+
+    # ── A5: Cross-period prefetch — collect distinct historical rule sets ──────
+    # Identify inputs whose reference_date falls outside the current period.
+    # For each distinct historical month, resolve and cache the rule set that
+    # was in effect, then compute its PeriodContext (for correct working_days).
+    cross_period_ref_dates: set = set()
+    for emp in employees:
+        for _data in emp.get("inputs", {}).values():
+            if not isinstance(_data, dict):
+                continue
+            ref_dt = _data.get("reference_date")
+            if ref_dt and (
+                ref_dt < period_ctx.period_start or ref_dt > period_ctx.period_end
+            ):
+                cross_period_ref_dates.add(ref_dt)
+
+    historical_rule_sets_list: list[dict] = []
+    historical_period_contexts: dict = {}
+
+    if cross_period_ref_dates:
+        hist_db = SessionLocal()
+        try:
+            seen_rs_ids: set = {rule_set_id} if rule_set_id else set()
+            hist_rs_map: dict = {}  # {rule_set_id: {id, effective_from, items}}
+
+            for ref_dt in sorted(cross_period_ref_dates):
+                hist_row = hist_db.execute(text("""
+                    SELECT rs.rule_set_id, rs.effective_from
+                    FROM rule_set rs
+                    WHERE rs.workspace_id  = :wid
+                      AND rs.effective_from <= :as_of_date
+                    ORDER BY rs.effective_from DESC, rs.created_at DESC
+                    LIMIT 1
+                """), {"wid": workspace_id, "as_of_date": ref_dt}).fetchone()
+
+                if hist_row:
+                    h_rs_id = str(hist_row[0])
+                    if h_rs_id not in seen_rs_ids:
+                        seen_rs_ids.add(h_rs_id)
+                        h_items = hist_db.execute(text("""
+                            SELECT rule_name, rule_definition_json, rule_type
+                            FROM rule_set_item
+                            WHERE rule_set_id = :rs_id
+                        """), {"rs_id": h_rs_id}).fetchall()
+
+                        hist_rs_map[h_rs_id] = {
+                            "id":            h_rs_id,
+                            "effective_from": str(hist_row[1]),
+                            "items": [
+                                {
+                                    "rule_name":            r[0],
+                                    "rule_definition_json": r[1],
+                                    "rule_type":            r[2],
+                                }
+                                for r in h_items
+                            ],
+                        }
+
+                # Build historical PeriodContext for this month (F5 fix: correct working_days)
+                key = (ref_dt.year, ref_dt.month)
+                if key not in historical_period_contexts:
+                    h_start = ref_dt.replace(day=1)
+                    h_end   = ref_dt.replace(day=calendar.monthrange(ref_dt.year, ref_dt.month)[1])
+                    h_ctx   = build_period_context(h_start, h_end)
+                    historical_period_contexts[key] = {
+                        "working_days":  h_ctx.working_days,
+                        "calendar_days": h_ctx.calendar_days,
+                    }
+
+            historical_rule_sets_list = list(hist_rs_map.values())
+        finally:
+            hist_db.close()
+
+    # ── Build rules context snapshot ──────────────────────────────────────────
+    # v2 (full content) when a rule set is resolved; v1 (ID-only) for legacy.
+    if rule_set_id:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id         = statutory_rule_id,
+            statutory_version         = statutory_version,
+            statutory_effective_from  = stat_effective_from,
+            statutory_rules_jsonb     = rules_jsonb,
+            statutory_tax_bands       = tax_bands,
+            rule_set_id               = rule_set_id,
+            rule_set_effective_from   = rule_set_effective_from,
+            rule_set_items            = rule_set_items_for_snapshot,
+            historical_rule_sets      = historical_rule_sets_list,
+        )
+    else:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id, statutory_version, payroll_rule_ids
+        )
 
     context = {
         "tax_bands":                        tax_bands,
@@ -302,26 +470,35 @@ def run_payroll(
         "client_meta":                      client_meta,
         "period":                           period_ctx,
         "payroll_rules":                    payroll_rules_full,
+        # ── Temporal context — consumed by rule_evaluator for cross-period inputs ─
+        "historical_rule_sets":             historical_rule_sets_list,
+        "historical_period_contexts":       historical_period_contexts,
+        "current_rule_set_id":              rule_set_id,
+        "current_rule_set_effective_from":  rule_set_effective_from,
     }
 
     try:
         result = execute_and_persist(
-            payroll_run_id=payroll_run_id,
-            workspace_id=workspace_id,
-            employees=employees,
-            tax_bands=tax_bands,
-            statutory_rule_id=statutory_rule_id,
-            statutory_version=statutory_version,
-            payroll_rule_ids=payroll_rule_ids,
-            performed_by="admin@internal",
-            execution_mode="isolated",
-            idempotency_key=idempotency_key,
-            period_start=period_start,
-            period_end=period_end,
-            pay_cycle_definition=pay_cycle_definition,
-            retry_strategy=retry_strategy,
-            component_metadata=component_metadata or None,
-            context=context,
+            payroll_run_id           = payroll_run_id,
+            workspace_id             = workspace_id,
+            employees                = employees,
+            tax_bands                = tax_bands,
+            statutory_rule_id        = statutory_rule_id,
+            statutory_version        = statutory_version,
+            payroll_rule_ids         = payroll_rule_ids,
+            performed_by             = "admin@internal",
+            execution_mode           = "isolated",
+            idempotency_key          = idempotency_key,
+            period_start             = period_start,
+            period_end               = period_end,
+            pay_cycle_definition     = pay_cycle_definition,
+            retry_strategy           = retry_strategy,
+            component_metadata       = component_metadata or None,
+            context                  = context,
+            rules_context_snapshot   = rules_ctx_snapshot,
+            rule_set_id              = rule_set_id,
+            statutory_effective_date = str(statutory_effective_date),
+            run_type                 = run_type,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

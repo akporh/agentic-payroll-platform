@@ -158,6 +158,100 @@ def _resolve_inputs(input_requirements: dict, employee_inputs: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Runtime component registry
+# ---------------------------------------------------------------------------
+
+# Execution priority for rule-injected components.
+# Slots between base earnings (10–40) and GROSS_PAY (100) so they enter
+# results{} before _handle_sum_earnings aggregates them.
+RULE_COMPONENT_PRIORITY = 50
+
+_RULE_TYPE_CLASS_MAP: dict[str, str] = {
+    "EARNING":   "earning",
+    "DEDUCTION": "statutory_deduction",
+}
+
+
+def _infer_component_class(rule_type: str | None) -> str:
+    """Map rule_set_item.rule_type to component_class.
+
+    "EARNING"   → "earning"
+    "DEDUCTION" → "statutory_deduction"
+    None / unrecognised (e.g. legacy "unit_multiplier" stored in rule_type)
+        → "earning"  (consistent with payroll_input.py default)
+    """
+    if not rule_type:
+        return "earning"
+    return _RULE_TYPE_CLASS_MAP.get(rule_type.upper(), "earning")
+
+
+def build_runtime_component_registry(
+    platform_metadata: list[dict],
+    payroll_rules: list[dict],
+    employee_inputs: dict,
+) -> list[dict]:
+    """Build unified component registry at runtime.
+
+    Merges three sources:
+
+    Source 1 — platform_metadata
+        component_metadata rows: BASIC, HOUSING, GROSS_PAY, PAYE, NET_PAY, …
+        Passed through unchanged.
+
+    Source 2 — dynamic_components_from_rules
+        Synthesised from rule_set_item (or legacy payroll_rule) rows whose
+        calculation_method is unit_multiplier or fixed_amount.  These methods
+        add a *new* key to salary_components (rule_name → computed amount).
+        daily_rate_deduction is excluded — it modifies existing keys only.
+
+        Each synthesised entry gets:
+          component_class    = _infer_component_class(rule_type)
+          calculation_method = "salary_component"   (read pre-computed value)
+          execution_priority = RULE_COMPONENT_PRIORITY  (50)
+          is_active          = True
+
+        With priority 50, rule-injected components flow through the executor
+        and enter results{} before _handle_sum_earnings runs at priority 100.
+        No modification to any aggregation handler is required.
+
+    Source 3 — period_input_components
+        Direct-pay inputs with no matching rule (future extension point).
+        Not yet implemented — parameter accepted for API stability.
+
+    Args:
+        platform_metadata: component_metadata rows from the DB.
+        payroll_rules:      list of rule dicts (rule_set_item or payroll_rule format).
+        employee_inputs:    {input_code: [events]} — reserved for Source 3.
+
+    Returns:
+        Merged list ready to pass as component_metadata to run_sequential_payroll.
+    """
+    existing_codes = {m["component_code"] for m in platform_metadata}
+    additions: list[dict] = []
+
+    for rule in (payroll_rules or []):
+        code = rule.get("rule_name")
+        if not code or code in existing_codes:
+            continue
+        method = (rule.get("rule_definition_json") or {}).get("calculation_method", "")
+        if method not in ("unit_multiplier", "fixed_amount"):
+            continue  # daily_rate_deduction modifies existing keys — never adds a new code
+        additions.append({
+            "component_code":     code,
+            "component_class":    _infer_component_class(rule.get("rule_type")),
+            "calculation_method": "salary_component",
+            "execution_priority": RULE_COMPONENT_PRIORITY,
+            "is_active":          True,
+            "metadata_json":      {},
+        })
+        existing_codes.add(code)
+
+    # Source 3: direct-pay period inputs — TODO when direct-pay inputs are introduced.
+
+    return platform_metadata + additions
+
+
+# ---------------------------------------------------------------------------
 # Built-in handlers
 # ---------------------------------------------------------------------------
 
@@ -216,8 +310,13 @@ def _handle_pension_rule(
         (results.get(c, Decimal("0")) for c in pensionable_codes if c in results),
         Decimal("0"),
     )
-    pension_employee_rate = Decimal(str(ctx.get("pension_employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(ctx.get("pension_employer_rate", "0.10")))
+    if "pension_employee_rate" not in ctx or "pension_employer_rate" not in ctx:
+        raise ValueError(
+            "Execution context is missing pension_employee_rate / pension_employer_rate. "
+            "Ensure the statutory rule has pension rates configured."
+        )
+    pension_employee_rate = Decimal(str(ctx["pension_employee_rate"]))
+    pension_employer_rate = Decimal(str(ctx["pension_employer_rate"]))
     emp, er = calculate_pension(pensionable_base, pension_employee_rate, pension_employer_rate)
     # PENSION_EMPLOYEE is the statutory deduction; PENSION_EMPLOYER is an employer cost.
     # Both are stored in results. The trace entry is keyed to PENSION_EMPLOYEE (code).
@@ -336,6 +435,17 @@ def _handle_net_formula(
     )}
 
 
+def _handle_pension_employer(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    # The employer pension contribution is computed as a side-effect of
+    # pension_rule (which fires at a lower execution_priority) and stored in
+    # results["PENSION_EMPLOYER"].  This handler simply confirms that value
+    # so the component appears in the trace with a standard entry.
+    return {code: results.get(code, Decimal("0"))}
+
+
 # ---------------------------------------------------------------------------
 # Register all built-in handlers
 # ---------------------------------------------------------------------------
@@ -343,6 +453,7 @@ def _handle_net_formula(
 register_handler("salary_component",          _handle_salary_component)
 register_handler("sum_earnings",              _handle_sum_earnings)
 register_handler("pension_rule",              _handle_pension_rule)
+register_handler("pension_employer",          _handle_pension_employer)
 register_handler("rent_relief",               _handle_rent_relief)
 register_handler("taxable_income",            _handle_taxable_income)
 register_handler("paye_rule",                 _handle_paye_rule)
@@ -425,7 +536,29 @@ def run_sequential_payroll(
     # 3. Execute components sequentially, accumulating results.           #
     # ------------------------------------------------------------------ #
     results: dict[str, Decimal] = {}
-    execution_trace: list[dict] = []
+
+    # Seed the trace with a period context header so downstream consumers
+    # (DB, API, debug output) can see exactly which period was used and
+    # how the annualization factor was derived without re-reading context.
+    execution_trace: list[dict] = [
+        {
+            "component":            "_period_context",
+            "method":               "period_resolution",
+            "period_start":         str(_period.period_start),
+            "period_end":           str(_period.period_end),
+            "period_type":          _period.period_type.value,
+            "calendar_days":        _period.calendar_days,
+            "working_days":         _period.working_days,
+            "annualization_factor": str(_period.annualization_factor),
+            "period_fraction":      str(_period.period_fraction),
+            "result":               None,
+        }
+    ]
+
+    # Methods whose output depends on period-level factors (annualization,
+    # working-day count).  Their trace entries are annotated with the
+    # period values used so auditors can reproduce the exact calculation.
+    _PERIOD_SENSITIVE_METHODS = {"paye_rule", "rent_relief", "taxable_income"}
 
     for meta in ordered:
         code      = meta["component_code"]
@@ -456,11 +589,16 @@ def run_sequential_payroll(
         output = handler(code, meta_json, results, salary_components, ctx)
         results.update(output)
 
-        execution_trace.append({
+        trace_entry: dict = {
             "component": code,
             "method":    method,
             "result":    str(results.get(code)),
-        })
+        }
+        # Annotate period-sensitive entries so the trace is self-contained.
+        if method in _PERIOD_SENSITIVE_METHODS:
+            trace_entry["annualization_factor"] = str(_period.annualization_factor)
+            trace_entry["period_fraction"]      = str(_period.period_fraction)
+        execution_trace.append(trace_entry)
 
     return {
         "results": results,

@@ -4,7 +4,7 @@ import type { PayrollRun, PayrollResult, PayrollTotals, ReconciliationRecord, Ex
 export const payrollApi = {
   createRun: (
     workspaceId: string,
-    payload: { period_start: string; period_end: string; pay_date: string }
+    payload: { period_start: string; period_end: string; pay_date: string; run_type?: string }
   ) => api.post<{ run_id: string; status: string }>(`/${workspaceId}/payroll/run`, payload),
 
   getRuns: (workspaceId: string) =>

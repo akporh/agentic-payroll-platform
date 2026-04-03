@@ -32,6 +32,7 @@ def execute_payroll_run_pure(
     pay_cycle_definition: dict | None = None,
     component_metadata: list | None = None,
     context: dict | None = None,
+    rules_context_snapshot: dict | None = None,
     tracer=None,
 ) -> dict:
     """Execute a full payroll run end-to-end as a pure function.
@@ -127,14 +128,18 @@ def execute_payroll_run_pure(
             )
         )
 
+    # Use the pre-built v2 snapshot when provided by the route; fall back to
+    # building a v1 ID-only snapshot for legacy callers that don't pass one.
+    snapshot = rules_context_snapshot or build_rules_context_snapshot(
+        statutory_rule_id, statutory_version, payroll_rule_ids
+    )
+
     return {
-        "payroll_run_id": payroll_run_id,
-        "results": batch_result["results"],
-        "totals": batch_result["totals"],
-        "audit_logs": audit_logs,
-        "events": events,
-        "rules_context_snapshot": build_rules_context_snapshot(
-            statutory_rule_id, statutory_version, payroll_rule_ids
-        ),
-        "pay_cycle_definition": pay_cycle_definition,
+        "payroll_run_id":         payroll_run_id,
+        "results":                batch_result["results"],
+        "totals":                 batch_result["totals"],
+        "audit_logs":             audit_logs,
+        "events":                 events,
+        "rules_context_snapshot": snapshot,
+        "pay_cycle_definition":   pay_cycle_definition,
     }

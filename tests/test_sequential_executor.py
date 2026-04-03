@@ -26,7 +26,12 @@ from decimal import Decimal
 
 import pytest
 
-from backend.domain.payroll.sequential_executor import run_sequential_payroll, register_handler
+from backend.domain.payroll.sequential_executor import (
+    run_sequential_payroll,
+    register_handler,
+    build_runtime_component_registry,
+    RULE_COMPONENT_PRIORITY,
+)
 from backend.domain.payroll.period_context import build_period_context
 
 # ---------------------------------------------------------------------------
@@ -110,8 +115,10 @@ class TestFullMonthlyPayroll:
 
     def test_trace_has_one_entry_per_component(self):
         out = run()
-        # One trace entry per active, executable component
-        assert len(out["trace"]) == len(COMPONENT_METADATA)
+        # One trace entry per active, executable component; plus one leading
+        # _period_context header entry added by the sequential executor.
+        component_entries = [t for t in out["trace"] if t["component"] != "_period_context"]
+        assert len(component_entries) == len(COMPONENT_METADATA)
 
     def test_inactive_components_excluded(self):
         """is_active=False components are not executed and not in results."""
@@ -410,3 +417,108 @@ class TestConfigurableComponentNames:
         )
         # TAXABLE_INCOME = GROSS(500k) - PENSION(40k) - EXTRA_RELIEF(10k) = 450,000
         assert out["results"]["TAXABLE_INCOME"] == Decimal("450000.00")
+
+
+# ---------------------------------------------------------------------------
+# build_runtime_component_registry
+# ---------------------------------------------------------------------------
+
+class TestBuildRuntimeComponentRegistry:
+    """Unit tests for build_runtime_component_registry().
+
+    Validates that the unified component registry correctly merges
+    platform_metadata with rule-injected components from rule_set_items.
+    """
+
+    PLATFORM = [
+        {"component_code": "BASIC",     "component_class": "earning",             "calculation_method": "salary_component", "execution_priority": 10,  "is_active": True, "metadata_json": {}},
+        {"component_code": "GROSS_PAY", "component_class": "derived",             "calculation_method": "sum_earnings",     "execution_priority": 100, "is_active": True, "metadata_json": {}},
+        {"component_code": "NET_PAY",   "component_class": "derived",             "calculation_method": "net_formula",      "execution_priority": 500, "is_active": True, "metadata_json": {}},
+    ]
+
+    def test_no_rules_returns_platform_unchanged(self):
+        result = build_runtime_component_registry(self.PLATFORM, [], {})
+        assert result == self.PLATFORM
+
+    def test_unit_multiplier_rule_added_as_earning(self):
+        rules = [{"rule_name": "OVERTIME_PAY", "rule_definition_json": {"calculation_method": "unit_multiplier"}, "rule_type": "EARNING"}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        codes = {m["component_code"]: m for m in result}
+        assert "OVERTIME_PAY" in codes
+        entry = codes["OVERTIME_PAY"]
+        assert entry["component_class"]    == "earning"
+        assert entry["calculation_method"] == "salary_component"
+        assert entry["execution_priority"] == RULE_COMPONENT_PRIORITY
+        assert entry["is_active"] is True
+
+    def test_fixed_amount_rule_added_as_earning(self):
+        rules = [{"rule_name": "ACCIDENT_BONUS", "rule_definition_json": {"calculation_method": "fixed_amount"}, "rule_type": None}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        codes = {m["component_code"] for m in result}
+        assert "ACCIDENT_BONUS" in codes
+
+    def test_rule_type_deduction_gets_correct_class(self):
+        rules = [{"rule_name": "PENALTY_FEE", "rule_definition_json": {"calculation_method": "unit_multiplier"}, "rule_type": "DEDUCTION"}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        entry = next(m for m in result if m["component_code"] == "PENALTY_FEE")
+        assert entry["component_class"] == "statutory_deduction"
+
+    def test_daily_rate_deduction_not_added(self):
+        rules = [{"rule_name": "ABSENCE_DEDUCTION", "rule_definition_json": {"calculation_method": "daily_rate_deduction"}, "rule_type": "DEDUCTION"}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        codes = {m["component_code"] for m in result}
+        assert "ABSENCE_DEDUCTION" not in codes
+
+    def test_rule_name_already_in_platform_not_duplicated(self):
+        # BASIC is already in PLATFORM — should not be added again
+        rules = [{"rule_name": "BASIC", "rule_definition_json": {"calculation_method": "unit_multiplier"}, "rule_type": "EARNING"}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        basics = [m for m in result if m["component_code"] == "BASIC"]
+        assert len(basics) == 1
+
+    def test_null_rule_type_defaults_to_earning(self):
+        rules = [{"rule_name": "WEEKEND_PAY", "rule_definition_json": {"calculation_method": "unit_multiplier"}, "rule_type": None}]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        entry = next(m for m in result if m["component_code"] == "WEEKEND_PAY")
+        assert entry["component_class"] == "earning"
+
+
+class TestRuleInjectedEarningInGrossPay:
+    """Integration test: rule-injected earning flows through unified registry into GROSS_PAY."""
+
+    def test_rule_injected_earning_included_in_gross_pay(self):
+        # salary_components includes a rule-injected key (e.g. from apply_payroll_rules)
+        salary = {
+            "BASIC":         Decimal("300000"),
+            "HOUSING":       Decimal("150000"),
+            "TRANSPORT":     Decimal("50000"),
+            "OVERTIME_PAY":  Decimal("20000"),   # rule-injected — not in platform metadata
+        }
+
+        # Build unified registry: platform + OVERTIME_PAY rule
+        rules = [{"rule_name": "OVERTIME_PAY", "rule_definition_json": {"calculation_method": "unit_multiplier"}, "rule_type": "EARNING"}]
+        unified = build_runtime_component_registry(COMPONENT_METADATA, rules, {})
+
+        context = {
+            "tax_bands":              TAX_BANDS,
+            "pension_employee_rate":  Decimal("0.08"),
+            "pension_employer_rate":  Decimal("0.10"),
+            "nhf_rate":               Decimal("0.025"),
+        }
+        out = run_sequential_payroll(salary, unified, context)
+
+        # GROSS_PAY must include the rule-injected OVERTIME_PAY
+        assert out["results"]["GROSS_PAY"] == Decimal("520000.00")  # 300k+150k+50k+20k
+        assert "OVERTIME_PAY" in out["results"]
+
+    def test_rule_free_employee_gross_pay_unchanged(self):
+        # No rules → unified registry = platform metadata → identical output
+        unified = build_runtime_component_registry(COMPONENT_METADATA, [], {})
+        context = {
+            "tax_bands":              TAX_BANDS,
+            "pension_employee_rate":  Decimal("0.08"),
+            "pension_employer_rate":  Decimal("0.10"),
+            "nhf_rate":               Decimal("0.025"),
+        }
+        out = run_sequential_payroll(SALARY, unified, context)
+        assert out["results"]["GROSS_PAY"] == Decimal("500000.00")

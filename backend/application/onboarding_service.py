@@ -142,3 +142,62 @@ def create_component_metadata(
         "component_code": result[2],
         "overrides_json": result[3],
     }
+
+
+def publish_rule_sets(db, workspace_id: str, rules: list, created_by: str | None = None) -> list:
+    """Group rules by effective_from and publish one rule_set per unique date.
+
+    Each item in `rules` must have: rule_name (or rule_code), rule_definition_json,
+    effective_from. rule_type is optional. Rules without effective_from are skipped.
+
+    Returns list of {rule_set_id, effective_from, item_count}.
+    Does NOT call db.commit() — caller is responsible for committing.
+    """
+    import json as _json
+    import uuid as _uuid
+    from collections import defaultdict
+    from sqlalchemy import text
+
+    SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
+    actor = created_by or SYSTEM_ACTOR
+
+    groups: dict = defaultdict(list)
+    for rule in rules:
+        eff = rule.get("effective_from")
+        if eff:
+            groups[eff].append(rule)
+
+    published = []
+    for effective_from, group_rules in groups.items():
+        rule_set_id = str(_uuid.uuid4())
+
+        db.execute(
+            text("""
+                INSERT INTO rule_set (rule_set_id, workspace_id, effective_from, created_by)
+                VALUES (:id, :wid, :eff, :by)
+            """),
+            {"id": rule_set_id, "wid": workspace_id, "eff": effective_from, "by": actor},
+        )
+
+        for rule in group_rules:
+            defn = rule.get("rule_definition_json") or rule.get("definition") or {}
+            db.execute(
+                text("""
+                    INSERT INTO rule_set_item (rule_set_id, rule_name, rule_definition_json, rule_type)
+                    VALUES (:rs_id, :name, CAST(:def AS jsonb), :rtype)
+                """),
+                {
+                    "rs_id": rule_set_id,
+                    "name":  rule.get("rule_name") or rule.get("rule_code"),
+                    "def":   _json.dumps(defn) if isinstance(defn, dict) else defn,
+                    "rtype": rule.get("rule_type"),
+                },
+            )
+
+        published.append({
+            "rule_set_id":    rule_set_id,
+            "effective_from": effective_from,
+            "item_count":     len(group_rules),
+        })
+
+    return published

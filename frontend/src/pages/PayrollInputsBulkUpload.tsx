@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { workspaceApi } from '../api/workspace';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -7,53 +8,42 @@ import { Card } from '../components/ui/Card';
 import { Btn } from '../components/ui/Btn';
 import { AlertBox } from '../components/ui/AlertBox';
 
-// ── Constants (mirrored from PayrollInputs.tsx) ───────────────────────────────
-
-const INPUT_CODES = new Set([
-  'SPECIAL_OVERTIME',
-  'REGULAR_OVERTIME',
-  'WEEKEND_ALLOWANCE',
-  'ABSENCE',
-  'SUSPENSION',
-  'ACCIDENT_FREE_BONUS',
-  'BONUS',
-  'ADJUSTMENT',
-]);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ParsedRow {
-  employee_id: string;
+  employee_number: string;
   input_code: string;
   quantity?: number;
-  rate?: number;
-  amount?: number;
   reference_date?: string;
   _error?: string;
 }
 
+interface InputCodeDef {
+  code: string;
+  rule_name: string;
+  category: string;
+  calculation_method: string;
+}
+
 // ── Template download ─────────────────────────────────────────────────────────
 
-function downloadTemplate() {
+function downloadTemplate(inputDefs: InputCodeDef[]) {
   const wb = XLSX.utils.book_new();
-  const data = [
-    {
-      employee_id:    'paste-employee-uuid-here',
-      input_code:     'REGULAR_OVERTIME',
-      quantity:       3,
-      rate:           '',
-      amount:         '',
-      reference_date: '2026-03',
-    },
-    {
-      employee_id:    'paste-employee-uuid-here',
-      input_code:     'BONUS',
-      quantity:       '',
-      rate:           '',
-      amount:         50000,
-      reference_date: '',
-    },
-  ];
+
+  // One example row per rule that accepts inputs, using the actual workspace codes.
+  const data = inputDefs.length > 0
+    ? inputDefs.map((def) => ({
+        employee_no:    'e.g. SMC 1382',
+        input_code:     def.code,
+        quantity:       '',
+        reference_date: '',
+        _rule_name:     def.rule_name,
+      }))
+    : [
+        { employee_no: 'e.g. SMC 1382', input_code: '', quantity: '', reference_date: '', _rule_name: '' },
+      ];
+
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Payroll Inputs');
   XLSX.writeFile(wb, 'payroll_inputs_bulk_template.xlsx');
 }
@@ -69,29 +59,53 @@ function normaliseMonthDate(raw: string): string | undefined {
   return `${match[1]}-${match[2]}-01`;
 }
 
-function parseSheet(rows: Record<string, unknown>[]): ParsedRow[] {
+/**
+ * Convert an Excel cell value to a raw YYYY-MM string for normaliseMonthDate.
+ * With cellDates:true, date cells arrive as JS Date objects.
+ * CSV / text cells arrive as plain strings.
+ */
+function cellToRawMonthDate(val: unknown): string {
+  if (val instanceof Date) {
+    const d = new Date(val.getTime() - val.getTimezoneOffset() * 60000);
+    return d.toISOString().slice(0, 7); // YYYY-MM
+  }
+  return String(val ?? '').trim();
+}
+
+/**
+ * codeMap: Map<UPPERCASE_CODE, canonical_input_field>
+ * Allows case-insensitive matching while storing the exact value the engine expects.
+ */
+function parseSheet(rows: Record<string, unknown>[], codeMap: Map<string, string>): ParsedRow[] {
   return rows.map((r, i) => {
+    // Normalise all header keys: trim + lowercase (handles QUANTITY, Quantity, etc.)
+    const row: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) row[k.trim().toLowerCase()] = v;
+
     const rowNum = i + 2;
-    const employee_id = String(r['employee_id'] ?? '').trim();
-    const input_code  = String(r['input_code']  ?? '').trim().toUpperCase();
+    const employee_number = String(row['employee_number'] ?? row['employee_no'] ?? '').trim();
+    const input_code_raw  = String(row['input_code']     ?? '').trim().toUpperCase();
 
-    if (!employee_id)
-      return { employee_id: '', input_code, _error: `Row ${rowNum}: employee_id is required` };
-    if (!input_code)
-      return { employee_id, input_code: '', _error: `Row ${rowNum}: input_code is required` };
-    if (!INPUT_CODES.has(input_code))
-      return { employee_id, input_code, _error: `Row ${rowNum}: unknown input_code '${input_code}'` };
+    if (!employee_number)
+      return { employee_number: '', input_code: '', _error: `Row ${rowNum}: employee_number is required` };
+    if (!input_code_raw)
+      return { employee_number, input_code: '', _error: `Row ${rowNum}: input_code is required` };
 
-    const qty    = r['quantity'] !== '' && r['quantity'] != null ? Number(r['quantity']) : undefined;
-    const rate   = r['rate']     !== '' && r['rate']     != null ? Number(r['rate'])     : undefined;
-    const amount = r['amount']   !== '' && r['amount']   != null ? Number(r['amount'])   : undefined;
+    const canonical = codeMap.get(input_code_raw);
+    if (!canonical)
+      return { employee_number, input_code: input_code_raw, _error: `Row ${rowNum}: unknown input_code '${input_code_raw}' — download the template to see valid codes for this workspace` };
 
-    const rawDate = String(r['reference_date'] ?? '').trim();
+    // Use the canonical (DB) input_field value — must match rule_evaluator lookup
+    const input_code = canonical;
+
+    const qty = row['quantity'] !== '' && row['quantity'] != null ? Number(row['quantity']) : undefined;
+
+    const rawDate = cellToRawMonthDate(row['reference_date']);
     const ref_date = rawDate ? normaliseMonthDate(rawDate) : undefined;
     if (ref_date?.startsWith('INVALID'))
-      return { employee_id, input_code, _error: `Row ${rowNum}: reference_date '${rawDate}' is invalid (use YYYY-MM)` };
+      return { employee_number, input_code, _error: `Row ${rowNum}: reference_date '${rawDate}' is invalid (use YYYY-MM)` };
 
-    return { employee_id, input_code, quantity: qty, rate, amount, reference_date: ref_date };
+    return { employee_number, input_code, quantity: qty, reference_date: ref_date };
   });
 }
 
@@ -100,11 +114,24 @@ function parseSheet(rows: Record<string, unknown>[]): ParsedRow[] {
 export function PayrollInputsBulkUpload() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName]     = useState<string | null>(null);
-  const [rows,     setRows]         = useState<ParsedRow[]>([]);
-  const [parseErr, setParseErr]     = useState<string[]>([]);
+  const [fileName,   setFileName]   = useState<string | null>(null);
+  const [rows,       setRows]       = useState<ParsedRow[]>([]);
+  const [parseErr,   setParseErr]   = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [result,   setResult]       = useState<{ created: number; errors: { row: number; detail: string }[] } | null>(null);
+  const [result,     setResult]     = useState<{ created: number; errors: { row: number; detail: string }[] } | null>(null);
+  const [inputDefs, setInputDefs] = useState<InputCodeDef[]>([]);
+  // Map of UPPERCASE_CODE → canonical input_field (for case-insensitive matching)
+  const [codeMap, setCodeMap] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi.getInputCodes(workspaceId)
+      .then((data) => {
+        setInputDefs(data.input_codes);
+        setCodeMap(new Map(data.input_codes.map((d) => [d.code.toUpperCase(), d.code])));
+      })
+      .catch(() => { /* non-fatal — validation will reject all codes */ });
+  }, [workspaceId]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -117,10 +144,10 @@ export function PayrollInputsBulkUpload() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb   = XLSX.read(ev.target?.result, { type: 'array' });
+        const wb   = XLSX.read(ev.target?.result, { type: 'array', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const raw   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-        const parsed = parseSheet(raw);
+        const parsed = parseSheet(raw, codeMap);
         const errs   = parsed.filter((r) => r._error).map((r) => r._error!);
         setRows(parsed);
         setParseErr(errs);
@@ -168,7 +195,7 @@ export function PayrollInputsBulkUpload() {
           Use <strong>reference_date</strong> (YYYY-MM) to tag inputs from a previous period — blank = current run.
         </p>
         <div className="flex items-center gap-3 flex-wrap">
-          <Btn variant="secondary" onClick={downloadTemplate}>
+          <Btn variant="secondary" onClick={() => downloadTemplate(inputDefs)}>
             ↓ Download Template
           </Btn>
           <input
@@ -216,13 +243,11 @@ export function PayrollInputsBulkUpload() {
               <thead>
                 <tr className="border-b border-slate-100">
                   <Th>#</Th>
-                  <Th>Employee ID</Th>
+                  <Th>Employee No.</Th>
                   <Th>Code</Th>
                   <Th>Qty</Th>
-                  <Th>Rate</Th>
-                  <Th>Amount</Th>
                   <Th>For Period</Th>
-                  <Th>Status</Th>
+                  <Th>Notes</Th>
                 </tr>
               </thead>
               <tbody>
@@ -232,11 +257,9 @@ export function PayrollInputsBulkUpload() {
                     className={`border-b border-slate-50 ${row._error ? 'bg-red-50' : ''}`}
                   >
                     <Td>{i + 1}</Td>
-                    <Td className="font-mono text-xs truncate max-w-[120px]">{row.employee_id}</Td>
+                    <Td className="font-mono text-xs truncate max-w-[120px]">{row.employee_number}</Td>
                     <Td className="font-mono">{row.input_code}</Td>
                     <Td>{row.quantity ?? '—'}</Td>
-                    <Td>{row.rate ?? '—'}</Td>
-                    <Td>{row.amount ?? '—'}</Td>
                     <Td>
                       {row.reference_date
                         ? row.reference_date.slice(0, 7)

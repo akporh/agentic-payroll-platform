@@ -89,7 +89,12 @@ def test_hard_pass_valid_config():
     assert len(result["hard_validation"]["errors"]) == 0
 
 
-def test_fail_missing_pension_rule():
+def test_overtime_only_passes_without_pension_rule():
+    """Pension is statutory — not required as a client-defined payroll rule.
+    A payload with only an OVERTIME rule and no explicit pension rule must pass
+    hard_validation because pension rates are sourced from statutory_rule at
+    execution time, not from the onboarding payload.
+    """
     client_json = {
         "salary_definitions": [
             {
@@ -125,10 +130,9 @@ def test_fail_missing_pension_rule():
 
     result = review_client_onboarding(client_json)
 
-    assert result["hard_validation"]["status"] == "FAIL"
-    assert any(
-        e["category"] == "Completeness" and "pension" in e["message"].lower()
-        for e in result["hard_validation"]["errors"]
+    # Pension is statutory — no client pension rule required.
+    assert result["hard_validation"]["status"] == "PASS", (
+        f"Expected PASS but got FAIL: {result['hard_validation']['errors']}"
     )
 
 

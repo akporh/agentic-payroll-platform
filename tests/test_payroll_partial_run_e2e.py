@@ -36,7 +36,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -44,7 +43,7 @@ from psycopg2.extras import Json
 from sqlalchemy import text
 
 from backend.api.main import app
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -57,12 +56,18 @@ HOUSING   = 200_000
 TRANSPORT = 100_000
 GROSS     = BASIC + HOUSING + TRANSPORT   # 800_000
 
-# Expected PAYE using seeded bands:
-#   0 – 300 000       @ 7%  →  21 000
-#   300 000 – 600 000 @ 11% →  33 000
-#   600 000 – 800 000 @ 15% →  30 000
-EXPECTED_PAYE = 84_000
-EXPECTED_NET  = GROSS - EXPECTED_PAYE   # 716_000
+# Expected PAYE using seeded 5-band rates + 8% explicit pension + 2.5% NHF:
+#   Pension = GROSS × 8% = 64 000;  NHF = BASIC × 2.5% = 12 500
+#   Annual taxable = (800k - 64k) × 12 = 8 832 000
+#   Band 1  0–300k       @ 7%  →    21 000
+#   Band 2  300k–600k    @ 11% →    33 000
+#   Band 3  600k–1100k   @ 15% →    75 000
+#   Band 4  1100k–1600k  @ 19% →    95 000
+#   Band 5  1600k+       @ 21% → 1 518 720
+#   Monthly PAYE = 1 742 720 / 12 = 145 226.67
+#   NET = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+EXPECTED_PAYE = 145_226.67
+EXPECTED_NET  = 578_273.33
 
 
 def test_partial_payroll_run_e2e():
@@ -106,7 +111,6 @@ def test_partial_payroll_run_e2e():
             name="Partial Run Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
             status="DRAFT",
         ))
 
@@ -114,8 +118,9 @@ def test_partial_payroll_run_e2e():
         #     when the full-pipeline test (version=9999) is not in the DB
         db.execute(
             text("""
-                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-                VALUES (:id, 'NATIONAL', 9998, '{}')
+                INSERT INTO statutory_rule
+                    (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+                VALUES (:id, 'NATIONAL', 9998, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
             """),
             {"id": statutory_rule_id},
         )
@@ -141,14 +146,15 @@ def test_partial_payroll_run_e2e():
             )
 
         # 1e. Component metadata — required by trg_enforce_payroll_readiness
-        db.add(ComponentMetadata(
-            component_metadata_id=component_metadata_id,
-            country_code="NG",
-            version=1,
-            rules_jsonb={},
-            effective_from=date.today(),
-            is_active=True,
-        ))
+        db.execute(
+            text("""
+                INSERT INTO component_metadata
+                    (component_metadata_id, component_code, country_code, version,
+                     metadata_json, effective_from, is_active)
+                VALUES (:cm_id, 'TEST_SEED', 'NG', 9998, '{}', CURRENT_DATE, true)
+            """),
+            {"cm_id": component_metadata_id},
+        )
 
         db.commit()
 
@@ -187,6 +193,7 @@ def test_partial_payroll_run_e2e():
                     "employee_number":        "EMP001",
                     "full_name":              "Jane Okeke",
                     "salary_definition_name": "STANDARD",
+                    "contract_start":         "2025-01-01",
                     "biodata": {
                         "TIN":            "1234567890",
                         "BANK":           "GTBank",
@@ -234,9 +241,9 @@ def test_partial_payroll_run_e2e():
         db.execute(
             text("""
                 INSERT INTO salary_definition (
-                    salary_definition_id, workspace_id, name, components_jsonb
+                    salary_definition_id, workspace_id, name, code, components_jsonb
                 )
-                VALUES (:id, :wid, 'BROKEN', :components)
+                VALUES (:id, :wid, 'BROKEN', 'BROKEN', :components)
             """),
             {
                 "id":         broken_sal_def_id,
@@ -258,7 +265,7 @@ def test_partial_payroll_run_e2e():
                 INSERT INTO employee_contract (
                     contract_id, employee_id, salary_definition_id, start_date
                 )
-                VALUES (gen_random_uuid(), :eid, :sdid, CURRENT_DATE)
+                VALUES (gen_random_uuid(), :eid, :sdid, '2025-01-01')
             """),
             {"eid": employee_b_id, "sdid": broken_sal_def_id},
         )
@@ -393,6 +400,11 @@ def test_partial_payroll_run_e2e():
         # Cleanup — delete in reverse FK dependency order.
         # Each statement is scoped to this test's workspace/IDs only.
         # -------------------------------------------------------------------
+
+        # Roll back any in-progress transaction before starting cleanup
+        # (the test may have failed mid-way, leaving the session in an aborted
+        # transaction state which would cause SET LOCAL to fail).
+        db.rollback()
 
         # Bypass immutability triggers so cleanup succeeds at any lifecycle state
         db.execute(text("SET LOCAL session_replication_role = replica"))

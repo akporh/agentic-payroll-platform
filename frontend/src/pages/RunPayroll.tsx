@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
+import { workspaceApi } from '../api/workspace';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Btn } from '../components/ui/Btn';
@@ -14,13 +15,28 @@ export function RunPayroll() {
   const [periodStart, setPeriodStart] = useState(today.slice(0, 7) + '-01');
   const [periodEnd, setPeriodEnd] = useState(today);
   const [payDate, setPayDate] = useState(today);
+  const [runType, setRunType] = useState<'REGULAR' | 'ADJUSTMENT'>('REGULAR');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi
+      .getOnboardingStatus(workspaceId)
+      .then((s) => setWorkspaceStatus(s.status))
+      .catch(() => setWorkspaceStatus(null))
+      .finally(() => setStatusLoading(false));
+  }, [workspaceId]);
+
+  const isLive = workspaceStatus === 'LIVE';
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!workspaceId) return;
+    if (!workspaceId || !isLive) return;
     setLoading(true);
     setError(null);
     try {
@@ -28,6 +44,7 @@ export function RunPayroll() {
         period_start: periodStart,
         period_end: periodEnd,
         pay_date: payDate,
+        run_type: runType,
       });
       navigate(`/workspaces/${workspaceId}/payroll/${result.run_id}/results`);
     } catch (e: unknown) {
@@ -45,6 +62,22 @@ export function RunPayroll() {
       />
 
       <div className="max-w-md">
+        {!statusLoading && !isLive && (
+          <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold mb-1">Workspace not activated</p>
+            <p className="text-xs">
+              Payroll runs are only available once the workspace is <strong>LIVE</strong>.
+              Your workspace is currently <strong>{workspaceStatus ?? 'unknown'}</strong>.{' '}
+              <Link
+                to={`/workspaces/${workspaceId}`}
+                className="underline font-medium"
+              >
+                Go to workspace settings to activate it.
+              </Link>
+            </p>
+          </div>
+        )}
+
         <Card title="New Payroll Run">
           <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Period Start">
@@ -53,6 +86,7 @@ export function RunPayroll() {
                 value={periodStart}
                 onChange={(e) => setPeriodStart(e.target.value)}
                 required
+                disabled={!isLive}
                 className={inputClass}
               />
             </Field>
@@ -63,6 +97,7 @@ export function RunPayroll() {
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
                 required
+                disabled={!isLive}
                 className={inputClass}
               />
             </Field>
@@ -73,14 +108,32 @@ export function RunPayroll() {
                 value={payDate}
                 onChange={(e) => setPayDate(e.target.value)}
                 required
+                disabled={!isLive}
                 className={inputClass}
               />
+            </Field>
+
+            <Field label="Run Type">
+              <select
+                value={runType}
+                onChange={(e) => setRunType(e.target.value as 'REGULAR' | 'ADJUSTMENT')}
+                disabled={!isLive}
+                className={inputClass}
+              >
+                <option value="REGULAR">Regular</option>
+                <option value="ADJUSTMENT">Adjustment</option>
+              </select>
             </Field>
 
             {error && <AlertBox type="error" messages={[error]} />}
 
             <div className="flex gap-2 pt-2">
-              <Btn type="submit" loading={loading}>
+              <Btn
+                type="submit"
+                loading={loading}
+                disabled={statusLoading || !isLive}
+                title={!isLive ? 'Workspace must be LIVE to run payroll' : undefined}
+              >
                 Run Payroll
               </Btn>
               <Btn
@@ -93,18 +146,13 @@ export function RunPayroll() {
             </div>
           </form>
         </Card>
-
-        <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          <strong>Note:</strong> Payroll runs are only available when the workspace status is{' '}
-          <strong>LIVE</strong>. The backend will reject the request if the workspace is not ready.
-        </div>
       </div>
     </div>
   );
 }
 
 const inputClass =
-  'w-full border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400';
+  'w-full border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

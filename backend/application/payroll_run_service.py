@@ -33,6 +33,10 @@ def execute_and_persist(
     retry_strategy: str = "PER_EMPLOYEE",
     component_metadata: list | None = None,
     context: dict | None = None,
+    rules_context_snapshot: dict | None = None,
+    rule_set_id: str | None = None,
+    statutory_effective_date: str | None = None,
+    run_type: str = "REGULAR",
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -72,6 +76,20 @@ def execute_and_persist(
         f"execution_mode={execution_mode}  │  "
         f"workspace={workspace_id}"
     )
+
+    # --- Period context: show input → normalization result ---
+    if context and (p := context.get("period")):
+        tracer.info(
+            f"Period: [bold]{p.period_start}[/bold] → [bold]{p.period_end}[/bold]  "
+            f"[dim]({p.period_type.value})[/dim]  │  "
+            f"[cyan]{p.calendar_days}[/cyan] cal days  │  "
+            f"[cyan]{p.working_days}[/cyan] working days"
+        )
+        tracer.info(
+            f"Annualization: ×{p.annualization_factor}  │  "
+            f"Period fraction: {p.period_fraction}"
+        )
+
     tracer.separator()
 
     with tracer.step("Execute payroll engine"):
@@ -88,6 +106,7 @@ def execute_and_persist(
             pay_cycle_definition=pay_cycle_definition,
             component_metadata=component_metadata,
             context=context,
+            rules_context_snapshot=rules_context_snapshot,
             tracer=tracer,
         )
 
@@ -101,6 +120,9 @@ def execute_and_persist(
             period_start=period_start,
             period_end=period_end,
             retry_strategy=retry_strategy,
+            rule_set_id=rule_set_id,
+            statutory_effective_date=statutory_effective_date,
+            run_type=run_type,
             tracer=tracer,
         )
 

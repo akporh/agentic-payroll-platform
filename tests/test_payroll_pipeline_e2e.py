@@ -26,7 +26,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -34,7 +33,7 @@ from sqlalchemy import text
 
 from backend.api.main import app
 from backend.infra.db.session import SessionLocal
-from backend.infra.db.models import Account, Workspace, ComponentMetadata
+from backend.infra.db.models import Account, Workspace
 
 client = TestClient(app)
 
@@ -46,12 +45,24 @@ HOUSING   = 200_000
 TRANSPORT = 100_000
 GROSS     = BASIC + HOUSING + TRANSPORT   # 800_000
 
-# Expected PAYE using bands seeded below:
-#   0 – 300 000      @ 7%  →  21 000
-#   300 000 – 600 000 @ 11% →  33 000
-#   600 000 – 800 000 @ 15% →  30 000  (taxable = 200 000 of the 600k–1.1M band)
-EXPECTED_PAYE = 84_000
-EXPECTED_NET  = GROSS - EXPECTED_PAYE   # 716_000
+# Expected values using 5 bands seeded below + explicit pension rates in rules_jsonb:
+# (pension.employee_rate=8%, nhf=2.5%):
+#
+#   Pension employee  = GROSS × 8%          =  64 000
+#   NHF               = BASIC × 2.5%        =  12 500
+#   Annual taxable    = (800k - 64k) × 12   = 8 832 000
+#   Band 1  0–300k       @ 7%  →    21 000
+#   Band 2  300k–600k    @ 11% →    33 000
+#   Band 3  600k–1100k   @ 15% →    75 000
+#   Band 4  1100k–1600k  @ 19% →    95 000
+#   Band 5  1600k+       @ 21% → 1 518 720  (7 232 000 × 21%)
+#   Annual PAYE           =     1 742 720
+#   Monthly PAYE          =       145 226.67
+#   NET = 800k - 64k - 145 226.67 - 12 500 = 578 273.33
+EXPECTED_PENSION  = 64_000
+EXPECTED_NHF      = 12_500
+EXPECTED_PAYE     = 145_226.67
+EXPECTED_NET      = 578_273.33
 
 
 def test_full_payroll_pipeline_e2e():
@@ -85,15 +96,17 @@ def test_full_payroll_pipeline_e2e():
             name="E2E Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
             status="DRAFT",
         ))
 
-        # 1c. Statutory rule — payroll route: SELECT ORDER BY version DESC LIMIT 1
+        # 1c. Statutory rule — payroll route: SELECT ... JOIN workspace ON country_code
+        #     ORDER BY effective_from DESC, version DESC LIMIT 1.
+        #     Must include country_code='NG' and effective_from so this rule wins.
         db.execute(
             text("""
-                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-                VALUES (:id, 'NATIONAL', 9999, '{}')
+                INSERT INTO statutory_rule
+                    (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+                VALUES (:id, 'NATIONAL', 9999, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
             """),
             {"id": statutory_rule_id},
         )
@@ -125,14 +138,15 @@ def test_full_payroll_pipeline_e2e():
 
         # 1e. Component metadata — validate_payroll_readiness checks for an
         #     active record matching workspace.country_code
-        db.add(ComponentMetadata(
-            component_metadata_id=component_metadata_id,
-            country_code="NG",
-            version=1,
-            rules_jsonb={},
-            effective_from=date.today(),
-            is_active=True,
-        ))
+        db.execute(
+            text("""
+                INSERT INTO component_metadata
+                    (component_metadata_id, component_code, country_code, version,
+                     metadata_json, effective_from, is_active)
+                VALUES (:cm_id, 'TEST_SEED', 'NG', 9999, '{}', CURRENT_DATE, true)
+            """),
+            {"cm_id": component_metadata_id},
+        )
 
         db.commit()
 
@@ -171,11 +185,13 @@ def test_full_payroll_pipeline_e2e():
             ],
             "employees": [
                 {
-                    "employee_number":       "EMP001",
+                    "employee_number":        "EMP001",
                     # full_name used directly by commit INSERT;
                     # biodata.FULL_NAME is the fallback — both provided here
-                    "full_name":             "Jane Okeke",
+                    "full_name":              "Jane Okeke",
                     "salary_definition_name": "STANDARD",
+                    # contract_start before the payroll period to avoid proration
+                    "contract_start":         "2025-01-01",
                     "biodata": {
                         # hard_validator requires all four keys in every employee
                         "TIN":            "1234567890",
@@ -378,13 +394,8 @@ def test_full_payroll_pipeline_e2e():
         # calculations_snapshot_json stores Decimal values as strings via
         # _sanitize_json (json.dumps default=str). Float conversion handles this.
         #
-        # Expected values (Nigerian PAYE progressive bands):
-        #   Gross = 800 000
-        #   Band 1:   0 – 300 000    @ 7%  →  21 000
-        #   Band 2: 300k – 600 000   @ 11% →  33 000
-        #   Band 3: 600k – 800 000   @ 15% →  30 000  (200 000 of the 600k–1.1M band)
-        #   PAYE  = 84 000
-        #   Net   = 716 000
+        # Expected values — see EXPECTED_PAYE / EXPECTED_NET constants above.
+        # Values are derived from 5-band PAYE + 9% statutory pension + 2.5% NHF.
         # -------------------------------------------------------------------
         result_row = db.execute(
             text("""
@@ -435,6 +446,9 @@ def test_full_payroll_pipeline_e2e():
         # Each statement scoped to the workspace or IDs created above so that
         # pre-existing data in other workspaces is not affected.
         # -------------------------------------------------------------------
+
+        # Roll back any aborted transaction before starting cleanup
+        db.rollback()
 
         # Bypass immutability triggers so cleanup succeeds at any lifecycle state
         db.execute(text("SET LOCAL session_replication_role = replica"))

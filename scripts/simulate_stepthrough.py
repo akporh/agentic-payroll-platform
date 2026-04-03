@@ -123,7 +123,8 @@ def _fmt(amount, currency="NGN"):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def run(employee_id: str):
+def run(employee_id: str, workspace_id: str | None = None,
+        period_start: str | None = None, period_end: str | None = None):
     session = SessionLocal()
     console.print()
     console.rule("[bold cyan]STEP-THROUGH  ·  run_sequential_payroll()[/bold cyan]", style="cyan")
@@ -149,7 +150,7 @@ def run(employee_id: str):
                   f"employee_number={emp['employee_number']}  "
                   f"status={emp['status']}[/dim]")
 
-    workspace_id = str(emp["workspace_id"])
+    workspace_id = workspace_id or str(emp["workspace_id"])
 
     # 2. Workspace
     step(
@@ -248,10 +249,13 @@ def run(employee_id: str):
         {"cc": country},
     ).mappings().first()
     sr = dict(sr_row)
-    rules_jsonb           = sr.get("rules_jsonb") or {}
-    pension_cfg           = rules_jsonb.get("pension", {})
-    pension_employee_rate = Decimal(str(pension_cfg.get("employee_rate", "0.09")))
-    pension_employer_rate = Decimal(str(pension_cfg.get("employer_rate", "0.10")))
+    rules_jsonb = sr.get("rules_jsonb") or {}
+    pension_cfg = rules_jsonb.get("pension")
+    if not pension_cfg or "employee_rate" not in pension_cfg or "employer_rate" not in pension_cfg:
+        console.print("[bold red]Statutory rule is missing pension rates. Run the pension rates migration.[/bold red]")
+        raise SystemExit(1)
+    pension_employee_rate = Decimal(str(pension_cfg["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_cfg["employer_rate"]))
     rent_relief_cfg       = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
     console.print(f"  [dim]state={sr['state']}  version={sr['version']}  "
                   f"tax_method={sr['tax_method']}[/dim]")
@@ -391,29 +395,62 @@ def run(employee_id: str):
         ]
         console.print(f"  [dim]  suppressed {len(disabled_codes)} disabled component(s): {disabled_codes}[/dim]")
 
-    # 9. payroll_rule → payroll_rules list
+    # 9. rules — try rule_set (temporal) first, fall back to legacy payroll_rule
+    from datetime import date as _date
+    today_str = str(_date.today())
     step(
-        "payroll_rule  (workspace rules)",
-        "pr_rows = session.execute(\n"
-        "    text(\"\"\"\n"
-        "        SELECT rule_name, rule_type, rule_definition_json, is_active\n"
-        "        FROM payroll_rule\n"
-        "        WHERE workspace_id = :wid AND is_active = true\n"
-        "    \"\"\"),\n"
-        "    {'wid': workspace_id}\n"
-        ").mappings().all()\n"
+        "rule_set / payroll_rule  (workspace rules)",
+        "# Try temporal rule_set first; fall back to legacy payroll_rule table.\n"
+        "rs_row = session.execute(text(\"\"\"\n"
+        "    SELECT rule_set_id FROM rule_set\n"
+        "    WHERE workspace_id = :wid AND effective_from <= :today\n"
+        "    ORDER BY effective_from DESC, created_at DESC LIMIT 1\n"
+        "\"\"\"), {'wid': workspace_id, 'today': today}).fetchone()\n"
         "\n"
-        "payroll_rules = [dict(r) for r in pr_rows]",
+        "if rs_row:\n"
+        "    payroll_rules = [dict from rule_set_item where rule_set_id = rs_row[0]]\n"
+        "else:\n"
+        "    payroll_rules = [dict from payroll_rule where workspace_id = :wid and is_active = true]",
     )
-    pr_rows = session.execute(
+    rs_row = session.execute(
         text("""
-            SELECT rule_name, rule_type, rule_definition_json, is_active
-            FROM payroll_rule
-            WHERE workspace_id = :wid AND is_active = true
+            SELECT rule_set_id FROM rule_set
+            WHERE workspace_id  = :wid
+              AND effective_from <= :today
+            ORDER BY effective_from DESC, created_at DESC
+            LIMIT 1
         """),
-        {"wid": workspace_id},
-    ).mappings().all()
-    payroll_rules = [dict(r) for r in pr_rows]
+        {"wid": workspace_id, "today": today_str},
+    ).fetchone()
+
+    current_rule_set_id = None
+    if rs_row:
+        current_rule_set_id = str(rs_row[0])
+        item_rows = session.execute(
+            text("""
+                SELECT rule_name, rule_definition_json, rule_type
+                FROM rule_set_item
+                WHERE rule_set_id = :rs_id
+            """),
+            {"rs_id": current_rule_set_id},
+        ).fetchall()
+        payroll_rules = [
+            {"rule_name": r[0], "rule_definition_json": r[1], "rule_type": r[2]}
+            for r in item_rows
+        ]
+        console.print(f"  [dim]  rule_set {current_rule_set_id}  ({len(payroll_rules)} items)[/dim]")
+    else:
+        pr_rows = session.execute(
+            text("""
+                SELECT rule_name, rule_type, rule_definition_json, is_active
+                FROM payroll_rule
+                WHERE workspace_id = :wid AND is_active = true
+            """),
+            {"wid": workspace_id},
+        ).mappings().all()
+        payroll_rules = [dict(r) for r in pr_rows]
+        console.print(f"  [dim]  (legacy payroll_rule table — {len(payroll_rules)} rules)[/dim]")
+
     for r in payroll_rules:
         defn = r.get("rule_definition_json") or {}
         console.print(
@@ -422,40 +459,85 @@ def run(employee_id: str):
             f"input={defn.get('input_field', '—')}[/dim]"
         )
 
+    # 10b. Pay cycle — fetched first so period_ctx can be built before the payroll_input query
+    pay_cycle_row = session.execute(
+        text("SELECT frequency FROM pay_cycle WHERE workspace_id = :wid AND is_active = TRUE LIMIT 1"),
+        {"wid": workspace_id},
+    ).mappings().first()
+    pay_cycle_frequency = pay_cycle_row["frequency"] if pay_cycle_row else None
+
+    period_ctx = build_period_context(
+        period_start=period_start,
+        period_end=period_end,
+        period_type=pay_cycle_frequency,
+    )
+
     # 10. payroll_input → employee_inputs dict
     step(
-        "payroll_input  (unclaimed inputs for this employee)",
+        "payroll_input  (unclaimed inputs for this employee + period)",
         "input_rows = session.execute(\n"
         "    text(\"\"\"\n"
-        "        SELECT input_code, input_category, quantity, rate, amount\n"
+        "        SELECT input_code, input_category, quantity, reference_date, payroll_run_id\n"
         "        FROM payroll_input\n"
-        "        WHERE employee_id = :eid AND payroll_run_id IS NULL\n"
+        "        WHERE employee_id  = :eid\n"
+        "          AND workspace_id = :wid\n"
+        "          AND (\n"
+        "                reference_date IS NULL    -- period-agnostic\n"
+        "             OR reference_date <= :pe     -- CURRENT or LATE (never FUTURE)\n"
+        "              )\n"
+        "        ORDER BY input_code\n"
         "    \"\"\"),\n"
-        "    {'eid': employee_id}\n"
+        "    {'eid': employee_id, 'wid': workspace_id, 'pe': period_end}\n"
         ").fetchall()\n"
         "\n"
-        "employee_inputs = {\n"
-        "    r[0]: {'category': r[1], 'quantity': r[2], 'rate': r[3], 'amount': r[4]}\n"
-        "    for r in input_rows\n"
-        "}",
+        "employee_inputs = {}\n"
+        "for r in input_rows:\n"
+        "    code = r[0]\n"
+        "    if code not in employee_inputs:\n"
+        "        employee_inputs[code] = []\n"
+        "    employee_inputs[code].append({\n"
+        "        'category': r[1], 'quantity': r[2], 'reference_date': r[3], 'claimed': r[4] is not None\n"
+        "    })",
     )
     input_rows = session.execute(
         text("""
-            SELECT input_code, input_category, quantity, rate, amount
+            SELECT input_code, input_category, quantity, reference_date, payroll_run_id
             FROM payroll_input
-            WHERE employee_id = :eid AND payroll_run_id IS NULL
+            WHERE employee_id  = :eid
+              AND workspace_id = :wid
+              AND (
+                    reference_date IS NULL    -- period-agnostic
+                 OR reference_date <= :pe     -- CURRENT or LATE (never FUTURE)
+              )
+            ORDER BY input_code
         """),
-        {"eid": str(emp["employee_id"])},
+        {
+            "eid": str(emp["employee_id"]),
+            "wid": workspace_id,
+            "pe":  period_ctx.period_end,
+        },
     ).fetchall()
-    employee_inputs = {
-        r[0]: {"category": r[1], "quantity": r[2], "rate": r[3], "amount": r[4]}
-        for r in input_rows
-    }
+    employee_inputs: dict = {}
+    for r in input_rows:
+        code = r[0]
+        if code not in employee_inputs:
+            employee_inputs[code] = []
+        employee_inputs[code].append({
+            "category":       r[1],
+            "quantity":       float(r[2]) if r[2] is not None else None,
+            "reference_date": r[3],
+            "claimed":        r[4] is not None,
+        })
     if employee_inputs:
-        for code, inp in employee_inputs.items():
-            console.print(f"  [dim]  {code:<28} amount={inp['amount']}  category={inp['category']}[/dim]")
+        for code, events in employee_inputs.items():
+            for ev in events:
+                claimed_note = " [claimed]" if ev["claimed"] else " [unclaimed]"
+                console.print(
+                    f"  [dim]  {code:<28} qty={ev['quantity']}  "
+                    f"ref={ev['reference_date']}  category={ev['category']}{claimed_note}[/dim]"
+                )
     else:
-        console.print("  [dim]  (no unclaimed payroll inputs for this employee)[/dim]")
+        console.print("  [dim]  (no payroll inputs for this employee in this period)[/dim]")
 
     session.close()
 
@@ -463,34 +545,55 @@ def run(employee_id: str):
     console.print()
     console.rule("[bold magenta]PHASE 2 — ASSEMBLE INPUTS[/bold magenta]", style="magenta")
 
-    # Build PeriodContext using pay_cycle frequency (defaults to current month)
-    pay_cycle_row = session.execute(
-        text("SELECT frequency FROM pay_cycle WHERE workspace_id = :wid AND is_active = TRUE LIMIT 1"),
-        {"wid": workspace_id},
-    ).mappings().first()
-    pay_cycle_frequency = pay_cycle_row["frequency"] if pay_cycle_row else None
-    period_ctx = build_period_context(period_type=pay_cycle_frequency)
+    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
+    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
+    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+    life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
+
+    # Apply flat-amount client_component_metadata overrides (mirrors production payroll.py)
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 
     step(
         "context dict",
         "context = {\n"
-        "    'tax_bands':             tax_bands,\n"
-        "    'pension_employee_rate': pension_employee_rate,\n"
-        "    'pension_employer_rate': pension_employer_rate,\n"
-        "    'rent_relief_cfg':       rent_relief_cfg,\n"
-        "    'employee_inputs':       employee_inputs,\n"
-        "    'client_meta':           client_meta,   # global defaults + workspace overrides\n"
-        "    'period':                period_ctx,\n"
+        "    'tax_bands':                        tax_bands,\n"
+        "    'pension_employee_rate':            pension_employee_rate,\n"
+        "    'pension_employer_rate':            pension_employer_rate,\n"
+        "    'rent_relief_cfg':                  rent_relief_cfg,\n"
+        "    'nhf_rate':                         nhf_rate,\n"
+        "    'health_insurance_employee_amount': health_insurance_employee_amount,\n"
+        "    'development_levy_amount':          development_levy_amount,\n"
+        "    'life_insurance_employer_rate':     life_insurance_employer_rate,\n"
+        "    'employee_inputs':                  employee_inputs,\n"
+        "    'client_meta':                      client_meta,\n"
+        "    'payroll_rules':                    payroll_rules,\n"
+        "    'period':                           period_ctx,\n"
+        "    'historical_rule_sets':             [],\n"
+        "    'historical_period_contexts':       {},\n"
+        "    'current_rule_set_id':              current_rule_set_id,\n"
+        "    'current_rule_set_effective_from':  None,\n"
         "}",
     )
     context = {
-        "tax_bands":             tax_bands,
-        "pension_employee_rate": pension_employee_rate,
-        "pension_employer_rate": pension_employer_rate,
-        "rent_relief_cfg":       rent_relief_cfg,
-        "employee_inputs":       employee_inputs,
-        "client_meta":           client_meta,
-        "period":                period_ctx,
+        "tax_bands":                        tax_bands,
+        "pension_employee_rate":            pension_employee_rate,
+        "pension_employer_rate":            pension_employer_rate,
+        "rent_relief_cfg":                  rent_relief_cfg,
+        "nhf_rate":                         nhf_rate,
+        "health_insurance_employee_amount": health_insurance_employee_amount,
+        "development_levy_amount":          development_levy_amount,
+        "life_insurance_employer_rate":     life_insurance_employer_rate,
+        "employee_inputs":                  employee_inputs,
+        "client_meta":                      client_meta,
+        "payroll_rules":                    payroll_rules,
+        "period":                           period_ctx,
+        "historical_rule_sets":             [],
+        "historical_period_contexts":       {},
+        "current_rule_set_id":              current_rule_set_id,
+        "current_rule_set_effective_from":  None,
     }
     console.print(f"  [dim]pension_employee_rate = {context['pension_employee_rate']}[/dim]")
     console.print(f"  [dim]pension_employer_rate = {context['pension_employer_rate']}[/dim]")
@@ -509,10 +612,8 @@ def run(employee_id: str):
         "apply_payroll_rules()",
         "from backend.domain.payroll.rule_evaluator import apply_payroll_rules\n"
         "\n"
-        "# employee_inputs would contain event data for this pay period:\n"
-        "#   {'regular_overtime_days': 2, 'shift_days': 5, ...}\n"
-        "# No event data supplied in this simulation run.\n"
-        "employee_inputs = {}\n"
+        "# employee_inputs loaded from payroll_input (Step 10):\n"
+        "#   {'regular_overtime_days': [{'quantity': 2, 'reference_date': date(...), ...}], ...}\n"
         "\n"
         "salary_components, rule_trace = apply_payroll_rules(\n"
         "    salary_components = salary_components,\n"
@@ -521,12 +622,13 @@ def run(employee_id: str):
         "    client_meta       = client_meta,\n"
         ")",
     )
-    employee_inputs = {}
     salary_components, rule_trace = apply_payroll_rules(
         salary_components=salary_components,
         payroll_rules=payroll_rules,
         employee_inputs=employee_inputs,
         client_meta=client_meta,
+        working_days=period_ctx.working_days,
+        calendar_days=period_ctx.calendar_days,
     )
 
     for entry in rule_trace:
@@ -623,5 +725,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Step-through payroll simulation using run_sequential_payroll()")
     parser.add_argument("--employee-id", default="07bef751-2309-4bbc-ad8c-bafaf30d4a21",
                         help="Employee UUID (default: John Doe / EMP001)")
+    parser.add_argument("--workspace-id", default=None,
+                        help="Workspace UUID (default: derived from employee record)")
+    parser.add_argument("--period-start", default=None,
+                        help="Pay period start date YYYY-MM-DD (default: first day of current month)")
+    parser.add_argument("--period-end", default=None,
+                        help="Pay period end date YYYY-MM-DD (default: last day of period_start's month)")
     args = parser.parse_args()
-    run(args.employee_id)
+    run(args.employee_id, workspace_id=args.workspace_id,
+        period_start=args.period_start, period_end=args.period_end)

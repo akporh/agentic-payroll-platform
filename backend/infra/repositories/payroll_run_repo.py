@@ -23,6 +23,9 @@ def save_payroll_run(
     total_tax: Decimal = Decimal("0"),
     total_net_pay: Decimal = Decimal("0"),
     retry_strategy: str = "PER_EMPLOYEE",
+    rule_set_id: str | None = None,
+    statutory_effective_date: str | None = None,
+    run_type: str = "REGULAR",
 ):
     """Insert a new payroll_run row and advance it to the target status.
 
@@ -69,7 +72,10 @@ def save_payroll_run(
                 total_deduction,
                 total_tax,
                 total_net_pay,
-                retry_strategy
+                retry_strategy,
+                rule_set_id,
+                statutory_effective_date,
+                run_type
             )
             VALUES (
                 :payroll_run_id,
@@ -83,21 +89,27 @@ def save_payroll_run(
                 :total_deduction,
                 :total_tax,
                 :total_net_pay,
-                :retry_strategy
+                :retry_strategy,
+                :rule_set_id,
+                :statutory_effective_date,
+                :run_type
             )
             """),
             {
-                "payroll_run_id": payroll_run_id,
-                "workspace_id": workspace_id,
-                "rules_context_snapshot": Json(rules_context_snapshot),
-                "idempotency_key": idempotency_key,
-                "period_start": period_start,
-                "period_end": period_end,
-                "total_gross_pay": total_gross_pay,
-                "total_deduction": total_tax,
-                "total_tax": total_tax,
-                "total_net_pay": total_net_pay,
-                "retry_strategy": retry_strategy,
+                "payroll_run_id":          payroll_run_id,
+                "workspace_id":            workspace_id,
+                "rules_context_snapshot":  Json(rules_context_snapshot),
+                "idempotency_key":         idempotency_key,
+                "period_start":            period_start,
+                "period_end":              period_end,
+                "total_gross_pay":         total_gross_pay,
+                "total_deduction":         total_tax,
+                "total_tax":               total_tax,
+                "total_net_pay":           total_net_pay,
+                "retry_strategy":          retry_strategy,
+                "rule_set_id":             rule_set_id,
+                "statutory_effective_date": statutory_effective_date,
+                "run_type":                run_type,
             },
         )
 

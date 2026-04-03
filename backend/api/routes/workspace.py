@@ -8,7 +8,7 @@ from backend.api.schemas.pay_cycle import PayCycleCreateSchema
 from backend.api.schemas.grade import GradeCreateSchema
 from backend.api.schemas.designation import DesignationCreateSchema
 from backend.api.schemas.salary_definition import SalaryDefinitionCreateSchema
-from backend.api.schemas.payroll_rule import PayrollRuleCreateSchema
+from backend.api.schemas.payroll_rule import PayrollRuleCreateSchema, RuleSetPublishSchema
 from backend.api.schemas.component_metadata import ComponentMetadataCreateSchema
 from backend.domain.onboarding.onboarding_status import get_onboarding_status
 from backend.domain.onboarding.workspace_state_machine import transition_workspace
@@ -199,6 +199,82 @@ def list_employees(workspace_id: str):
 class EmployeeContractUpdateSchema(BaseModel):
     grade_code: str | None = None
     designation_code: str | None = None
+
+
+@router.patch("/{workspace_id}/employees/contracts")
+def bulk_update_employee_contracts(workspace_id: str, payload: list[dict]):
+    """Bulk-update employee contract start/end dates by employee_number.
+
+    Accepts a list of ``{employee_number, contract_start, contract_end?}`` dicts.
+    For each entry, finds the employee's active contract and updates its start_date
+    (and end_date when provided).  Employees not found in the workspace are returned
+    in the ``not_found`` list — no error is raised for them.
+
+    Used by the Client Setup page to correct contract dates after initial onboarding.
+    """
+    from datetime import date as _date
+
+    db = SessionLocal()
+    try:
+        updated = 0
+        not_found: list[str] = []
+
+        for item in payload:
+            emp_number = str(item.get("employee_number") or "").strip()
+            start_str  = str(item.get("contract_start") or "").strip()
+            end_str    = str(item.get("contract_end") or "").strip()
+
+            if not emp_number or not start_str:
+                continue
+
+            try:
+                start_date = _date.fromisoformat(start_str)
+            except ValueError:
+                continue
+
+            end_date = None
+            if end_str:
+                try:
+                    end_date = _date.fromisoformat(end_str)
+                except ValueError:
+                    pass
+
+            row = db.execute(
+                text("""
+                    SELECT e.employee_id
+                    FROM employee e
+                    WHERE e.workspace_id    = :wid
+                      AND e.employee_number = :num
+                      AND e.status          = 'ACTIVE'
+                    LIMIT 1
+                """),
+                {"wid": workspace_id, "num": emp_number},
+            ).fetchone()
+
+            if not row:
+                not_found.append(emp_number)
+                continue
+
+            db.execute(
+                text("""
+                    UPDATE employee_contract
+                    SET start_date = :start_date,
+                        end_date   = CAST(:end_date AS DATE)
+                    WHERE employee_id = :eid
+                      AND (end_date IS NULL OR end_date >= CURRENT_DATE)
+                """),
+                {"start_date": start_date, "end_date": end_date, "eid": str(row[0])},
+            )
+            updated += 1
+
+        db.commit()
+        return {"updated": updated, "not_found": not_found}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
 
 
 @router.patch("/{workspace_id}/employees/{employee_id}/contract")
@@ -406,6 +482,33 @@ def create_payroll_rule_endpoint(workspace_id: str, payload: PayrollRuleCreateSc
         )
     finally:
         db.close()
+
+@router.post("/{workspace_id}/rule-set")
+def publish_rule_set_endpoint(workspace_id: str, payload: RuleSetPublishSchema):
+    """Publish a new versioned rule_set snapshot for a workspace.
+
+    Accepts a list of rules each with their own effective_from date.
+    Rules sharing the same date are grouped into one rule_set row.
+    Use this endpoint for rule version updates after initial onboarding.
+    """
+    db = SessionLocal()
+    try:
+        rules = [r.dict() for r in payload.rules]
+        result = onboarding_service.publish_rule_sets(
+            db, workspace_id, rules, created_by=payload.created_by
+        )
+        if not result:
+            raise HTTPException(status_code=422, detail="No rules with effective_from provided")
+        db.commit()
+        return {"published": result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
 
 @router.post("/{workspace_id}/component-metadata")
 def create_component_metadata_endpoint(workspace_id: str, payload: ComponentMetadataCreateSchema):

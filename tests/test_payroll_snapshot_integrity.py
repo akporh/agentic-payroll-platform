@@ -53,7 +53,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -62,7 +61,7 @@ from sqlalchemy.exc import IntegrityError, InternalError
 
 from backend.api.main import app
 from backend.application.payroll_run_service import execute_and_persist
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -92,13 +91,13 @@ def _create_prerequisites(
         name=f"Snapshot Test Workspace {stat_version}",
         country_code="NG",
         base_currency="NGN",
-        retry_strategy="FULL_RUN",
         status="DRAFT",
     ))
     db.execute(
         text("""
-            INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-            VALUES (:id, 'NATIONAL', :ver, '{}')
+            INSERT INTO statutory_rule
+                (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+            VALUES (:id, 'NATIONAL', :ver, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
         """),
         {"id": statutory_rule_id, "ver": stat_version},
     )
@@ -117,14 +116,15 @@ def _create_prerequisites(
             """),
             {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
         )
-    db.add(ComponentMetadata(
-        component_metadata_id=component_metadata_id,
-        country_code="NG",
-        version=1,
-        rules_jsonb={},
-        effective_from=date.today(),
-        is_active=True,
-    ))
+    db.execute(
+        text("""
+            INSERT INTO component_metadata
+                (component_metadata_id, component_code, country_code, version,
+                 metadata_json, effective_from, is_active)
+            VALUES (:cm_id, 'TEST_SEED', 'NG', :ver, '{}', CURRENT_DATE, true)
+        """),
+        {"cm_id": component_metadata_id, "ver": stat_version},
+    )
     db.commit()
 
 
@@ -157,6 +157,7 @@ def _onboarding_payload(workspace_id: uuid.UUID) -> dict:
                 "employee_number":        "EMP-SNAP-001",
                 "full_name":              "Snapshot Test Employee",
                 "salary_definition_name": "STANDARD",
+                "contract_start":         "2025-01-01",
                 "biodata": {
                     "TIN":            "9988776655",
                     "BANK":           "GTBank",
@@ -579,7 +580,8 @@ def test_gross_components_frozen_after_salary_change():
             "gross_components_jsonb must be populated after a successful run"
         )
         original_basic = original["gross_components_jsonb"]["BASIC"]["amount"]
-        assert original_basic == BASIC, (
+        # gross_components_jsonb stores Decimal amounts as strings; use float for comparison
+        assert float(original_basic) == float(BASIC), (
             f"Expected BASIC={BASIC} in gross_components_jsonb, got {original_basic}"
         )
 

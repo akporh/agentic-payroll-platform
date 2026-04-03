@@ -62,6 +62,23 @@ const REQUIRED_COLS = [
   'contract_start',
 ] as const;
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Convert an Excel cell value to a YYYY-MM-DD string.
+ * When XLSX is read with `cellDates: true`, date cells arrive as JS Date objects.
+ * CSV date columns arrive as plain strings (already YYYY-MM-DD).
+ * Anything else is coerced to string and trimmed.
+ */
+function toISODate(val: unknown): string {
+  if (val instanceof Date) {
+    // Undo UTC-offset shift so the local calendar date is preserved.
+    const d = new Date(val.getTime() - val.getTimezoneOffset() * 60000);
+    return d.toISOString().slice(0, 10);
+  }
+  return String(val ?? '').trim();
+}
+
 // ── Excel parser ──────────────────────────────────────────────────────────────
 
 function parseSheetRows(
@@ -116,8 +133,8 @@ function parseSheetRows(
     const designation_unresolved = knownDesignations.size > 0 && !knownDesignations.has(designation);
 
     // Validate contract dates
-    const contract_start = String(row['contract_start'] ?? '').trim();
-    const contract_end   = String(row['contract_end']   ?? '').trim();
+    const contract_start = toISODate(row['contract_start']);
+    const contract_end   = toISODate(row['contract_end']);
 
     if (!contract_start) {
       errors.push(`Row ${rowNum}: contract_start is required (use YYYY-MM-DD).`);
@@ -199,7 +216,7 @@ export function EmployeeUpload({
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const workbook = XLSX.read(ev.target?.result, { type: 'array' });
+        const workbook = XLSX.read(ev.target?.result, { type: 'array', cellDates: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
         const { employees: parsed, errors } = parseSheetRows(rows, salaryDefinitions, designationOptions);

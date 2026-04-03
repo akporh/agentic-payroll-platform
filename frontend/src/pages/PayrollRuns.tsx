@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
+import { workspaceApi } from '../api/workspace';
 import type { PayrollRun } from '../types/payroll';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -14,6 +15,7 @@ export function PayrollRuns() {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLive, setIsLive] = useState(false);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -22,6 +24,10 @@ export function PayrollRuns() {
       .then(setRuns)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    workspaceApi
+      .getOnboardingStatus(workspaceId)
+      .then((s) => setIsLive(s.status === 'LIVE'))
+      .catch(() => setIsLive(false));
   }, [workspaceId]);
 
   return (
@@ -30,7 +36,11 @@ export function PayrollRuns() {
         title="Payroll Runs"
         subtitle={`Workspace ${workspaceId}`}
         action={
-          <Btn onClick={() => navigate(`/workspaces/${workspaceId}/payroll/new`)}>
+          <Btn
+            onClick={() => navigate(`/workspaces/${workspaceId}/payroll/new`)}
+            disabled={!isLive}
+            title={!isLive ? 'Workspace must be LIVE to run payroll' : undefined}
+          >
             + New Run
           </Btn>
         }
@@ -44,12 +54,16 @@ export function PayrollRuns() {
           {runs.length === 0 ? (
             <p className="text-sm text-slate-400 py-8 text-center">
               No payroll runs yet.{' '}
-              <button
-                className="underline text-slate-600"
-                onClick={() => navigate(`/workspaces/${workspaceId}/payroll/new`)}
-              >
-                Create the first run.
-              </button>
+              {isLive ? (
+                <button
+                  className="underline text-slate-600"
+                  onClick={() => navigate(`/workspaces/${workspaceId}/payroll/new`)}
+                >
+                  Create the first run.
+                </button>
+              ) : (
+                <span className="text-amber-700">Activate the workspace to run payroll.</span>
+              )}
             </p>
           ) : (
             <table className="w-full text-sm">

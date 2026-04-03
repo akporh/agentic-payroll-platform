@@ -29,7 +29,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,7 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import InternalError
 
 from backend.api.main import app
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -60,7 +59,6 @@ def _create_prerequisites(db, account_id, workspace_id,
         name=f"Immutable Test Workspace {stat_version}",
         country_code="NG",
         base_currency="NGN",
-        retry_strategy="FULL_RUN",
         status="DRAFT",
     ))
     db.execute(
@@ -85,14 +83,15 @@ def _create_prerequisites(db, account_id, workspace_id,
             """),
             {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
         )
-    db.add(ComponentMetadata(
-        component_metadata_id=component_metadata_id,
-        country_code="NG",
-        version=stat_version,
-        rules_jsonb={},
-        effective_from=date.today(),
-        is_active=True,
-    ))
+    db.execute(
+        text("""
+            INSERT INTO component_metadata
+                (component_metadata_id, component_code, country_code, version,
+                 metadata_json, effective_from, is_active)
+            VALUES (:cm_id, 'TEST_SEED', 'NG', :ver, '{}', CURRENT_DATE, true)
+        """),
+        {"cm_id": component_metadata_id, "ver": stat_version},
+    )
     db.commit()
 
 

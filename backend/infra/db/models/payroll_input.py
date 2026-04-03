@@ -12,19 +12,6 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from backend.infra.db.session import Base
 
 
-INPUT_CODES = {
-    "SPECIAL_OVERTIME":    "EARNING",
-    "REGULAR_OVERTIME":    "EARNING",
-    "WEEKEND_ALLOWANCE":   "EARNING",
-    "ABSENCE":             "DEDUCTION",
-    "SUSPENSION":          "DEDUCTION",
-    "ACCIDENT_FREE_BONUS": "EARNING",
-    "BONUS":               "EARNING",
-    "ADJUSTMENT":          "EARNING",
-}
-
-INPUT_CATEGORIES = frozenset({"EARNING", "DEDUCTION", "INFORMATION"})
-
 
 class PayrollInput(Base):
     __tablename__ = "payroll_input"
@@ -52,8 +39,6 @@ class PayrollInput(Base):
     input_code = Column(String(50), nullable=False)
     input_category = Column(String(30), nullable=False)
     quantity = Column(Numeric(12, 2), nullable=True)
-    rate = Column(Numeric(12, 2), nullable=True)
-    amount = Column(Numeric(12, 2), nullable=True)
     reference_date = Column(Date, nullable=True)
     source = Column(String(50), server_default="MANUAL")
     input_json = Column(JSONB, nullable=True)

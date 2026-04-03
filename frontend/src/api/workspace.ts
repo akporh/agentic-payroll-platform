@@ -59,6 +59,19 @@ export const workspaceApi = {
     }
   ) => api.post(`/${workspaceId}/payroll-rule`, payload),
 
+  publishRuleSet: (
+    workspaceId: string,
+    payload: {
+      rules: Array<{
+        rule_name: string;
+        rule_definition_json: Record<string, unknown>;
+        rule_type?: string;
+        effective_from: string;  // ISO date "YYYY-MM-DD"
+      }>;
+      created_by?: string;  // UUID of publishing user
+    }
+  ) => api.post(`/${workspaceId}/rule-set`, payload),
+
   createComponentMetadata: (
     workspaceId: string,
     payload: {
@@ -97,4 +110,14 @@ export const workspaceApi = {
     employeeId: string,
     payload: { grade_code?: string | null; designation_code?: string | null }
   ) => api.patch(`/${workspaceId}/employees/${employeeId}/contract`, payload),
+
+  getInputCodes: (workspaceId: string) =>
+    api.get<{
+      input_codes: {
+        code: string;
+        category: string;
+        rule_name: string;
+        calculation_method: string;
+      }[];
+    }>(`/${workspaceId}/payroll/input-codes`),
 };

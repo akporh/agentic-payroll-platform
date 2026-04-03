@@ -25,7 +25,6 @@ Run:
 """
 
 import uuid
-from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import InternalError
 
 from backend.api.main import app
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -63,14 +62,14 @@ def test_run_snapshot_is_immutable():
             name="Snapshot Immutable Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
             status="DRAFT",
         ))
 
         db.execute(
             text("""
-                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-                VALUES (:id, 'NATIONAL', 9995, '{}')
+                INSERT INTO statutory_rule
+                    (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
             """),
             {"id": statutory_rule_id},
         )
@@ -91,14 +90,15 @@ def test_run_snapshot_is_immutable():
                 {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
             )
 
-        db.add(ComponentMetadata(
-            component_metadata_id=component_metadata_id,
-            country_code="NG",
-            version=1,
-            rules_jsonb={},
-            effective_from=date.today(),
-            is_active=True,
-        ))
+        db.execute(
+            text("""
+                INSERT INTO component_metadata
+                    (component_metadata_id, component_code, country_code, version,
+                     metadata_json, effective_from, is_active)
+                VALUES (:cm_id, 'TEST_SEED', 'NG', 9995, '{}', CURRENT_DATE, true)
+            """),
+            {"cm_id": component_metadata_id},
+        )
 
         db.commit()
 
@@ -133,6 +133,7 @@ def test_run_snapshot_is_immutable():
                     "employee_number":        "EMP001",
                     "full_name":              "Snapshot Test Employee",
                     "salary_definition_name": "STANDARD",
+                    "contract_start":         "2025-01-01",
                     "biodata": {
                         "TIN":            "9988776655",
                         "BANK":           "Access Bank",

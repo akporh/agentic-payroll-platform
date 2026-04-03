@@ -49,13 +49,12 @@ Run:
 """
 
 import uuid
-from datetime import date
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from backend.api.main import app
-from backend.infra.db.models import Account, ComponentMetadata, Workspace
+from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -67,8 +66,13 @@ BASIC     = 500_000
 HOUSING   = 200_000
 TRANSPORT = 100_000
 GROSS     = BASIC + HOUSING + TRANSPORT          # 800_000
-EXPECTED_PAYE = 84_000
-EXPECTED_NET  = GROSS - EXPECTED_PAYE            # 716_000
+# 5-band PAYE + 8% explicit pension (rules_jsonb pension.employee_rate=0.08) + 2.5% NHF:
+#   Pension = GROSS × 8% = 64 000
+#   NHF     = BASIC × 2.5% = 12 500
+#   Annual taxable = (800k - 64k) × 12 = 8 832 000 → Monthly PAYE = 145 226.67
+#   NET = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+EXPECTED_PAYE = 145_226.67
+EXPECTED_NET  = 578_273.33
 
 
 def test_payroll_approval_and_lock_e2e():
@@ -110,7 +114,6 @@ def test_payroll_approval_and_lock_e2e():
             name="Lock Approval Test Workspace",
             country_code="NG",
             base_currency="NGN",
-            retry_strategy="FULL_RUN",
             status="DRAFT",
         ))
 
@@ -118,8 +121,9 @@ def test_payroll_approval_and_lock_e2e():
         # tests are not running concurrently
         db.execute(
             text("""
-                INSERT INTO statutory_rule (statutory_rule_id, state, version, rules_jsonb)
-                VALUES (:id, 'NATIONAL', 9996, '{}')
+                INSERT INTO statutory_rule
+                    (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
+                VALUES (:id, 'NATIONAL', 9996, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
             """),
             {"id": statutory_rule_id},
         )
@@ -140,14 +144,15 @@ def test_payroll_approval_and_lock_e2e():
                 {"sr_id": statutory_rule_id, "lower": lower, "upper": upper, "rate": rate},
             )
 
-        db.add(ComponentMetadata(
-            component_metadata_id=component_metadata_id,
-            country_code="NG",
-            version=1,
-            rules_jsonb={},
-            effective_from=date.today(),
-            is_active=True,
-        ))
+        db.execute(
+            text("""
+                INSERT INTO component_metadata
+                    (component_metadata_id, component_code, country_code, version,
+                     metadata_json, effective_from, is_active)
+                VALUES (:cm_id, 'TEST_SEED', 'NG', 9996, '{}', CURRENT_DATE, true)
+            """),
+            {"cm_id": component_metadata_id},
+        )
 
         db.commit()
 
@@ -182,6 +187,7 @@ def test_payroll_approval_and_lock_e2e():
                     "employee_number":        "EMP001",
                     "full_name":              "Jane Okeke",
                     "salary_definition_name": "STANDARD",
+                    "contract_start":         "2025-01-01",
                     "biodata": {
                         "TIN":            "1234567890",
                         "BANK":           "GTBank",

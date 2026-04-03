@@ -24,6 +24,7 @@ from backend.domain.onboarding.sql_emitter import (
     emit_payroll_rules_sql,
 )
 from backend.domain.onboarding.review_runner import review_client_onboarding
+from backend.application import onboarding_service
 
 router = APIRouter()
 
@@ -270,9 +271,9 @@ async def commit_onboarding(request: Request):
             db.execute(
                 text("""
                     INSERT INTO payroll_rule (
-                        rule_id, workspace_id, rule_name, rule_definition_json, is_active
+                        rule_id, workspace_id, rule_name, rule_definition_json, rule_type, is_active
                     )
-                    VALUES (:id, :workspace_id, :name, :definition, TRUE)
+                    VALUES (:id, :workspace_id, :name, :definition, :rule_type, TRUE)
                 """),
                 {
                     "id": str(uuid4()),
@@ -281,6 +282,7 @@ async def commit_onboarding(request: Request):
                     "definition": Json(
                         rule.get("definition") or rule.get("rule_definition_json") or {}
                     ),
+                    "rule_type": rule.get("rule_type"),
                 },
             )
 
@@ -538,8 +540,8 @@ async def commit_onboarding(request: Request):
                     VALUES (
                         :cid, :employee_id, :salary_definition_id,
                         :grade_id, :designation_id,
-                        COALESCE(:start_date::DATE, CURRENT_DATE),
-                        :end_date::DATE
+                        COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
+                        CAST(:end_date AS DATE)
                     )
                 """),
                 {
@@ -552,6 +554,19 @@ async def commit_onboarding(request: Request):
                     "end_date":             emp_end_date,
                 },
             )
+
+        # Publish rule_set snapshots for rules that carry an effective_from date.
+        # Rules without effective_from are inserted into payroll_rule only (legacy path).
+        _rules_for_publish = [
+            {
+                "rule_name":            rule.get("rule_name") or rule.get("rule_code") or "UNKNOWN",
+                "rule_definition_json": rule.get("definition") or rule.get("rule_definition_json") or {},
+                "rule_type":            rule.get("rule_type"),
+                "effective_from":       rule.get("effective_from"),
+            }
+            for rule in payload.get("payroll_rules", [])
+        ]
+        onboarding_service.publish_rule_sets(db, workspace_id, _rules_for_publish)
 
         db.commit()
 
