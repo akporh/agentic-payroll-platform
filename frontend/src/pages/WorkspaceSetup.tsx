@@ -90,7 +90,7 @@ export function WorkspaceSetup() {
 
   // ── Step 3 — Component Settings ─────────────────────────────────────────
   const [platformComponents, setPlatformComponents] = useState<{ component_code: string; label: string }[]>([]);
-  const [componentOverrides, setComponentOverrides] = useState<Record<string, boolean>>({});
+  const [_componentOverrides, setComponentOverrides] = useState<Record<string, boolean>>({});
   const [componentToggles, setComponentToggles] = useState<Record<string, boolean>>({});
   const [componentLoading, setComponentLoading] = useState(false);
   const [componentSaving, setComponentSaving] = useState(false);
@@ -1238,7 +1238,7 @@ function DetailsModal({
                       <span className="font-mono text-xs font-semibold text-slate-700">
                         {String(g.grade_code ?? g.code ?? g.name ?? `Grade ${i + 1}`)}
                       </span>
-                      {g.description && <span className="text-xs text-slate-400">{String(g.description)}</span>}
+                      {Boolean(g.description) && <span className="text-xs text-slate-400">{String(g.description)}</span>}
                     </li>
                   ))}
                 </ul>
@@ -1253,7 +1253,7 @@ function DetailsModal({
                       <span className="font-mono text-xs font-semibold text-slate-700">
                         {String(d.designation_code ?? d.code ?? d.name ?? `Designation ${i + 1}`)}
                       </span>
-                      {d.description && <span className="text-xs text-slate-400">{String(d.description)}</span>}
+                      {Boolean(d.description) && <span className="text-xs text-slate-400">{String(d.description)}</span>}
                     </li>
                   ))}
                 </ul>

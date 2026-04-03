@@ -303,7 +303,7 @@ function EmployeeTable({
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return (
     <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide py-2 px-3">
       {children}
