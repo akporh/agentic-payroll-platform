@@ -1,5 +1,6 @@
+import json
 import uuid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from backend.infra.db.session import SessionLocal
@@ -13,6 +14,20 @@ from backend.api.schemas.component_metadata import ComponentMetadataCreateSchema
 from backend.domain.onboarding.onboarding_status import get_onboarding_status
 from backend.domain.onboarding.workspace_state_machine import transition_workspace
 from backend.domain.onboarding.hard_validator import validate_workspace_for_state
+from backend.infra.repositories.workspace_config_repo import (
+    get_workspace_payroll_config,
+    upsert_workspace_payroll_config,
+)
+from backend.infra.repositories.rate_code_repo import (
+    list_rate_codes,
+    create_rate_code,
+    delete_rate_code,
+)
+from backend.infra.repositories.public_holiday_repo import (
+    list_workspace_holidays,
+    add_workspace_holiday,
+    delete_workspace_holiday,
+)
 
 
 router = APIRouter()
@@ -28,6 +43,18 @@ class WorkspaceCreateSchema(BaseModel):
 def create_workspace(payload: WorkspaceCreateSchema):
     db = SessionLocal()
     try:
+        # Validate country_code has statutory rules configured
+        cc_exists = db.execute(
+            text("SELECT 1 FROM statutory_rule WHERE country_code = :cc LIMIT 1"),
+            {"cc": payload.country_code},
+        ).fetchone()
+        if not cc_exists:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No statutory rules configured for country_code '{payload.country_code}'. "
+                       "Contact your administrator.",
+            )
+
         workspace_id = str(uuid.uuid4())
 
         db.execute(
@@ -50,6 +77,8 @@ def create_workspace(payload: WorkspaceCreateSchema):
             "base_currency": payload.base_currency,
             "status": "DRAFT",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -718,3 +747,212 @@ def get_workspace_configuration(workspace_id: str):
         }
     finally:
         db.close()
+
+
+@router.patch("/{workspace_id}/component-overrides/{component_code}")
+def patch_component_override(workspace_id: str, component_code: str, payload: dict):
+    """Update (or create) a component override for a workspace.
+
+    Accepts any subset of: overrides_json, is_active, proration_strategy.
+    Uses ON CONFLICT DO UPDATE so repeated calls are idempotent.
+    """
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("""
+                INSERT INTO client_component_metadata
+                    (workspace_id, component_code, overrides_json, is_active, proration_strategy)
+                VALUES
+                    (:wid, :code, :overrides::jsonb,
+                     COALESCE(:is_active, true),
+                     COALESCE(:proration, 'FULL_MONTH'))
+                ON CONFLICT (workspace_id, component_code) DO UPDATE
+                SET overrides_json     = EXCLUDED.overrides_json,
+                    is_active          = COALESCE(EXCLUDED.is_active, client_component_metadata.is_active),
+                    proration_strategy = COALESCE(EXCLUDED.proration_strategy, client_component_metadata.proration_strategy)
+            """),
+            {
+                "wid": workspace_id,
+                "code": component_code.upper(),
+                "overrides": json.dumps(payload.get("overrides_json", {})),
+                "is_active": payload.get("is_active"),
+                "proration": payload.get("proration_strategy"),
+            },
+        )
+        db.commit()
+        return {"status": "ok", "workspace_id": workspace_id, "component_code": component_code.upper()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+def _get_country_code(workspace_id: str) -> str | None:
+    """Return the country_code for a workspace, or raise 404 if not found."""
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text("SELECT country_code FROM workspace WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return row[0]
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# PH-6 — Workspace Payroll Config
+# ---------------------------------------------------------------------------
+
+@router.get("/workspaces/{workspace_id}/payroll-config")
+def get_payroll_config(workspace_id: str):
+    """Return the active payroll config for a workspace (defaults if none set)."""
+    return get_workspace_payroll_config(workspace_id)
+
+
+class PayrollConfigUpsertSchema(BaseModel):
+    effective_from: str
+    ph_mode: str | None = None
+    ph_rate_code: str | None = None
+    saturday_ph_rule: str | None = None
+    sunday_ph_rule: str | None = None
+    d3_leave_overlap_rule: str | None = None
+    d4_absence_rule: str | None = None
+
+
+@router.put("/workspaces/{workspace_id}/payroll-config")
+def put_payroll_config(workspace_id: str, payload: PayrollConfigUpsertSchema):
+    """Insert or update a versioned payroll config row for a workspace."""
+    return upsert_workspace_payroll_config(
+        workspace_id,
+        payload.effective_from,
+        ph_mode=payload.ph_mode,
+        ph_rate_code=payload.ph_rate_code,
+        saturday_ph_rule=payload.saturday_ph_rule,
+        sunday_ph_rule=payload.sunday_ph_rule,
+        d3_leave_overlap_rule=payload.d3_leave_overlap_rule,
+        d4_absence_rule=payload.d4_absence_rule,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PH-7 — Rate Code Registry
+# ---------------------------------------------------------------------------
+
+@router.get("/workspaces/{workspace_id}/rate-codes")
+def get_rate_codes(workspace_id: str):
+    """Return all active rate codes visible to a workspace.
+
+    Includes both platform seeds (is_platform=True) and workspace-specific rows.
+    Workspace rows shadow platform seeds with the same code.
+    """
+    return list_rate_codes(workspace_id)
+
+
+class RateCodeCreateSchema(BaseModel):
+    code: str
+    multiplier: float
+    unit: str
+    base: str
+    description: str | None = None
+
+
+@router.post("/workspaces/{workspace_id}/rate-codes", status_code=201)
+def post_rate_code(workspace_id: str, payload: RateCodeCreateSchema):
+    """Create a workspace-specific rate code."""
+    try:
+        return create_rate_code(
+            workspace_id=workspace_id,
+            code=payload.code.upper(),
+            multiplier=payload.multiplier,
+            unit=payload.unit,
+            base=payload.base,
+            description=payload.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.delete("/workspaces/{workspace_id}/rate-codes/{code}", status_code=200)
+def remove_rate_code(workspace_id: str, code: str):
+    """Deactivate a workspace-specific rate code.
+
+    Returns 403 if the code is a platform seed (workspace_id IS NULL).
+    Returns 404 if the code is not found for this workspace.
+    """
+    try:
+        deleted = delete_rate_code(workspace_id, code.upper())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Rate code '{code}' not found for this workspace")
+
+    return {"status": "ok", "code": code.upper()}
+
+
+# ---------------------------------------------------------------------------
+# PH-1 — Public Holiday Calendar
+# ---------------------------------------------------------------------------
+
+@router.get("/workspaces/{workspace_id}/public-holidays")
+def get_public_holidays(
+    workspace_id: str,
+    year: int | None = Query(default=None, description="Filter by calendar year, e.g. 2026"),
+):
+    """Return public holidays visible to a workspace.
+
+    Returns both NATIONAL (Tier-1) and WORKSPACE (Tier-2) rows.
+    Pass ?year=2026 to filter to a specific calendar year.
+    """
+    country_code = _get_country_code(workspace_id)
+    return list_workspace_holidays(workspace_id, country_code, year=year)
+
+
+class PublicHolidayCreateSchema(BaseModel):
+    date: str          # ISO format: YYYY-MM-DD
+    name: str
+
+
+@router.post("/workspaces/{workspace_id}/public-holidays", status_code=201)
+def post_public_holiday(workspace_id: str, payload: PublicHolidayCreateSchema):
+    """Add a workspace-specific (Tier-2) public holiday."""
+    try:
+        return add_workspace_holiday(
+            workspace_id=workspace_id,
+            holiday_date=payload.date,
+            name=payload.name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.delete("/workspaces/{workspace_id}/public-holidays/{holiday_id}", status_code=200)
+def remove_public_holiday(workspace_id: str, holiday_id: str):
+    """Delete a workspace-specific (Tier-2) public holiday.
+
+    Returns 404 if the holiday_id is not found for this workspace.
+    National holidays cannot be deleted (they have no holiday_id in the workspace table).
+    """
+    try:
+        deleted = delete_workspace_holiday(holiday_id, workspace_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Holiday not found for this workspace. "
+                   "National holidays cannot be deleted via this endpoint.",
+        )
+
+    return {"status": "ok", "holiday_id": holiday_id}

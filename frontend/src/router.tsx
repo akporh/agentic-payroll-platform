@@ -12,6 +12,7 @@ import { Reconciliation } from './pages/Reconciliation';
 import { PayrollInputs } from './pages/PayrollInputs';
 import { PayrollInputsBulkUpload } from './pages/PayrollInputsBulkUpload';
 import { WorkspaceConfig } from './pages/WorkspaceConfig';
+import { PublicHolidays } from './pages/PublicHolidays';
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
           { index: true, element: <WorkspaceDashboard /> },
           { path: 'config', element: <WorkspaceConfig /> },
           { path: 'setup', element: <WorkspaceSetup /> },
+          { path: 'public-holidays', element: <PublicHolidays /> },
           { path: 'employees', element: <Employees /> },
           {
             path: 'payroll',

@@ -42,6 +42,63 @@ def save_trace_step(
         db.close()
 
 
+def get_legacy_executor_stats() -> dict:
+    """Return aggregate stats on legacy executor fallback usage.
+
+    Returns:
+        {
+          "total_runs":          int,   # all payroll runs with at least one trace step
+          "runs_with_legacy":    int,   # runs where legacy fallback fired at least once
+          "pct_runs_affected":   float, # runs_with_legacy / total_runs * 100 (0 if no runs)
+          "total_legacy_events": int,   # total employee-level fallback events across all runs
+          "by_run": [                   # per-run breakdown (only runs with legacy events)
+            {"run_id": str, "legacy_count": int}
+          ]
+        }
+    """
+    db = SessionLocal()
+    try:
+        agg = db.execute(
+            text("""
+                SELECT
+                    COUNT(DISTINCT run_id)                                          AS total_runs,
+                    COUNT(DISTINCT CASE WHEN step_name = 'legacy_executor_fallback'
+                                        THEN run_id END)                           AS runs_with_legacy,
+                    COUNT(CASE WHEN step_name = 'legacy_executor_fallback' THEN 1 END)
+                                                                                   AS total_legacy_events
+                FROM execution_trace
+            """),
+        ).fetchone()
+
+        total_runs       = agg[0] or 0
+        runs_with_legacy = agg[1] or 0
+        total_legacy_events = agg[2] or 0
+        pct = round(100.0 * runs_with_legacy / total_runs, 1) if total_runs else 0.0
+
+        by_run_rows = db.execute(
+            text("""
+                SELECT run_id, COUNT(*) AS legacy_count
+                FROM   execution_trace
+                WHERE  step_name = 'legacy_executor_fallback'
+                GROUP  BY run_id
+                ORDER  BY legacy_count DESC
+            """),
+        ).fetchall()
+
+        return {
+            "total_runs":          total_runs,
+            "runs_with_legacy":    runs_with_legacy,
+            "pct_runs_affected":   pct,
+            "total_legacy_events": total_legacy_events,
+            "by_run": [
+                {"run_id": str(r[0]), "legacy_count": r[1]}
+                for r in by_run_rows
+            ],
+        }
+    finally:
+        db.close()
+
+
 def get_trace_steps(run_id: str) -> list[dict]:
     """Return all trace steps for a run, ordered by creation time."""
     db = SessionLocal()

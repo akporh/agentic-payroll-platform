@@ -31,3 +31,18 @@ frontend/dist/
 *.local_backup.py
 __pycache__/
 data/
+
+# Claude Code local config (contains MCP tokens)
+.claude.json
+
+# Claude auto-memory (session-local, not for version control)
+memory/
+
+# Client data and UAT test data (sensitive)
+docs/Client B/
+uat/
+
+# Temp/internal session notes
+download.html
+docs/combined sessions*.txt
+docs/reality-report-analysis.txt

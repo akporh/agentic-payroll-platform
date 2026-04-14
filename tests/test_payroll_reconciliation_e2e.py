@@ -238,6 +238,8 @@ def test_reconcile_matched():
         _create_prerequisites(db, account_id, workspace_id,
                                statutory_rule_id, component_metadata_id, 9055)
         run_id = _onboard_and_run(workspace_id)
+        client.post(f"/api/v1/payroll/run/{run_id}/approve")
+        client.post(f"/api/v1/payroll/run/{run_id}/lock")
 
         # Fetch the engine total from the DB
         engine_net = db.execute(
@@ -293,6 +295,8 @@ def test_reconcile_mismatch():
         _create_prerequisites(db, account_id, workspace_id,
                                statutory_rule_id, component_metadata_id, 9054)
         run_id = _onboard_and_run(workspace_id)
+        client.post(f"/api/v1/payroll/run/{run_id}/approve")
+        client.post(f"/api/v1/payroll/run/{run_id}/lock")
 
         engine_net = db.execute(
             text("SELECT total_net_pay FROM payroll_run WHERE payroll_run_id = :rid"),
@@ -331,6 +335,8 @@ def test_reconcile_duplicate_rejected():
         _create_prerequisites(db, account_id, workspace_id,
                                statutory_rule_id, component_metadata_id, 9053)
         run_id = _onboard_and_run(workspace_id)
+        client.post(f"/api/v1/payroll/run/{run_id}/approve")
+        client.post(f"/api/v1/payroll/run/{run_id}/lock")
 
         engine_net = db.execute(
             text("SELECT total_net_pay FROM payroll_run WHERE payroll_run_id = :rid"),
@@ -388,6 +394,8 @@ def test_get_reconciliation():
         _create_prerequisites(db, account_id, workspace_id,
                                statutory_rule_id, component_metadata_id, 9052)
         run_id = _onboard_and_run(workspace_id)
+        client.post(f"/api/v1/payroll/run/{run_id}/approve")
+        client.post(f"/api/v1/payroll/run/{run_id}/lock")
 
         engine_net = db.execute(
             text("SELECT total_net_pay FROM payroll_run WHERE payroll_run_id = :rid"),

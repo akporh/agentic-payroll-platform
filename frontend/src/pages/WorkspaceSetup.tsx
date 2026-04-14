@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { onboardingApi } from '../api/onboarding';
 import type { ValidateResponse, PreviewResponse, CommitResponse } from '../types/onboarding';
 import type { Workspace } from '../types/workspace';
+import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Btn } from '../components/ui/Btn';
@@ -466,7 +467,7 @@ export function WorkspaceSetup() {
             : step === 'employee-upload' ? 'bg-slate-100 text-slate-500'
             : 'bg-slate-100 text-slate-300'
           }`}>
-            {commitStage === 'committed' ? '✓ ' : '5. '}Commit
+            {commitStage === 'committed' ? '✓ ' : '5. '}Activate
           </span>
         </div>
       </div>
@@ -673,7 +674,7 @@ export function WorkspaceSetup() {
               }}
             />
 
-            <Card title="5. Commit Onboarding">
+            <Card title="5. Activate Workspace">
               <p className="text-xs text-slate-500 mb-3">
                 Validate and preview before committing. The final payload merges
                 the client config JSON with the uploaded employees.
@@ -702,21 +703,13 @@ export function WorkspaceSetup() {
                 >
                   Validate
                 </Btn>
-                <Btn
-                  variant="secondary"
-                  onClick={preview}
-                  loading={loading && commitStage === 'validated'}
-                  disabled={validateResult?.status !== 'valid'}
-                >
-                  Preview SQL
-                </Btn>
-                {commitStage === 'previewed' && previewResult?.status === 'valid' && (
+                {commitStage === 'validated' && validateResult?.status === 'valid' && (
                   <Btn
                     onClick={commit}
                     loading={loading}
                     className="bg-green-700 hover:bg-green-600 text-white"
                   >
-                    Commit Setup
+                    Activate Workspace
                   </Btn>
                 )}
               </div>
@@ -844,30 +837,6 @@ export function WorkspaceSetup() {
               </div>
             </Card>
 
-            {previewResult?.preview && (
-              <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
-                <button
-                  className="w-full flex items-center justify-between px-5 py-3 border-b border-slate-100 text-left"
-                  onClick={() => setSqlOpen((v) => !v)}
-                >
-                  <h2 className="text-sm font-semibold text-slate-700">Generated SQL Preview</h2>
-                  <span className="text-xs text-slate-400 ml-2">{sqlOpen ? '▲ Hide' : '▼ Show'}</span>
-                </button>
-                {sqlOpen && (
-                  <div className="p-5 space-y-3">
-                    {previewResult.preview.employees_sql && (
-                      <SqlBlock label="Employees" sql={previewResult.preview.employees_sql} />
-                    )}
-                    {previewResult.preview.salary_definitions_sql && (
-                      <SqlBlock label="Salary Definitions" sql={previewResult.preview.salary_definitions_sql} />
-                    )}
-                    {previewResult.preview.payroll_rules_sql && (
-                      <SqlBlock label="Payroll Rules" sql={previewResult.preview.payroll_rules_sql} />
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {detailsOpen && (
@@ -914,12 +883,53 @@ function ExistingConfigView({
   const [uploadResult, setUploadResult] = useState<{ updated: number; not_found: string[] } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // G3 — Payroll Behaviour
+  const [payrollConfig, setPayrollConfig] = useState<WorkspacePayrollConfig | null>(null);
+  const [configFetchError, setConfigFetchError] = useState<string | null>(null);
+  const [phBehaviourOpen, setPhBehaviourOpen] = useState(false);
+  const [editingBehaviour, setEditingBehaviour] = useState(false);
+  const [behaviourForm, setBehaviourForm] = useState({
+    effective_from: '',
+    ph_mode: 'AUTOMATIC' as 'AUTOMATIC' | 'FILE_BASED',
+    ph_rate_code: 'PH_OT',
+    saturday_ph_rule: 'PH_TAKES_PRECEDENCE' as 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE',
+    sunday_ph_rule: 'PH_TAKES_PRECEDENCE' as 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE',
+    d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH' as 'LEAVE_ABSORBS_PH' | 'PH_ADDITIVE',
+    d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE' as 'ABSENT_IS_DEDUCTIBLE' | 'PH_EXCUSES_ABSENCE',
+  });
+  const [behaviourSaving, setBehaviourSaving] = useState(false);
+  const [behaviourError, setBehaviourError] = useState<string | null>(null);
+  const [behaviourSaved, setBehaviourSaved] = useState(false);
+
+  // G4 — Rate Code Registry
+  const [rateCodes, setRateCodes] = useState<RateCode[]>([]);
+  const [rateCodeFetchError, setRateCodeFetchError] = useState<string | null>(null);
+  const [rateCodeOpen, setRateCodeOpen] = useState(false);
+  const [rcForm, setRcForm] = useState({ code: '', multiplier: 1.0, unit: 'day', base: 'basic_daily', description: '' });
+  const [rcAdding, setRcAdding] = useState(false);
+  const [rcAddError, setRcAddError] = useState<string | null>(null);
+  const [rcDeleteCode, setRcDeleteCode] = useState<string | null>(null);
+
   useEffect(() => {
     if (!workspaceId) return;
     workspaceApi.getSalaryDefinitions(workspaceId).then(setSalaryDefOptions).catch(() => {});
     workspaceApi.getDesignations(workspaceId)
       .then((rows) => setDesignationOptions(rows.map((r) => r.code)))
       .catch(() => {});
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi.getPayrollConfig(workspaceId)
+      .then(setPayrollConfig)
+      .catch(() => setConfigFetchError('No payroll config found — defaults apply.'));
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi.getRateCodes(workspaceId)
+      .then(setRateCodes)
+      .catch(() => setRateCodeFetchError('Failed to load rate codes.'));
   }, [workspaceId]);
 
   async function handleEmployeeUploadSubmit() {
@@ -1120,6 +1130,396 @@ function ExistingConfigView({
             </div>
           )}
         </div>
+
+        {/* ── G3: Payroll Behaviour ──────────────────────────────────────── */}
+        <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
+          <button
+            className="w-full flex items-center justify-between px-5 py-3 text-left"
+            onClick={() => setPhBehaviourOpen((v) => !v)}
+          >
+            <span className="text-sm font-semibold text-slate-700">Payroll Behaviour</span>
+            <span className="text-xs text-slate-400">{phBehaviourOpen ? '▲ Hide' : '▼ Show'}</span>
+          </button>
+          {phBehaviourOpen && (
+            <div className="px-5 pb-5 border-t border-slate-100">
+              {configFetchError && !payrollConfig && (
+                <p className="text-xs text-amber-600 mt-3">{configFetchError}</p>
+              )}
+
+              {payrollConfig && (
+                <div className="mt-3 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">PH Mode</p>
+                    <p className="font-medium text-slate-700">{payrollConfig.ph_mode}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">PH Rate Code</p>
+                    <p className="font-mono text-slate-700">{payrollConfig.ph_rate_code}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Effective From</p>
+                    <p className="font-mono text-slate-700">{payrollConfig.effective_from ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Saturday PH Rule</p>
+                    <p className="text-xs text-slate-600">{payrollConfig.saturday_ph_rule}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Sunday PH Rule</p>
+                    <p className="text-xs text-slate-600">{payrollConfig.sunday_ph_rule}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Leave + PH Overlap (D3)</p>
+                    <p className="text-xs text-slate-600">{payrollConfig.d3_leave_overlap_rule}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Absence on PH (D4)</p>
+                    <p className="text-xs text-slate-600">{payrollConfig.d4_absence_rule}</p>
+                  </div>
+                </div>
+              )}
+
+              {!editingBehaviour ? (
+                <button
+                  className="text-xs text-slate-500 underline"
+                  onClick={() => {
+                    setBehaviourForm({
+                      effective_from: new Date().toISOString().slice(0, 10),
+                      ph_mode: payrollConfig?.ph_mode ?? 'AUTOMATIC',
+                      ph_rate_code: payrollConfig?.ph_rate_code ?? 'PH_OT',
+                      saturday_ph_rule: payrollConfig?.saturday_ph_rule ?? 'PH_TAKES_PRECEDENCE',
+                      sunday_ph_rule: payrollConfig?.sunday_ph_rule ?? 'PH_TAKES_PRECEDENCE',
+                      d3_leave_overlap_rule: payrollConfig?.d3_leave_overlap_rule ?? 'LEAVE_ABSORBS_PH',
+                      d4_absence_rule: payrollConfig?.d4_absence_rule ?? 'ABSENT_IS_DEDUCTIBLE',
+                    });
+                    setEditingBehaviour(true);
+                    setBehaviourError(null);
+                    setBehaviourSaved(false);
+                  }}
+                >
+                  {payrollConfig ? 'Update config →' : 'Set config →'}
+                </button>
+              ) : (
+                <div className="mt-2 space-y-3">
+                  <p className="text-xs text-slate-500">
+                    Creates a new versioned config. Running payrolls are not affected.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Effective From *</label>
+                      <input
+                        type="date"
+                        value={behaviourForm.effective_from}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, effective_from: e.target.value }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">PH Rate Code</label>
+                      <input
+                        type="text"
+                        value={behaviourForm.ph_rate_code}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, ph_rate_code: e.target.value }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">PH Mode</label>
+                    <div className="flex gap-4">
+                      {(['AUTOMATIC', 'FILE_BASED'] as const).map((v) => (
+                        <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="ph_mode"
+                            value={v}
+                            checked={behaviourForm.ph_mode === v}
+                            onChange={() => setBehaviourForm((f) => ({ ...f, ph_mode: v }))}
+                            className="accent-slate-700"
+                          />
+                          {v === 'AUTOMATIC' ? 'Automatic (from calendar)' : 'File-based (per run)'}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Saturday PH Rule</label>
+                      <select
+                        value={behaviourForm.saturday_ph_rule}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, saturday_ph_rule: e.target.value as typeof f.saturday_ph_rule }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      >
+                        <option value="PH_TAKES_PRECEDENCE">PH takes precedence</option>
+                        <option value="DAY_OF_WEEK_TAKES_PRECEDENCE">Day-of-week takes precedence</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Sunday PH Rule</label>
+                      <select
+                        value={behaviourForm.sunday_ph_rule}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, sunday_ph_rule: e.target.value as typeof f.sunday_ph_rule }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      >
+                        <option value="PH_TAKES_PRECEDENCE">PH takes precedence</option>
+                        <option value="DAY_OF_WEEK_TAKES_PRECEDENCE">Day-of-week takes precedence</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Leave + PH Overlap (D3)</label>
+                      <select
+                        value={behaviourForm.d3_leave_overlap_rule}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, d3_leave_overlap_rule: e.target.value as typeof f.d3_leave_overlap_rule }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      >
+                        <option value="LEAVE_ABSORBS_PH">Leave absorbs PH (no additive)</option>
+                        <option value="PH_ADDITIVE">PH additive (pay both)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Absence on PH (D4)</label>
+                      <select
+                        value={behaviourForm.d4_absence_rule}
+                        onChange={(e) => setBehaviourForm((f) => ({ ...f, d4_absence_rule: e.target.value as typeof f.d4_absence_rule }))}
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      >
+                        <option value="ABSENT_IS_DEDUCTIBLE">Absence is deductible</option>
+                        <option value="PH_EXCUSES_ABSENCE">PH excuses absence</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {behaviourError && <p className="text-xs text-red-500">{behaviourError}</p>}
+                  {behaviourSaved && <p className="text-xs text-green-600">Config saved.</p>}
+
+                  <div className="flex gap-2">
+                    <Btn
+                      onClick={async () => {
+                        if (!workspaceId || !behaviourForm.effective_from) return;
+                        setBehaviourSaving(true);
+                        setBehaviourError(null);
+                        try {
+                          const saved = await workspaceApi.upsertPayrollConfig(workspaceId, behaviourForm);
+                          setPayrollConfig(saved);
+                          setBehaviourSaved(true);
+                          setEditingBehaviour(false);
+                        } catch (e: unknown) {
+                          setBehaviourError(e instanceof Error ? e.message : 'Failed to save config');
+                        } finally {
+                          setBehaviourSaving(false);
+                        }
+                      }}
+                      loading={behaviourSaving}
+                      disabled={!behaviourForm.effective_from}
+                    >
+                      Save Config
+                    </Btn>
+                    <button
+                      className="text-xs text-slate-400 underline px-2"
+                      onClick={() => setEditingBehaviour(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── G4: Rate Code Registry ─────────────────────────────────────── */}
+        <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
+          <button
+            className="w-full flex items-center justify-between px-5 py-3 text-left"
+            onClick={() => setRateCodeOpen((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-700">Rate Code Registry</span>
+              <span className="text-xs text-slate-400">
+                {rateCodes.length} code{rateCodes.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <span className="text-xs text-slate-400">{rateCodeOpen ? '▲ Hide' : '▼ Show'}</span>
+          </button>
+          {rateCodeOpen && (
+            <div className="px-5 pb-5 border-t border-slate-100">
+              {rateCodeFetchError && (
+                <p className="text-xs text-red-500 mt-3">{rateCodeFetchError}</p>
+              )}
+
+              <table className="w-full text-sm mt-3">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left text-xs text-slate-400 font-semibold uppercase tracking-wide pb-2 pr-3">Code</th>
+                    <th className="text-left text-xs text-slate-400 font-semibold uppercase tracking-wide pb-2 pr-3">Multiplier</th>
+                    <th className="text-left text-xs text-slate-400 font-semibold uppercase tracking-wide pb-2 pr-3">Unit</th>
+                    <th className="text-left text-xs text-slate-400 font-semibold uppercase tracking-wide pb-2 pr-3">Base</th>
+                    <th className="text-left text-xs text-slate-400 font-semibold uppercase tracking-wide pb-2">Source</th>
+                    <th className="pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rateCodes.map((rc) => (
+                    <tr key={rc.code} className={`border-b border-slate-50 ${rc.is_platform ? 'opacity-60' : ''}`}>
+                      <td className="py-2 pr-3 font-mono text-xs text-slate-700">{rc.code}</td>
+                      <td className="py-2 pr-3 text-slate-600">{rc.multiplier}×</td>
+                      <td className="py-2 pr-3 text-slate-500 text-xs">{rc.unit}</td>
+                      <td className="py-2 pr-3 text-slate-500 text-xs">{rc.base}</td>
+                      <td className="py-2 pr-3">
+                        {rc.is_platform ? (
+                          <span className="text-xs text-slate-400 italic">platform</span>
+                        ) : (
+                          <span className="text-xs text-blue-600">workspace</span>
+                        )}
+                      </td>
+                      <td className="py-2">
+                        {!rc.is_platform && (
+                          rcDeleteCode === rc.code ? (
+                            <span className="flex items-center gap-2">
+                              <button
+                                onClick={async () => {
+                                  if (!workspaceId) return;
+                                  try {
+                                    await workspaceApi.deleteRateCode(workspaceId, rc.code);
+                                    setRateCodes((prev) => prev.filter((r) => r.code !== rc.code));
+                                    setRcDeleteCode(null);
+                                  } catch (e: unknown) {
+                                    setRcAddError(e instanceof Error ? e.message : 'Delete failed');
+                                    setRcDeleteCode(null);
+                                  }
+                                }}
+                                className="text-xs text-red-600 hover:text-red-800"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setRcDeleteCode(null)}
+                                className="text-xs text-slate-400 hover:text-slate-600"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setRcDeleteCode(rc.code)}
+                              className="text-xs text-red-400 hover:text-red-600"
+                            >
+                              Delete
+                            </button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {rateCodes.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-4 text-sm text-slate-400 text-center">
+                        No rate codes found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Add Workspace Rate Code
+                </p>
+                <div className="flex gap-3 flex-wrap items-end">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Code *</label>
+                    <input
+                      type="text"
+                      value={rcForm.code}
+                      onChange={(e) => setRcForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                      placeholder="e.g. SHIFT2"
+                      className="border border-slate-200 rounded px-3 py-1.5 text-sm font-mono w-28 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Multiplier</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={rcForm.multiplier}
+                      onChange={(e) => setRcForm((f) => ({ ...f, multiplier: parseFloat(e.target.value) || 1 }))}
+                      className="border border-slate-200 rounded px-3 py-1.5 text-sm w-20 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Unit</label>
+                    <select
+                      value={rcForm.unit}
+                      onChange={(e) => setRcForm((f) => ({ ...f, unit: e.target.value }))}
+                      className="border border-slate-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    >
+                      <option value="day">Day</option>
+                      <option value="hour">Hour</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Base</label>
+                    <select
+                      value={rcForm.base}
+                      onChange={(e) => setRcForm((f) => ({ ...f, base: e.target.value }))}
+                      className="border border-slate-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    >
+                      <option value="basic_daily">Basic Daily</option>
+                      <option value="basic_hourly">Basic Hourly</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-32">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={rcForm.description}
+                      onChange={(e) => setRcForm((f) => ({ ...f, description: e.target.value }))}
+                      placeholder="Optional"
+                      className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    />
+                  </div>
+                  <Btn
+                    onClick={async () => {
+                      if (!workspaceId || !rcForm.code.trim()) return;
+                      setRcAdding(true);
+                      setRcAddError(null);
+                      try {
+                        const created = await workspaceApi.addRateCode(workspaceId, {
+                          code: rcForm.code.trim(),
+                          multiplier: rcForm.multiplier,
+                          unit: rcForm.unit as 'day' | 'hour',
+                          base: rcForm.base as 'basic_daily' | 'basic_hourly',
+                          description: rcForm.description || undefined,
+                        });
+                        setRateCodes((prev) => [...prev, created]);
+                        setRcForm({ code: '', multiplier: 1.0, unit: 'day', base: 'basic_daily', description: '' });
+                      } catch (e: unknown) {
+                        const msg = e instanceof Error ? e.message : 'Failed to add rate code';
+                        setRcAddError(
+                          msg.includes('409') || msg.toLowerCase().includes('duplicate')
+                            ? `Code "${rcForm.code}" already exists.`
+                            : msg
+                        );
+                      } finally {
+                        setRcAdding(false);
+                      }
+                    }}
+                    loading={rcAdding}
+                    disabled={!rcForm.code.trim()}
+                  >
+                    Add
+                  </Btn>
+                </div>
+                {rcAddError && <p className="text-xs text-red-500 mt-2">{rcAddError}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 export type PayrollRunStatus =
-  | 'PENDING'
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'FAILED'
+  | 'DRAFT'
+  | 'CALCULATING'
+  | 'CALCULATED'
+  | 'PARTIAL'
   | 'APPROVED'
+  | 'LOCKED'
   | 'PAID';
 
 export interface PayrollRun {
@@ -16,6 +17,16 @@ export interface PayrollRun {
   created_at: string;
 }
 
+export interface ComponentTraceEntry {
+  rule: string;
+  method: string;
+  status: string;
+  amount: string;
+  note: string;
+  resolution_source: string;
+  warning?: string | null;
+}
+
 export interface PayrollResult {
   employee_id: string;
   employee_name: string;
@@ -24,6 +35,7 @@ export interface PayrollResult {
   total_deductions: number;
   net_pay: number;
   status: string;
+  component_trace?: ComponentTraceEntry[];
 }
 
 export interface PayrollTotals {
@@ -47,7 +59,10 @@ export interface ReconciliationRecord {
   run_id: string;
   expected_total: number;
   actual_payment: number | null;
-  status: 'MATCHED' | 'MISMATCH' | 'PENDING';
+  status: 'MATCHED' | 'MISMATCH' | 'PENDING' | 'RESOLVED';
+  notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
 }
 
 export interface PayrollInput {
@@ -65,10 +80,50 @@ export interface PayrollInput {
   reference_date: string | null;
 }
 
+export interface AuditLogEntry {
+  entity_type: string;
+  action: string;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  performed_by: string;
+  performed_at: string;
+}
+
 export interface ExecutionTraceStep {
   step_name: string;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'warn';
   duration_ms: number | null;
   error_message: string | null;
   created_at: string;
+}
+
+export interface WorkspacePayrollConfig {
+  config_id?: string;
+  workspace_id?: string;
+  effective_from?: string;
+  ph_mode: 'AUTOMATIC' | 'FILE_BASED';
+  ph_rate_code: string;
+  saturday_ph_rule: 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE';
+  sunday_ph_rule: 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE';
+  d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH' | 'PH_ADDITIVE';
+  d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE' | 'PH_EXCUSES_ABSENCE';
+}
+
+export interface RateCode {
+  rate_code_id: string;
+  workspace_id: string | null;
+  code: string;
+  multiplier: number;
+  unit: 'hour' | 'day';
+  base: 'basic_hourly' | 'basic_daily';
+  description: string | null;
+  is_active: boolean;
+  is_platform: boolean;
+}
+
+export interface PublicHoliday {
+  holiday_id: string | null;
+  date: string;
+  name: string;
+  source: 'NATIONAL' | 'WORKSPACE';
 }

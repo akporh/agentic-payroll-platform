@@ -92,22 +92,22 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salaryDefsData), 'Salary Definitions');
 
   // Payroll Rules
-  // calculation_method must be one of: unit_multiplier | daily_rate_deduction | fixed_amount
-  //   unit_multiplier    — requires: input_field, rate  (e.g. overtime_days × rate)
-  //   daily_rate_deduction — requires: input_field       (e.g. absent_days deducted from salary)
-  //   fixed_amount       — requires: amount              (e.g. flat bonus, optionally with condition)
+  // Rule Type must be one of: Unit × Rate | Daily Rate Deduction | Fixed Amount
+  //   Unit × Rate         — requires: input_field, rate  (e.g. overtime_days × rate)
+  //   Daily Rate Deduction — requires: input_field        (e.g. absent_days deducted from salary)
+  //   Fixed Amount         — requires: amount             (e.g. flat bonus, optionally with condition)
   const rulesData = [
     {
-      rule_name:          'OVERTIME_PAY',
-      calculation_method: 'unit_multiplier',
-      input_field:        'overtime_days',
-      rate:               5000,
-      unit:               'days',
+      rule_name:   'OVERTIME_PAY',
+      rule_type:   'Unit × Rate',
+      input_field: 'overtime_days',
+      rate:        5000,
+      unit:        'days',
     },
     {
-      rule_name:          'Absence Deduction',
-      calculation_method: 'daily_rate_deduction',
-      input_field:        'absent_days',
+      rule_name:   'Absence Deduction',
+      rule_type:   'Daily Rate Deduction',
+      input_field: 'absent_days',
     },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rulesData), 'Payroll Rules');
@@ -239,14 +239,30 @@ function parseWorkbook(
     { defval: '' },
   ).map(normaliseRow);
 
+  const RULE_TYPE_MAP: Record<string, string> = {
+    'unit × rate':           'unit_multiplier',
+    'daily rate deduction':  'daily_rate_deduction',
+    'fixed amount':          'fixed_amount',
+  };
+  function resolveCalculationMethod(ruleType: string): string {
+    return RULE_TYPE_MAP[ruleType.toLowerCase().trim()] ?? ruleType;
+  }
+
   const payroll_rules = rulesRows
     .filter((r) => String(r['rule_name'] ?? '').trim())
     .map((r) => {
       const { rule_name, rule_code, ...rest } = r;
-      // Everything except rule_name and rule_code goes into definition
+      // Everything except rule_name and rule_code goes into definition.
+      // rule_type (user-friendly) is mapped back to calculation_method (technical).
       const definition: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(rest)) {
-        if (v !== '' && v != null) definition[k] = v;
+        if (v !== '' && v != null) {
+          if (k === 'rule_type') {
+            definition['calculation_method'] = resolveCalculationMethod(String(v));
+          } else {
+            definition[k] = v;
+          }
+        }
       }
       return {
         rule_name: String(rule_name ?? '').trim(),

@@ -28,8 +28,11 @@ populates the following keys in context before calling the executor:
     current_rule_set_effective_from — effective_from of the current rule set
 """
 
+import logging
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+
+logger = logging.getLogger(__name__)
 
 from backend.domain.payroll.period_context import (
     PeriodContext,
@@ -111,6 +114,20 @@ def execute_single_employee_payroll(
             tracer=tracer,
         )
     else:
+        # DEPRECATED: legacy hard-coded pipeline — no component_trace_jsonb produced.
+        # This path fires only when component_metadata is None (e.g. old CLI callers).
+        logger.warning(
+            "Legacy executor fallback invoked for employee %s in run %s — "
+            "component_trace_jsonb will be None. "
+            "Migrate callers to pass component_metadata to enable the sequential executor.",
+            employee_id,
+            payroll_run_id,
+        )
+        if tracer is not None:
+            tracer.warn_persist(
+                "legacy_executor_fallback",
+                f"employee_id={employee_id}",
+            )
         payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
         payroll_result["component_trace_jsonb"] = None
 
@@ -186,6 +203,11 @@ def _run_sequential(
     current_rule_set_id = full_context.get("current_rule_set_id")
     current_rule_set_effective_from = full_context.get("current_rule_set_effective_from")
 
+    # PH & OT context — populated by payroll.py route (C4 — PH-8)
+    expected_hours = full_context.get("expected_hours")
+    expected_days  = full_context.get("expected_days")
+    rate_code_map  = full_context.get("rate_code_map") or {}
+
     # --- Mid-period hire / termination proration ---
     _contract_start = date.fromisoformat(contract_start) if contract_start else None
     _contract_end   = date.fromisoformat(contract_end)   if contract_end   else None
@@ -223,6 +245,9 @@ def _run_sequential(
             period_end=_period.period_end if hasattr(_period, "period_end") else None,
             current_rule_set_id=current_rule_set_id,
             current_rule_set_effective_from=current_rule_set_effective_from,
+            expected_hours=expected_hours,
+            expected_days=expected_days,
+            rate_code_map=rate_code_map,
         )
 
     # Build unified component registry: platform metadata + rule-injected components.

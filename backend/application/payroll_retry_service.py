@@ -65,9 +65,14 @@ from decimal import Decimal
 from psycopg2.extras import Json
 from sqlalchemy import text
 
+from backend.application.execution_tracer import ExecutionTracer
+from backend.domain.payroll.audit_events import build_transition_audit, build_transition_event
 from backend.domain.payroll.executor import execute_single_employee_payroll
 from backend.domain.payroll.period_context import build_period_context
+from backend.domain.payroll.status import PayrollRunStatus
 from backend.infra.db.session import SessionLocal
+from backend.infra.repositories.audit_log_repo import save_audit_log
+from backend.infra.repositories.event_store_repo import save_event
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +80,18 @@ from backend.infra.db.session import SessionLocal
 # ---------------------------------------------------------------------------
 
 def _sanitize(obj: dict) -> dict:
-    """Coerce Decimal / UUID / date values to JSON-safe types."""
-    return json.loads(json.dumps(obj, default=str))
+    """Coerce Decimal / UUID / date values to JSON-safe types.
+
+    Decimal is serialised as a JSON *number* (via float) so that JSONB
+    columns remain queryable with val::text::numeric casts.  All other
+    non-serialisable types fall back to str().
+    """
+    def _default(o):
+        if isinstance(o, Decimal):
+            return float(o)
+        return str(o)
+
+    return json.loads(json.dumps(obj, default=_default))
 
 
 def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
@@ -167,9 +182,9 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     pension_employee_rate = Decimal(str(pension_config["employee_rate"]))
     pension_employer_rate = Decimal(str(pension_config["employer_rate"]))
     rent_relief_cfg       = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
-    nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
-    health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
-    dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+    nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+    health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+    dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
     life_ins_rate         = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # ── Tax bands ─────────────────────────────────────────────────────────────
@@ -302,6 +317,11 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     else:
         historical_rule_sets = []
 
+    expected_hours  = original_snapshot.get("expected_hours")
+    expected_days   = original_snapshot.get("expected_days")
+    ph_dates_used   = original_snapshot.get("ph_dates_used", [])
+    ph_source       = original_snapshot.get("ph_source", "FILE_BASED")
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -317,6 +337,10 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "historical_rule_sets":             historical_rule_sets,
         "current_rule_set_id":              rule_set_id,
         "current_rule_set_effective_from":  current_rule_set_effective_from,
+        "expected_hours":                   expected_hours,
+        "expected_days":                    expected_days,
+        "ph_dates_used":                    ph_dates_used,
+        "ph_source":                        ph_source,
     }
 
     return {
@@ -418,7 +442,7 @@ def _delete_failed_row(db, *, payroll_run_id: str, employee_id: str) -> None:
 # FULL_RUN retry helper
 # ---------------------------------------------------------------------------
 
-def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
+def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: str = "admin@internal") -> dict:
     """Delete all existing payroll_result rows for the run and re-calculate
     every active employee in the workspace from scratch.
 
@@ -479,6 +503,7 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
                 contract_start         = contract_start,
                 contract_end           = contract_end,
                 rules_context_snapshot = shared_ctx["rules_context_snapshot"],
+                tracer                 = tracer,
             )
             calc_error = None
         except Exception as exc:
@@ -514,12 +539,57 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
 
     new_run_status = "CALCULATED" if remaining_failed == 0 else "PARTIAL"
 
+    totals_row = db.execute(
+        text("""
+            SELECT
+                COALESCE(SUM(net_pay), 0),
+                COALESCE(SUM((
+                    SELECT SUM((val->>'amount')::numeric)
+                    FROM   jsonb_each(gross_components_jsonb) AS j(key, val)
+                )), 0),
+                COALESCE(SUM((
+                    SELECT SUM(val::text::numeric)
+                    FROM   jsonb_each(deductions_jsonb) AS j(key, val)
+                )), 0)
+            FROM payroll_result
+            WHERE payroll_run_id = :run_id
+              AND status         = 'SUCCESS'
+        """),
+        {"run_id": payroll_run_id},
+    ).fetchone()
+
     db.execute(
-        text("UPDATE payroll_run SET status = :status WHERE payroll_run_id = :run_id"),
-        {"run_id": payroll_run_id, "status": new_run_status},
+        text("""
+            UPDATE payroll_run
+            SET    status          = :status,
+                   total_net_pay   = :net,
+                   total_gross_pay = :gross,
+                   total_deduction = :ded,
+                   total_tax       = :ded
+            WHERE  payroll_run_id  = :run_id
+        """),
+        {
+            "run_id": payroll_run_id,
+            "status": new_run_status,
+            "net":    totals_row[0],
+            "gross":  totals_row[1],
+            "ded":    totals_row[2],
+        },
     )
 
     db.commit()
+
+    save_audit_log(workspace_id, build_transition_audit(
+        payroll_run_id=payroll_run_id,
+        old_status=PayrollRunStatus.PARTIAL,
+        new_status=PayrollRunStatus(new_run_status),
+        performed_by=performed_by,
+    ))
+    save_event(build_transition_event(
+        payroll_run_id=payroll_run_id,
+        old_status=PayrollRunStatus.PARTIAL,
+        new_status=PayrollRunStatus(new_run_status),
+    ))
 
     return {
         "payroll_run_id": payroll_run_id,
@@ -533,7 +603,7 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str) -> dict:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
+def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "admin@internal") -> dict:
     """Retry all FAILED employees in a PARTIAL payroll run.
 
     Args:
@@ -551,6 +621,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
         ValueError: Run not found, is PAID, or is not PARTIAL.
     """
 
+    tracer = ExecutionTracer(payroll_run_id)
     db = SessionLocal()
 
     try:
@@ -598,7 +669,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
         # FULL_RUN branch — delete all results and re-run every employee.
         # -------------------------------------------------------------------
         if retry_strategy == "FULL_RUN":
-            return _retry_full_run(db, payroll_run_id, workspace_id)
+            return _retry_full_run(db, payroll_run_id, workspace_id, performed_by)
 
         # -------------------------------------------------------------------
         # Step 2 — Find FAILED employees (explicit status guard).
@@ -698,6 +769,7 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
                         contract_start          = contract_start,
                         contract_end            = contract_end,
                         rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
+                        tracer                  = tracer,
                     )
                     calc_error = None
                 except Exception as exc:
@@ -753,18 +825,62 @@ def retry_failed_payroll_employees(payroll_run_id: str) -> dict:
 
         new_run_status = "CALCULATED" if remaining_failed == 0 else "PARTIAL"
 
+        # Recompute run totals from SUCCESS rows (authoritative DB aggregate).
+        # FAILED rows contribute nothing; COALESCE guards against empty result set.
+        totals_row = db.execute(
+            text("""
+                SELECT
+                    COALESCE(SUM(net_pay), 0),
+                    COALESCE(SUM((
+                        SELECT SUM((val->>'amount')::numeric)
+                        FROM   jsonb_each(gross_components_jsonb) AS j(key, val)
+                    )), 0),
+                    COALESCE(SUM((
+                        SELECT SUM(val::text::numeric)
+                        FROM   jsonb_each(deductions_jsonb) AS j(key, val)
+                    )), 0)
+                FROM payroll_result
+                WHERE payroll_run_id = :run_id
+                  AND status         = 'SUCCESS'
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+
         # trg_payroll_run_state_machine allows PARTIAL → CALCULATED
         # (only DRAFT / PROCESSING / COMPLETED / PAID transitions are enforced)
         db.execute(
             text("""
                 UPDATE payroll_run
-                SET    status = :status
-                WHERE  payroll_run_id = :run_id
+                SET    status          = :status,
+                       total_net_pay   = :net,
+                       total_gross_pay = :gross,
+                       total_deduction = :ded,
+                       total_tax       = :ded
+                WHERE  payroll_run_id  = :run_id
             """),
-            {"run_id": payroll_run_id, "status": new_run_status},
+            {
+                "run_id": payroll_run_id,
+                "status": new_run_status,
+                "net":    totals_row[0],
+                "gross":  totals_row[1],
+                "ded":    totals_row[2],
+            },
         )
 
         db.commit()
+
+        # Write audit trail after successful commit — same pattern as approval service
+        save_audit_log(workspace_id, build_transition_audit(
+            payroll_run_id=payroll_run_id,
+            old_status=PayrollRunStatus.PARTIAL,
+            new_status=PayrollRunStatus(new_run_status),
+            performed_by=performed_by,
+        ))
+        save_event(build_transition_event(
+            payroll_run_id=payroll_run_id,
+            old_status=PayrollRunStatus.PARTIAL,
+            new_status=PayrollRunStatus(new_run_status),
+        ))
 
         return {
             "payroll_run_id": payroll_run_id,

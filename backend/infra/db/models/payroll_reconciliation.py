@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Numeric, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Numeric, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from backend.infra.db.session import Base
 
@@ -19,3 +19,6 @@ class PayrollReconciliation(Base):
     status = Column(String(20), nullable=False)
     reconciled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+    notes = Column(Text, nullable=True)
+    resolved_by = Column(String(255), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)

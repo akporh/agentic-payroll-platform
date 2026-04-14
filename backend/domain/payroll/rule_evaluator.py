@@ -71,6 +71,9 @@ def apply_payroll_rules(
     period_end=None,
     current_rule_set_id: str | None = None,
     current_rule_set_effective_from: str | None = None,
+    expected_hours: int | None = None,
+    expected_days: int | None = None,
+    rate_code_map: dict | None = None,
 ) -> tuple[dict, list]:
     """Apply workspace payroll rules to salary components.
 
@@ -187,6 +190,7 @@ def apply_payroll_rules(
                     "reference_date":       str(_positive[0].get("reference_date")) if _single else None,
                     "rate_used":            str(_last_rate) if _single else None,
                     "resolution_source":    _res_meta["resolution_source"],
+                    "warning":              _res_meta.get("warning"),
                 })
             else:
                 _resolved_defn, _res_meta = _resolve_rule(
@@ -205,6 +209,7 @@ def apply_payroll_rules(
                     "reference_date":       None,
                     "rate_used":            None,
                     "resolution_source":    _res_meta["resolution_source"],
+                    "warning":              _res_meta.get("warning"),
                 })
 
         # ── daily_rate_deduction ──────────────────────────────────────────
@@ -283,6 +288,7 @@ def apply_payroll_rules(
                     "reference_date":       ref_date_str,
                     "rate_used":            None,
                     "resolution_source":    resolution_meta["resolution_source"],
+                    "warning":              resolution_meta.get("warning"),
                 })
             else:
                 trace.append({
@@ -296,6 +302,7 @@ def apply_payroll_rules(
                     "reference_date":       ref_date_str,
                     "rate_used":            None,
                     "resolution_source":    resolution_meta["resolution_source"],
+                    "warning":              resolution_meta.get("warning"),
                 })
 
         # ── fixed_amount ──────────────────────────────────────────────────
@@ -322,6 +329,7 @@ def apply_payroll_rules(
                     "reference_date":       ref_date_str,
                     "rate_used":            str(amount),
                     "resolution_source":    resolution_meta["resolution_source"],
+                    "warning":              resolution_meta.get("warning"),
                 })
             else:
                 trace.append({
@@ -335,6 +343,108 @@ def apply_payroll_rules(
                     "reference_date":       ref_date_str,
                     "rate_used":            None,
                     "resolution_source":    resolution_meta["resolution_source"],
+                    "warning":              resolution_meta.get("warning"),
+                })
+
+        # ── ot_multiplier (C4 — PH-8) ─────────────────────────────────────────
+        elif method == "ot_multiplier":
+            rate_code   = current_defn.get("rate_code")
+            input_field = current_defn.get("input_field", "")
+
+            # Resolve quantity from employee inputs
+            events   = _to_events(employee_inputs.get(input_field))
+            quantity = sum(Decimal(str(e.get("quantity") or 0)) for e in events)
+
+            # Floor validation for MANUAL_PH_ADJUSTMENT inputs (C7 — PH-5)
+            manual_adj_field = current_defn.get("manual_adj_field")
+            if manual_adj_field:
+                adj_events    = _to_events(employee_inputs.get(manual_adj_field))
+                manual_adj    = sum(Decimal(str(e.get("quantity") or 0)) for e in adj_events)
+                total_quantity = quantity + manual_adj
+                if total_quantity < Decimal("0"):
+                    raise ValueError(
+                        f"Manual adjustment of {manual_adj} on rule '{name}' would result in "
+                        f"{total_quantity} total hours. Total cannot be negative."
+                    )
+                quantity = total_quantity
+
+            if quantity > Decimal("0"):
+                # Fetch rate code from pre-fetched map — no infra imports in domain layer
+                _rate_code_map = rate_code_map or {}
+                registry_row = _rate_code_map.get(rate_code) if rate_code else None
+                if not registry_row:
+                    raise ValueError(
+                        f"rate_code '{rate_code}' not found in rate_code_registry "
+                        f"for rule '{name}'"
+                    )
+
+                multiplier = Decimal(str(registry_row["multiplier"]))
+                base       = registry_row["base"]  # 'basic_hourly' | 'basic_daily'
+
+                basic = components.get("BASIC")
+                if not basic:
+                    raise ValueError(
+                        f"BASIC missing from salary_components for ot_multiplier rule '{name}'"
+                    )
+
+                if base == "basic_hourly":
+                    denominator = Decimal(str(expected_hours or 0))
+                    if denominator <= 0:
+                        raise ValueError(
+                            "expected_hours is zero or missing — cannot compute basic_hourly rate "
+                            f"for rule '{name}'"
+                        )
+                elif base == "basic_daily":
+                    denominator = Decimal(str(expected_days or 0))
+                    if denominator <= 0:
+                        raise ValueError(
+                            "expected_days is zero or missing — cannot compute basic_daily rate "
+                            f"for rule '{name}'"
+                        )
+                else:
+                    raise ValueError(
+                        f"Unknown base '{base}' in rate_code_registry for code '{rate_code}'"
+                    )
+
+                base_rate = (basic / denominator).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                amount = (quantity * base_rate * multiplier).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                components[name] = amount
+                trace.append({
+                    "rule":              name,
+                    "method":            method,
+                    "status":            "applied",
+                    "amount":            str(amount),
+                    "note":              (
+                        f"{quantity} units × {base_rate} ({base}) × {multiplier} multiplier"
+                    ),
+                    "rate_code":         rate_code,
+                    "multiplier":        str(multiplier),
+                    "base_rate":         str(base_rate),
+                    "quantity":          str(quantity),
+                    "rule_set_id":       current_rule_set_id,
+                    "rule_effective_from": current_rule_set_effective_from,
+                    "reference_date":    None,
+                    "rate_used":         str(base_rate),
+                    "resolution_source": "current",
+                    "warning":           None,
+                })
+            else:
+                trace.append({
+                    "rule":              name,
+                    "method":            method,
+                    "status":            "not_applied",
+                    "amount":            "0",
+                    "note":              f"no {input_field!r} in employee_inputs or quantity is zero",
+                    "rule_set_id":       current_rule_set_id,
+                    "rule_effective_from": current_rule_set_effective_from,
+                    "reference_date":    None,
+                    "rate_used":         None,
+                    "resolution_source": "current",
+                    "warning":           None,
                 })
 
         else:
@@ -354,6 +464,7 @@ def apply_payroll_rules(
                 "reference_date":       None,
                 "rate_used":            None,
                 "resolution_source":    _res_meta["resolution_source"],
+                "warning":              _res_meta.get("warning"),
             })
 
     return components, trace
@@ -416,6 +527,10 @@ def _resolve_rule(
         "rule_set_id":          current_rule_set_id,
         "rule_effective_from":  current_rule_set_effective_from,
         "resolution_source":    "current_fallback",
+        "warning":              (
+            f"No historical rule set covers reference_date {ref_str}. "
+            f"Fell back to current rule set."
+        ),
     }
 
 
@@ -471,3 +586,30 @@ def _evaluate_condition(condition: dict, employee_inputs: dict) -> tuple[bool, s
             return False, f"{key} = {actual!r}, expected {expected!r}"
 
     return True, ""
+
+
+def classify_day(work_date, is_ph: bool, config: dict) -> str:
+    """Classify a calendar day for OT rate selection (C5 — PH-3).
+
+    Returns one of: 'PUBLIC_HOLIDAY', 'SATURDAY', 'SUNDAY', 'WEEKDAY'.
+
+    Weekend PH precedence is governed by workspace config fields:
+      saturday_ph_rule — 'PH_TAKES_PRECEDENCE' | 'SATURDAY_TAKES_PRECEDENCE'
+      sunday_ph_rule   — 'PH_TAKES_PRECEDENCE' | 'SUNDAY_TAKES_PRECEDENCE'
+    """
+    dow = work_date.weekday()  # 0=Mon … 6=Sun
+    if is_ph:
+        if dow == 5:  # Saturday
+            rule = config.get("saturday_ph_rule", "PH_TAKES_PRECEDENCE")
+            return "PUBLIC_HOLIDAY" if rule == "PH_TAKES_PRECEDENCE" else "SATURDAY"
+        elif dow == 6:  # Sunday
+            rule = config.get("sunday_ph_rule", "PH_TAKES_PRECEDENCE")
+            return "PUBLIC_HOLIDAY" if rule == "PH_TAKES_PRECEDENCE" else "SUNDAY"
+        else:
+            return "PUBLIC_HOLIDAY"  # Weekday PH — always OT3
+    elif dow == 5:
+        return "SATURDAY"
+    elif dow == 6:
+        return "SUNDAY"
+    else:
+        return "WEEKDAY"

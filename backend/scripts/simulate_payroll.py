@@ -636,9 +636,9 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
             period_ctx.period_end,
         )
         rent_relief_cfg   = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
-        nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
-        health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
-        development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+        nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+        health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+        development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
         life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
     finally:
         db.close()

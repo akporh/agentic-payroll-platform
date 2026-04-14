@@ -14,6 +14,7 @@ from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.reconciliation_repo import (
     insert_reconciliation,
     get_reconciliation,
+    update_reconciliation,
 )
 
 
@@ -46,7 +47,7 @@ def reconcile_payroll_run(payroll_run_id: str, actual_total: Decimal) -> dict:
     try:
         row = db.execute(
             text("""
-                SELECT total_net_pay
+                SELECT total_net_pay, status
                 FROM   payroll_run
                 WHERE  payroll_run_id = :rid
             """),
@@ -57,6 +58,11 @@ def reconcile_payroll_run(payroll_run_id: str, actual_total: Decimal) -> dict:
 
     if row is None:
         raise ValueError(f"Payroll run {payroll_run_id} not found.")
+
+    if row[1] != "LOCKED":
+        raise ValueError(
+            f"Reconciliation requires a LOCKED run. Current status: {row[1]}."
+        )
 
     expected_total = Decimal(str(row[0]))
     status = "MATCHED" if actual_total == expected_total else "MISMATCH"
@@ -72,3 +78,24 @@ def reconcile_payroll_run(payroll_run_id: str, actual_total: Decimal) -> dict:
 def get_reconciliation_status(payroll_run_id: str) -> dict | None:
     """Return the current reconciliation record for a run, or None."""
     return get_reconciliation(payroll_run_id)
+
+
+def resolve_reconciliation(payroll_run_id: str, notes: str, resolved_by: str) -> dict:
+    """Mark a MISMATCH reconciliation as resolved by the operator.
+
+    Args:
+        payroll_run_id: UUID of the payroll run.
+        notes:          Explanation of why the discrepancy is considered resolved.
+        resolved_by:    Identifier of the operator performing the resolution.
+
+    Returns:
+        Updated reconciliation record dict.
+
+    Raises:
+        ValueError: If no MISMATCH record exists for this run.
+    """
+    return update_reconciliation(
+        payroll_run_id=payroll_run_id,
+        notes=notes,
+        resolved_by=resolved_by,
+    )

@@ -1,6 +1,6 @@
 import { api } from './client';
 import type { Workspace, OnboardingStatus } from '../types/workspace';
-import type { Employee } from '../types/payroll';
+import type { Employee, WorkspacePayrollConfig, RateCode, PublicHoliday } from '../types/payroll';
 
 export const workspaceApi = {
   list: () => api.get<Workspace[]>('/workspaces'),
@@ -120,4 +120,33 @@ export const workspaceApi = {
         calculation_method: string;
       }[];
     }>(`/${workspaceId}/payroll/input-codes`),
+
+  // PH-6 — Workspace Payroll Config
+  getPayrollConfig: (workspaceId: string) =>
+    api.get<WorkspacePayrollConfig>(`/workspaces/${workspaceId}/payroll-config`),
+
+  upsertPayrollConfig: (workspaceId: string, payload: Partial<WorkspacePayrollConfig> & { effective_from: string }) =>
+    api.put<WorkspacePayrollConfig>(`/workspaces/${workspaceId}/payroll-config`, payload),
+
+  // PH-7 — Rate Code Registry
+  getRateCodes: (workspaceId: string) =>
+    api.get<RateCode[]>(`/workspaces/${workspaceId}/rate-codes`),
+
+  addRateCode: (workspaceId: string, payload: { code: string; multiplier: number; unit: string; base: string; description?: string }) =>
+    api.post<RateCode>(`/workspaces/${workspaceId}/rate-codes`, payload),
+
+  deleteRateCode: (workspaceId: string, code: string) =>
+    api.delete<{ status: string; code: string }>(`/workspaces/${workspaceId}/rate-codes/${code}`),
+
+  // PH-1 — Public Holiday Calendar
+  getPublicHolidays: (workspaceId: string, year?: number) =>
+    api.get<PublicHoliday[]>(
+      `/workspaces/${workspaceId}/public-holidays${year ? `?year=${year}` : ''}`
+    ),
+
+  addPublicHoliday: (workspaceId: string, payload: { date: string; name: string }) =>
+    api.post<PublicHoliday>(`/workspaces/${workspaceId}/public-holidays`, payload),
+
+  deletePublicHoliday: (workspaceId: string, holidayId: string) =>
+    api.delete<{ status: string; holiday_id: string }>(`/workspaces/${workspaceId}/public-holidays/${holidayId}`),
 };

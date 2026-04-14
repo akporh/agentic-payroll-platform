@@ -234,7 +234,7 @@ def build_runtime_component_registry(
         if not code or code in existing_codes:
             continue
         method = (rule.get("rule_definition_json") or {}).get("calculation_method", "")
-        if method not in ("unit_multiplier", "fixed_amount"):
+        if method not in ("unit_multiplier", "fixed_amount", "ot_multiplier"):
             continue  # daily_rate_deduction modifies existing keys — never adds a new code
         additions.append({
             "component_code":     code,
@@ -551,6 +551,10 @@ def run_sequential_payroll(
             "working_days":         _period.working_days,
             "annualization_factor": str(_period.annualization_factor),
             "period_fraction":      str(_period.period_fraction),
+            "expected_days":        ctx.get("expected_days"),
+            "expected_hours":       ctx.get("expected_hours"),
+            "ph_dates_used":        ctx.get("ph_dates_used"),
+            "ph_source":            ctx.get("ph_source"),
             "result":               None,
         }
     ]

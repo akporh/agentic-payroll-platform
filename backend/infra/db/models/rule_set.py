@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Date, ForeignKey
+from sqlalchemy import Column, Date, ForeignKey, UniqueConstraint
 from sqlalchemy import DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from backend.infra.db.session import Base
@@ -20,3 +20,7 @@ class RuleSet(Base):
     effective_from = Column(Date, nullable=False)
     created_at     = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_by     = Column(UUID(as_uuid=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "effective_from", name="uq_rule_set_workspace_effective"),
+    )

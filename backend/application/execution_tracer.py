@@ -100,6 +100,18 @@ class ExecutionTracer:
         """Log a non-fatal warning (e.g. FAILED employee in isolated mode)."""
         console.log(f"  [dim]│[/dim]  [bold yellow]⚠  WARN[/bold yellow]  {message}")
 
+    def warn_persist(self, step_name: str, context: str | None = None) -> None:
+        """Log a warning and persist it to execution_trace for observability.
+
+        Unlike warn(), this writes a DB row so the event is queryable.
+        Use for recurring degraded-path events (e.g. legacy executor fallback).
+        """
+        console.log(
+            f"  [dim]│[/dim]  [bold yellow]⚠  WARN[/bold yellow]  {step_name}"
+            + (f"  [dim]{context}[/dim]" if context else "")
+        )
+        self._persist(step_name, "warn", 0, context)
+
     def separator(self) -> None:
         """Print a thin horizontal rule between major sections."""
         console.print(Rule(style="dim"))
@@ -116,6 +128,9 @@ class _NullTracer:
         pass
 
     def warn(self, message: str) -> None:  # noqa: ARG002
+        pass
+
+    def warn_persist(self, step_name: str, context: str | None = None) -> None:  # noqa: ARG002
         pass
 
     def separator(self) -> None:

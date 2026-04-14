@@ -1,3 +1,5 @@
+from sqlalchemy import text
+
 from backend.application.decorators import auto_infer_workspace_state
 from backend.infra.db.models import (
     PayCycle,
@@ -12,6 +14,11 @@ from backend.infra.db.models import (
 
 @auto_infer_workspace_state
 def create_pay_cycle(db, workspace_id: str, frequency: str, run_day: int, cutoff_day: int, payment_day: int, definition_json: dict | None = None):
+    # Deactivate any existing active cycle for this workspace before creating a new one.
+    db.execute(
+        text("UPDATE pay_cycle SET is_active = FALSE WHERE workspace_id = :wid AND is_active = TRUE"),
+        {"wid": workspace_id},
+    )
 
     pay_cycle = PayCycle(
         workspace_id=workspace_id,
@@ -181,6 +188,14 @@ def publish_rule_sets(db, workspace_id: str, rules: list, created_by: str | None
 
         for rule in group_rules:
             defn = rule.get("rule_definition_json") or rule.get("definition") or {}
+            # C6 — PH-4: ot_multiplier income is taxable; rule_type must be EARNING
+            if (defn.get("calculation_method") == "ot_multiplier"
+                    and (rule.get("rule_type") or "").upper() != "EARNING"):
+                raise ValueError(
+                    f"Rule '{rule.get('rule_name') or rule.get('rule_code')}' uses "
+                    f"ot_multiplier but rule_type is '{rule.get('rule_type')}'. "
+                    f"OT income is taxable — rule_type must be 'EARNING'."
+                )
             db.execute(
                 text("""
                     INSERT INTO rule_set_item (rule_set_id, rule_name, rule_definition_json, rule_type)

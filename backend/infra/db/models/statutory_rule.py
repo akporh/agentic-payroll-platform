@@ -1,11 +1,14 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Date
+from sqlalchemy import Column, String, Integer, Date, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from backend.infra.db.session import Base
 
 
 class StatutoryRule(Base):
     __tablename__ = "statutory_rule"
+    __table_args__ = (
+        UniqueConstraint("country_code", "effective_from", name="uq_statutory_rule_country_effective"),
+    )
 
     statutory_rule_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     state = Column(String(50), nullable=False)

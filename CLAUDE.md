@@ -1,0 +1,119 @@
+# Agentic Payroll Platform — Project Rules
+
+Read the global `~/.claude/CLAUDE.md` first. This file adds project-specific context on top.
+
+---
+
+## Domain Context
+
+Nigerian payroll platform. Statutory deductions: PAYE (cumulative annual method), Pension (8% employee / 10% employer), NHF (2.5% of basic, key: `employee_rate`), Health Insurance (key: `employee_amount`), Development Levy (key: `amount`).
+
+All monetary values use `Decimal`. All IDs are UUIDs. Workspace scoping is mandatory on every DB query.
+
+---
+
+## Architecture
+
+| Layer | Location |
+|-------|----------|
+| API routes | `backend/api/routes/` |
+| Application services | `backend/application/` |
+| Domain logic (pure) | `backend/domain/payroll/` |
+| Repositories (raw SQL) | `backend/infra/repositories/` |
+| DB models | `backend/infra/db/models/` |
+| Migrations | `migrations/versions/` |
+| Frontend pages | `frontend/src/pages/` |
+| Frontend API client | `frontend/src/api/payroll.ts` |
+| Frontend types | `frontend/src/types/payroll.ts` |
+
+Domain code must never import infrastructure. Routes must never contain business logic.
+
+---
+
+## Migration Conventions
+
+- Revision ID format: 12 hex chars (e.g. `a1b2c3d4e5f6`)
+- Check for duplicate revision IDs before writing a new migration (`grep -h "^revision" migrations/versions/*.py | sort | uniq -d`)
+- Every upgrade must have a matching downgrade
+- Every destructive step must be preceded by a fail-safe existence/duplicate check in a `DO $$ BEGIN ... END $$` block
+- **ADD COLUMN guard**: wrap `ALTER TABLE ... ADD COLUMN` in `DO $$ BEGIN ... EXCEPTION WHEN duplicate_column THEN NULL; END $$` — the column may already exist from an earlier migration or manual change
+- **`jsonb_typeof()` in CHECK constraints**: if the column type is `json` (not `jsonb`), always cast: `jsonb_typeof(col::jsonb)` — omitting the cast causes a type-mismatch error at migration apply time
+
+---
+
+## Known Data Contract Rules (Do Not Break)
+
+| Field | Invariant |
+|-------|-----------|
+| `payroll_reconciliation.status = 'MATCHED'` | actual_total == expected_total — always |
+| `payroll_reconciliation.status = 'RESOLVED'` | operator closed a MISMATCH — totals may differ |
+| `payroll_result.status = 'SUCCESS'` | net_pay and component_trace_jsonb are populated |
+| `payroll_run.status = 'APPROVED'` | immutable — no employee results can be modified |
+| `statutory_rule (country_code, effective_from)` | UNIQUE — no duplicate effective dates |
+| `pay_cycle (workspace_id) WHERE is_active` | at most one active cycle per workspace |
+
+---
+
+## Executor Paths
+
+- **Sequential executor** (`sequential_executor.py`) — used when `component_metadata` is provided. Produces `component_trace_jsonb`. This is the production path.
+- **Legacy executor** (`executor.py` fallback) — used when `component_metadata` is None. Does NOT produce `component_trace_jsonb`. Logs a deprecation warning. Migrate all callers.
+
+---
+
+## Sprint State
+
+- Sprints 1–5: closed
+- Sprint 6: in progress (medium/low priority gaps — G7, PC4, INP10, Trace, G12, SR9, RC5)
+- High priority items (F1, SR10, P0-3, P1-4, P1-5) deferred to a future sprint
+
+---
+
+## Key Files to Read Before Planning
+
+- `backend/domain/payroll/sequential_executor.py` — core calculation engine
+- `backend/api/routes/payroll.py` — main API surface
+- `backend/application/payroll_run_service.py` — run orchestration
+- `backend/infra/repositories/reconciliation_repo.py` — reconciliation persistence
+
+---
+
+## Automated Delivery Workflow
+
+### Sprint Sequence (follow every sprint, in order)
+
+1. `/roadmap` — orient: what's done, what's next, what's deferred
+2. `/pm` — scope stories + write acceptance criteria before plan mode
+3. Explicit user confirmation of scope
+4. `/architect` — for any structural or cross-layer design work
+5. Plan mode — research, write plan file, get approval
+6. `/arch-council` — mandatory before ExitPlanMode on any data contract risk
+7. Implementation
+8. `/simplify` — code quality pass on changed files
+9. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
+10. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
+11. `/frontend-designer` — any sprint with a frontend track (auto-invoked, see below)
+12. `/tester` — verification against acceptance criteria from step 2
+13. `/retro` — update skill checklists
+14. `/save-session` — safe exit
+
+### Auto-Invoke Rules (Claude must invoke without being asked)
+
+- When a sprint plan or implementation touches `backend/api/routes/`, invoke `/security` automatically after implementation — do not wait to be asked.
+- When a sprint plan or implementation touches `sequential_executor.py`, `rule_evaluator.py`, `executor.py`, or any file under `migrations/versions/` that alters a statutory rule or calculation, invoke `/auditor` after `/tester` — do not wait to be asked.
+- When a sprint plan includes any file under `frontend/src/`, invoke `/frontend-designer` after implementation — do not wait to be asked.
+- At the start of every new sprint session, invoke `/roadmap` before asking the user what to work on.
+- When the user says "let's scope sprint", "what's next", or "start sprint", invoke `/pm` immediately — do not summarise the backlog manually.
+- When the user says "done", "sprint complete", or "close sprint", invoke `/retro` — do not skip.
+
+### Hook-Enforced Guards (fires automatically on every file save)
+
+These are enforced via `~/.claude/settings.json` PostToolUse hooks — they fire on every Edit/Write:
+
+| Trigger | What fires |
+|---|---|
+| Edit/Write `migrations/versions/*.py` | Duplicate revision-ID check — warns if any IDs clash |
+| Edit/Write `backend/api/routes/*` | Reminder to run `/security` before closing the sprint track |
+| Edit/Write `frontend/src/**` | Reminder to run `cd frontend && npx tsc --noEmit` |
+| Edit/Write `requirements.txt` | Reminder to verify new packages are importable |
+| Bash `git commit*` | Reminder to push to GitHub — shows current branch name |

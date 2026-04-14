@@ -16,6 +16,9 @@ export function RunPayroll() {
   const [periodEnd, setPeriodEnd] = useState(today);
   const [payDate, setPayDate] = useState(today);
   const [runType, setRunType] = useState<'REGULAR' | 'ADJUSTMENT'>('REGULAR');
+  const [periodType, setPeriodType] = useState<'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM'>('MONTHLY');
+  const [workingDays, setWorkingDays] = useState<string>('');
+  const [retryStrategy, setRetryStrategy] = useState<'PER_EMPLOYEE' | 'FULL_RUN'>('PER_EMPLOYEE');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,9 +45,12 @@ export function RunPayroll() {
     try {
       const result = await payrollApi.createRun(workspaceId, {
         period_start: periodStart,
-        period_end: periodEnd,
-        pay_date: payDate,
-        run_type: runType,
+        period_end:   periodEnd,
+        pay_date:     payDate,
+        run_type:     runType,
+        period_type:  periodType,
+        ...(periodType === 'CUSTOM' && workingDays ? { working_days: Number(workingDays) } : {}),
+        retry_strategy: retryStrategy,
       });
       navigate(`/workspaces/${workspaceId}/payroll/${result.run_id}/results`);
     } catch (e: unknown) {
@@ -122,6 +128,49 @@ export function RunPayroll() {
               >
                 <option value="REGULAR">Regular</option>
                 <option value="ADJUSTMENT">Adjustment</option>
+              </select>
+            </Field>
+
+            <Field label="Period Type">
+              <select
+                value={periodType}
+                onChange={(e) => {
+                  setPeriodType(e.target.value as 'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM');
+                  setWorkingDays('');
+                }}
+                disabled={!isLive}
+                className={inputClass}
+              >
+                <option value="MONTHLY">Monthly</option>
+                <option value="FORTNIGHTLY">Fortnightly</option>
+                <option value="CUSTOM">Custom</option>
+              </select>
+            </Field>
+
+            {periodType === 'CUSTOM' && (
+              <Field label="Working Days">
+                <input
+                  type="number"
+                  min="1"
+                  value={workingDays}
+                  onChange={(e) => setWorkingDays(e.target.value)}
+                  required
+                  disabled={!isLive}
+                  placeholder="e.g. 22"
+                  className={inputClass}
+                />
+              </Field>
+            )}
+
+            <Field label="Retry Strategy">
+              <select
+                value={retryStrategy}
+                onChange={(e) => setRetryStrategy(e.target.value as 'PER_EMPLOYEE' | 'FULL_RUN')}
+                disabled={!isLive}
+                className={inputClass}
+              >
+                <option value="PER_EMPLOYEE">Per Employee (default)</option>
+                <option value="FULL_RUN">Full Run</option>
               </select>
             </Field>
 

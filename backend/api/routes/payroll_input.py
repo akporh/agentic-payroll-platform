@@ -13,6 +13,7 @@ contains an `input_field` key contributes one valid code; the rule_type
 from datetime import date
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.payroll_input_repo import (
     list_unclaimed_inputs,
@@ -124,6 +125,8 @@ def add_input(workspace_id: str, payload: dict):
         raise HTTPException(status_code=400, detail="employee_id is required")
     if not input_code:
         raise HTTPException(status_code=400, detail="input_code is required")
+    if quantity is not None and quantity < 0:
+        raise HTTPException(status_code=400, detail="quantity must be >= 0")
 
     db = SessionLocal()
     try:
@@ -196,6 +199,9 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
             if not input_code:
                 errors.append({"row": row_num, "detail": "input_code is required"})
                 continue
+            if quantity is not None and quantity < 0:
+                errors.append({"row": row_num, "detail": "quantity must be >= 0"})
+                continue
             if input_code not in valid_codes:
                 errors.append({"row": row_num, "detail": f"Unknown input_code '{input_code}'"})
                 continue
@@ -224,6 +230,16 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                     reference_date=reference_date,
                 )
                 created += 1
+            except IntegrityError:
+                period_label = str(reference_date) if reference_date else "current period"
+                errors.append({
+                    "row": row_num,
+                    "detail": (
+                        f"Duplicate: input_code '{input_code}' for employee '{employee_number}' "
+                        f"on {period_label} already exists. "
+                        "Delete the existing input or use a different reference_date."
+                    ),
+                })
             except Exception as exc:
                 errors.append({"row": row_num, "detail": str(exc)})
 

@@ -37,6 +37,7 @@ def execute_and_persist(
     rule_set_id: str | None = None,
     statutory_effective_date: str | None = None,
     run_type: str = "REGULAR",
+    pre_warnings: list[tuple[str, str | None]] | None = None,
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -66,6 +67,11 @@ def execute_and_persist(
     """
 
     tracer = ExecutionTracer(payroll_run_id)
+
+    # Emit any pre-run validation warnings (D1 PH-10, D2 PH-11)
+    for _step_name, _ctx_msg in (pre_warnings or []):
+        tracer.warn_persist(_step_name, _ctx_msg)
+
     tracer.info(
         f"{len(employees)} employees  │  "
         f"{len(tax_bands)} tax bands  │  "

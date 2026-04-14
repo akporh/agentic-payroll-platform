@@ -41,7 +41,7 @@ from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
 
 
-def approve_payroll_run(payroll_run_id: str) -> dict:
+def approve_payroll_run(payroll_run_id: str, performed_by: str = "admin@internal") -> dict:
     """Transition a CALCULATED payroll run to APPROVED.
 
     Args:
@@ -92,7 +92,7 @@ def approve_payroll_run(payroll_run_id: str) -> dict:
             payroll_run_id=payroll_run_id,
             old_status=current,
             new_status=PayrollRunStatus.APPROVED,
-            performed_by="admin@internal",
+            performed_by=performed_by,
         )
         save_audit_log(workspace_id, audit)
         save_event(build_transition_event(
@@ -111,7 +111,7 @@ def approve_payroll_run(payroll_run_id: str) -> dict:
         db.close()
 
 
-def lock_payroll_run(payroll_run_id: str) -> dict:
+def lock_payroll_run(payroll_run_id: str, performed_by: str = "admin@internal") -> dict:
     """Transition an APPROVED payroll run to LOCKED.
 
     A LOCKED run is immutable.  No retry, recalculation, or result
@@ -165,7 +165,7 @@ def lock_payroll_run(payroll_run_id: str) -> dict:
             payroll_run_id=payroll_run_id,
             old_status=current,
             new_status=PayrollRunStatus.LOCKED,
-            performed_by="admin@internal",
+            performed_by=performed_by,
         )
         save_audit_log(workspace_id, audit)
         save_event(build_transition_event(
@@ -184,7 +184,7 @@ def lock_payroll_run(payroll_run_id: str) -> dict:
         db.close()
 
 
-def mark_payroll_run_paid(payroll_run_id: str, actor_id: str) -> dict:
+def mark_payroll_run_paid(payroll_run_id: str, performed_by: str = "admin@internal") -> dict:
     """Transition a LOCKED payroll run to PAID.
 
     PAID is the terminal state.  Once a run is marked PAID the DB trigger
@@ -240,7 +240,7 @@ def mark_payroll_run_paid(payroll_run_id: str, actor_id: str) -> dict:
             payroll_run_id=payroll_run_id,
             old_status=current,
             new_status=PayrollRunStatus.PAID,
-            performed_by=actor_id,
+            performed_by=performed_by,
         )
         save_audit_log(workspace_id, audit)
         save_event(build_transition_event(

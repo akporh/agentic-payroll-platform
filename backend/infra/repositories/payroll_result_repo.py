@@ -14,11 +14,22 @@ import json
 def _sanitize_json(payload: dict | None) -> dict:
     """
     Convert Decimal, UUID, etc. into JSON-safe values.
+
+    Decimal is serialised as a JSON *number* (via float) so that JSONB
+    columns remain queryable with val::text::numeric casts.  All other
+    non-serialisable types fall back to str().
     """
     if payload is None:
         return {}
 
-    return json.loads(json.dumps(payload, default=str))
+    from decimal import Decimal as _Decimal
+
+    def _default(obj):
+        if isinstance(obj, _Decimal):
+            return float(obj)
+        return str(obj)
+
+    return json.loads(json.dumps(payload, default=_default))
 
 
 def save_payroll_result(

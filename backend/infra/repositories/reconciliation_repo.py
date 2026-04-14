@@ -79,6 +79,71 @@ def insert_reconciliation(
         db.close()
 
 
+def update_reconciliation(
+    payroll_run_id: str,
+    notes: str,
+    resolved_by: str,
+) -> dict:
+    """Mark a MISMATCH reconciliation as resolved.
+
+    Sets status to MATCHED, records notes and resolved_by, and sets
+    resolved_at to now(). Only MISMATCH records can be resolved.
+
+    Returns the updated row as a dict.
+
+    Raises:
+        ValueError: If the record is not found or is not in MISMATCH status.
+    """
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text("""
+                UPDATE payroll_reconciliation
+                SET    status      = 'RESOLVED',
+                       notes       = :notes,
+                       resolved_by = :resolved_by,
+                       resolved_at = now()
+                WHERE  payroll_run_id = :rid
+                  AND  status = 'MISMATCH'
+                RETURNING id, payroll_run_id, expected_total, actual_total,
+                          status, reconciled_at, created_at, notes, resolved_by, resolved_at
+            """),
+            {
+                "rid":         payroll_run_id,
+                "notes":       notes,
+                "resolved_by": resolved_by,
+            },
+        ).fetchone()
+
+        if row is None:
+            raise ValueError(
+                f"No MISMATCH reconciliation found for run {payroll_run_id}. "
+                "Only records in MISMATCH status can be resolved."
+            )
+
+        db.commit()
+
+        return {
+            "id":              str(row[0]),
+            "payroll_run_id":  str(row[1]),
+            "expected_total":  row[2],
+            "actual_total":    row[3],
+            "status":          row[4],
+            "reconciled_at":   row[5].isoformat() if row[5] else None,
+            "created_at":      row[6].isoformat() if row[6] else None,
+            "notes":           row[7],
+            "resolved_by":     row[8],
+            "resolved_at":     row[9].isoformat() if row[9] else None,
+        }
+
+    except ValueError:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+
 def get_reconciliation(payroll_run_id: str) -> dict | None:
     """Fetch the reconciliation record for a run, or None if not found."""
     db = SessionLocal()
@@ -86,7 +151,7 @@ def get_reconciliation(payroll_run_id: str) -> dict | None:
         row = db.execute(
             text("""
                 SELECT id, payroll_run_id, expected_total, actual_total,
-                       status, reconciled_at, created_at
+                       status, reconciled_at, created_at, notes, resolved_by, resolved_at
                 FROM   payroll_reconciliation
                 WHERE  payroll_run_id = :rid
             """),
@@ -104,6 +169,9 @@ def get_reconciliation(payroll_run_id: str) -> dict | None:
             "status":          row[4],
             "reconciled_at":   row[5].isoformat() if row[5] else None,
             "created_at":      row[6].isoformat() if row[6] else None,
+            "notes":           row[7],
+            "resolved_by":     row[8],
+            "resolved_at":     row[9].isoformat() if row[9] else None,
         }
 
     finally:

@@ -72,19 +72,54 @@ All changes must be evaluated across:
 ---
 ## Required Process for Any Change
 
-### 1. Problem Understanding- Restate the problem- Identify which categories are impacted- Identify risks across each category- What is being changed?
+### 1. Problem Understanding
+- Restate the problem
+- Identify the real underlying problem (not just symptoms)
+- Identify which categories are impacted
+- Highlight risks and hidden edge cases across each category
+- Propose multiple approaches
+- Recommend the best approach with reasoning
+- What is being changed?
 
-### 2. Design- Provide a solution that explicitly addresses EACH category above.- Must address ALL categories- Justify omissions
+### 2. Design
+- Provide a solution that explicitly addresses EACH category above.
+- Must address ALL categories
+- Justify omissions
 
-### 3. Stress TestBreak the design across- Time (historical vs current)- Failures (partial execution, retries)- Data consistency (stale vs snapshot)- Edge cases
+### 3. Stress TestBreak the design across
+- Time (historical vs current)
+- Failures (partial execution, retries)
+- Data consistency (stale vs snapshot)
+- Edge cases
+- List failure points and fix them.
 
-### 4. Invariants- Define what must NEVER break (guarantees).These must NEVER be violated.
+### 4. Invariants
+- Define what must NEVER break (guarantees).These must NEVER be violated.
 
 
-### 5. Implementation Rules- Do not bypass guarantees- Do not duplicate sources of truth- Do not patch over failing tests- Fix root causes only
+### 5. Implementation Rules
+- Do not bypass guarantees
+- Do not duplicate sources of truth
+- Do not patch over failing tests
+- Fix root causes only
+
+### 6. VALIDATION RULES
+
+- Skipping categories is not allowed
+- Missing invariants is not allowed
+- Hidden assumptions are not allowed
+- Weak retry/idempotency is not allowed
+
+If any rule is violated:
+→ STOP and explain why
+
 
 ### Act as:- 
 - Architect (design) 
 - Reviewer (challenge)
 
-Start with PHASE 1.
+The reviewer must:
+- Identify flaws
+- Challenge assumptions
+- Highlight long-term risks
+

@@ -5,10 +5,13 @@ Exposes endpoints for triggering payroll runs.
 """
 
 import calendar
+import csv as _csv
+import io
 import uuid
 from datetime import date
 from decimal import Decimal
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
 from backend.domain.payroll.period_context import build_period_context
@@ -17,9 +20,12 @@ from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
-from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status
-from backend.infra.repositories.execution_trace_repo import get_trace_steps
+from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status, resolve_reconciliation
+from backend.infra.repositories.execution_trace_repo import get_trace_steps, get_legacy_executor_stats
 from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, load_unclaimed_inputs_by_employee
+from backend.infra.repositories.workspace_config_repo import get_workspace_payroll_config
+from backend.infra.repositories.public_holiday_repo import get_effective_ph_list
+from backend.infra.repositories.rate_code_repo import list_rate_codes
 
 router = APIRouter()
 
@@ -118,7 +124,13 @@ def run_payroll(
         WHERE e.workspace_id = :workspace_id
           AND e.status = 'ACTIVE'
           AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
-    """), {"workspace_id": workspace_id}).fetchall()
+          AND (sd.effective_from IS NULL OR sd.effective_from <= :period_end_date)
+          AND (sd.effective_to   IS NULL OR sd.effective_to   >= :period_start_date)
+    """), {
+        "workspace_id": workspace_id,
+        "period_end_date":   period_end   or str(statutory_effective_date),
+        "period_start_date": period_start or str(statutory_effective_date.replace(day=1)),
+    }).fetchall()
 
     employees = []
     for row in employee_rows:
@@ -173,9 +185,9 @@ def run_payroll(
     rent_relief_cfg = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
 
     # Extract workspace-level statutory component rates/amounts
-    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
-    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
-    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
     life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # --- Load Tax Bands (scoped to the selected statutory rule) ---
@@ -188,9 +200,9 @@ def run_payroll(
 
     tax_bands = [
         {
-            "lower_limit": float(r[0]) if r[0] is not None else None,
-            "upper_limit": float(r[1]) if r[1] is not None else None,
-            "rate":        float(r[2]) if r[2] is not None else None,
+            "lower_limit": Decimal(str(r[0])) if r[0] is not None else None,
+            "upper_limit": Decimal(str(r[1])) if r[1] is not None else None,
+            "rate":        Decimal(str(r[2])) if r[2] is not None else None,
         }
         for r in tax_rows
     ]
@@ -374,7 +386,7 @@ def run_payroll(
     cross_period_ref_dates: set = set()
     for emp in employees:
         for _data in emp.get("inputs", {}).values():
-            if not isinstance(_data, dict):
+            if not isinstance(_data, list):
                 continue
             ref_dt = _data.get("reference_date")
             if ref_dt and (
@@ -458,6 +470,121 @@ def run_payroll(
             statutory_rule_id, statutory_version, payroll_rule_ids
         )
 
+    # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
+    workspace_payroll_config = get_workspace_payroll_config(workspace_id)
+    if workspace_payroll_config["ph_mode"] == "AUTOMATIC":
+        ph_list = get_effective_ph_list(
+            workspace_id, country_code,
+            str(period_ctx.period_start), str(period_ctx.period_end),
+        )
+        ph_weekday_dates = [
+            ph["date"] for ph in ph_list
+            if ph["date"].weekday() < 5  # Mon–Fri only
+        ]
+        expected_working_days = period_ctx.working_days - len(ph_weekday_dates)
+        ph_source = "AUTOMATIC"
+    else:
+        ph_weekday_dates = []
+        expected_working_days = period_ctx.working_days
+        ph_source = "FILE_BASED"
+
+    expected_hours = expected_working_days * 8
+    expected_days  = expected_working_days
+    ph_dates_used  = [str(d) for d in ph_weekday_dates]
+    rate_code_map  = {row["code"]: row for row in list_rate_codes(workspace_id)}
+
+    # ── Extend rules snapshot with PH context (C3 — PH-9) ───────────────────
+    rules_ctx_snapshot.update({
+        "expected_hours": expected_hours,
+        "expected_days":  expected_days,
+        "ph_dates_used":  ph_dates_used,
+        "ph_source":      ph_source,
+    })
+
+    # ── D1/D2: PH validation warnings (PH-10, PH-11) ─────────────────────────
+    _ph_pre_warnings: list[tuple[str, str]] = []
+
+    # D2 — PH-11: AUTOMATIC mode empty-calendar pre-flight
+    if workspace_payroll_config["ph_mode"] == "AUTOMATIC" and len(ph_list) == 0:
+        _ph_pre_warnings.append((
+            "PH_CALENDAR_EMPTY",
+            f"No public holidays found in the calendar for {country_code} "
+            f"period {period_ctx.period_start}–{period_ctx.period_end}. "
+            "expected_days will equal working_days.",
+        ))
+
+    # D1 — PH-10: Cross-check calendar national count vs. file-submitted PH entries.
+    # Applies in all ph_mode configurations — fetch calendar when FILE_BASED.
+    if workspace_payroll_config["ph_mode"] != "AUTOMATIC":
+        _calendar_ph_list = get_effective_ph_list(
+            workspace_id, country_code,
+            str(period_ctx.period_start), str(period_ctx.period_end),
+        )
+    else:
+        _calendar_ph_list = ph_list  # already fetched above
+
+    _calendar_ph_count = sum(1 for d in _calendar_ph_list if d["source"] == "NATIONAL")
+    _file_ph_count = sum(
+        len(emp.get("inputs", {}).get("ph_hours_worked", []))
+        for emp in employees
+    )
+
+    if _file_ph_count > _calendar_ph_count:
+        _ph_pre_warnings.append((
+            "PH_COUNT_MISMATCH_EXCESS",
+            (
+                f"File contains {_file_ph_count} PH entries but calendar shows "
+                f"{_calendar_ph_count} for this period. Review whether the extra "
+                "entry is a contractual rate day that should be handled separately."
+            ),
+        ))
+    elif _file_ph_count < _calendar_ph_count:
+        _ph_pre_warnings.append((
+            "PH_COUNT_MISMATCH_DEFICIT",
+            (
+                f"Calendar shows {_calendar_ph_count} PHs for this period but only "
+                f"{_file_ph_count} appear in the input file. A public holiday may be "
+                "missing — review to avoid underpayment."
+            ),
+        ))
+
+    # Duplicate ph_hours_worked entries for the same employee on the same date
+    for _emp in employees:
+        _emp_id = _emp["employee_id"]
+        _ph_events = _emp.get("inputs", {}).get("ph_hours_worked", [])
+        _seen_dates: set = set()
+        for _event in _ph_events:
+            if not isinstance(_event, dict):
+                continue
+            _ref = _event.get("reference_date")
+            if _ref:
+                if _ref in _seen_dates:
+                    _ph_pre_warnings.append((
+                        "PH_DUPLICATE_IN_FILE",
+                        f"Employee {_emp_id} has duplicate ph_hours_worked entries "
+                        f"for {_ref}. This may cause double-counting.",
+                    ))
+                    break  # one warning per employee
+                _seen_dates.add(_ref)
+
+    # ph_hours_worked entries with reference_date outside the pay period
+    for _emp in employees:
+        _emp_id = _emp["employee_id"]
+        _ph_events = _emp.get("inputs", {}).get("ph_hours_worked", [])
+        for _event in _ph_events:
+            if not isinstance(_event, dict):
+                continue
+            _ref = _event.get("reference_date")
+            if _ref and (
+                _ref < period_ctx.period_start or _ref > period_ctx.period_end
+            ):
+                _ph_pre_warnings.append((
+                    "PH_OUT_OF_PERIOD",
+                    f"Input row has reference_date {_ref} which falls outside "
+                    f"the period {period_ctx.period_start}–{period_ctx.period_end}. "
+                    "Verify this is not a data entry error.",
+                ))
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -475,6 +602,13 @@ def run_payroll(
         "historical_period_contexts":       historical_period_contexts,
         "current_rule_set_id":              rule_set_id,
         "current_rule_set_effective_from":  rule_set_effective_from,
+        # ── PH & OT context (C1 — PH-2, C4 — PH-8) ─────────────────────────
+        "expected_hours":                   expected_hours,
+        "expected_days":                    expected_days,
+        "ph_dates_used":                    ph_dates_used,
+        "ph_source":                        ph_source,
+        "workspace_ph_config":              workspace_payroll_config,
+        "rate_code_map":                    rate_code_map,
     }
 
     try:
@@ -499,6 +633,7 @@ def run_payroll(
             rule_set_id              = rule_set_id,
             statutory_effective_date = str(statutory_effective_date),
             run_type                 = run_type,
+            pre_warnings             = _ph_pre_warnings or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -650,7 +785,8 @@ def get_payroll_run_results(workspace_id: str, run_id: str):
                     pr.net_pay,
                     pr.gross_components_jsonb,
                     pr.deductions_jsonb,
-                    pr.status
+                    pr.status,
+                    pr.component_trace_jsonb
                 FROM payroll_result pr
                 JOIN employee e ON e.employee_id = pr.employee_id
                 WHERE pr.payroll_run_id = :rid
@@ -673,13 +809,14 @@ def get_payroll_run_results(workspace_id: str, run_id: str):
                 for v in deductions.values()
             )
             results.append({
-                "employee_id":      str(r[0]),
-                "employee_name":    r[1] or "",
-                "employee_number":  r[2] or "",
-                "gross_pay":        float(gross_total) if status == "SUCCESS" else None,
-                "total_deductions": float(deductions_total) if status == "SUCCESS" else None,
-                "net_pay":          float(r[3]) if r[3] is not None else None,
-                "status":           status,
+                "employee_id":       str(r[0]),
+                "employee_name":     r[1] or "",
+                "employee_number":   r[2] or "",
+                "gross_pay":         float(gross_total) if status == "SUCCESS" else None,
+                "total_deductions":  float(deductions_total) if status == "SUCCESS" else None,
+                "net_pay":           float(r[3]) if r[3] is not None else None,
+                "status":            status,
+                "component_trace":   r[7] or [],
             })
 
         return {
@@ -696,7 +833,7 @@ def get_payroll_run_results(workspace_id: str, run_id: str):
 
 
 @router.post("/payroll/run/{run_id}/retry")
-def retry_payroll_run(run_id: str):
+def retry_payroll_run(run_id: str, performed_by: str = Header(default="admin@internal", alias="X-Performed-By")):
     """
     Retry all FAILED employees in a PARTIAL payroll run.
 
@@ -708,7 +845,7 @@ def retry_payroll_run(run_id: str):
     Returns 400 if the run does not exist, is PAID, or is not PARTIAL.
     """
     try:
-        result = retry_failed_payroll_employees(run_id)
+        result = retry_failed_payroll_employees(run_id, performed_by=performed_by)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -722,7 +859,7 @@ def retry_payroll_run(run_id: str):
 
 
 @router.post("/payroll/run/{run_id}/approve")
-def approve_run(run_id: str):
+def approve_run(run_id: str, performed_by: str = Header(default="admin@internal", alias="X-Performed-By")):
     """
     Approve a CALCULATED payroll run (CALCULATED → APPROVED).
 
@@ -730,7 +867,7 @@ def approve_run(run_id: str):
     recalculated.  Returns 400 if the run is not in CALCULATED state.
     """
     try:
-        result = approve_payroll_run(run_id)
+        result = approve_payroll_run(run_id, performed_by=performed_by)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -742,7 +879,7 @@ def approve_run(run_id: str):
 
 
 @router.post("/payroll/run/{run_id}/lock")
-def lock_run(run_id: str):
+def lock_run(run_id: str, performed_by: str = Header(default="admin@internal", alias="X-Performed-By")):
     """
     Lock an APPROVED payroll run (APPROVED → LOCKED).
 
@@ -750,7 +887,7 @@ def lock_run(run_id: str):
     in APPROVED state.
     """
     try:
-        result = lock_payroll_run(run_id)
+        result = lock_payroll_run(run_id, performed_by=performed_by)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -769,11 +906,12 @@ def pay_run(run_id: str, payload: dict = {}):
     PAID is the terminal state.  After this transition the DB trigger
     trg_prevent_paid_run_update enforces full immutability — no further
     changes are possible.  Returns 400 if the run is not in LOCKED state.
+
+    Body (optional): ``{ "actor_id": "<identity>" }``
     """
     actor_id = payload.get("actor_id", "system@internal")
-
     try:
-        result = mark_payroll_run_paid(run_id, actor_id)
+        result = mark_payroll_run_paid(run_id, performed_by=actor_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -835,6 +973,9 @@ def _to_reconciliation_record(record: dict) -> dict:
         "expected_total": float(record["expected_total"]) if record.get("expected_total") is not None else None,
         "actual_payment": float(record["actual_total"]) if record.get("actual_total") is not None else None,
         "status":         record.get("status"),
+        "notes":          record.get("notes"),
+        "resolved_by":    record.get("resolved_by"),
+        "resolved_at":    record.get("resolved_at"),
     }
 
 
@@ -863,8 +1004,258 @@ def submit_reconciliation_scoped(workspace_id: str, run_id: str, payload: dict):
     return _to_reconciliation_record(record)
 
 
+@router.patch("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+def resolve_reconciliation_scoped(workspace_id: str, run_id: str, payload: dict):
+    """Mark a MISMATCH reconciliation as resolved (workspace-scoped).
+
+    Body: { "notes": str, "resolved_by": str }
+    """
+    notes = payload.get("notes", "").strip()
+    resolved_by = payload.get("resolved_by", "").strip()
+    if not notes:
+        raise HTTPException(status_code=400, detail="notes is required")
+    if not resolved_by:
+        raise HTTPException(status_code=400, detail="resolved_by is required")
+    try:
+        record = resolve_reconciliation(run_id, notes=notes, resolved_by=resolved_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _to_reconciliation_record(record)
+
+
 @router.get("/{workspace_id}/payroll/runs/{run_id}/timeline")
 def get_run_timeline(workspace_id: str, run_id: str):
     """Return all execution trace steps for a payroll run, ordered by time."""
     steps = get_trace_steps(run_id)
     return steps
+
+
+@router.get("/{workspace_id}/payroll/ops/legacy-executor-stats")
+def legacy_executor_stats(workspace_id: str):
+    """Return aggregate stats on legacy executor fallback usage.
+
+    Tracks how often the deprecated legacy calculation path is invoked
+    (when component_metadata is absent). Useful for monitoring migration
+    progress away from the legacy executor.
+
+    Returns:
+        total_runs:          total runs with at least one trace step
+        runs_with_legacy:    runs where legacy fallback fired at least once
+        pct_runs_affected:   percentage of runs that hit the legacy path
+        total_legacy_events: total employee-level fallback events across all runs
+        by_run:              per-run breakdown (only runs with legacy events)
+    """
+    return get_legacy_executor_stats()
+
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/audit")
+def get_run_audit_log(workspace_id: str, run_id: str):
+    """Return the audit log entries for a payroll run, ordered by time."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT entity_type, action, old_value_jsonb, new_value_jsonb,
+                       performed_by, performed_at
+                FROM   audit_log
+                WHERE  workspace_id = :wid
+                  AND  entity_id    = :eid::uuid
+                ORDER  BY performed_at ASC
+            """),
+            {"wid": workspace_id, "eid": run_id},
+        ).fetchall()
+    finally:
+        db.close()
+
+    return [
+        {
+            "entity_type":  r[0],
+            "action":       r[1],
+            "old_value":    r[2],
+            "new_value":    r[3],
+            "performed_by": r[4],
+            "performed_at": r[5].isoformat() if r[5] else None,
+        }
+        for r in rows
+    ]
+
+
+# ── H1/H2/H3 — CSV Export helpers ────────────────────────────────────────────
+
+_EXPORT_RESULT_SQL = text("""
+    SELECT
+        e.employee_number,
+        e.full_name,
+        e.personal_details_encrypted,
+        pr.net_pay,
+        pr.gross_components_jsonb,
+        pr.deductions_jsonb,
+        pr.component_trace_jsonb,
+        r.period_start
+    FROM payroll_result pr
+    JOIN employee e ON e.employee_id = pr.employee_id
+    JOIN payroll_run r ON r.payroll_run_id = pr.payroll_run_id
+    WHERE pr.payroll_run_id = :run_id
+      AND pr.status = 'SUCCESS'
+    ORDER BY e.full_name
+""")
+
+
+def _guard_locked_or_paid(db, workspace_id: str, run_id: str) -> None:
+    """Raise HTTPException if run is not found for workspace or not LOCKED/PAID."""
+    row = db.execute(
+        text("SELECT status FROM payroll_run WHERE payroll_run_id = :rid AND workspace_id = :wid"),
+        {"rid": run_id, "wid": workspace_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    if row[0] not in ("LOCKED", "PAID"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Export requires LOCKED or PAID status. Current status: {row[0]}",
+        )
+
+
+def _streaming_csv(content: str, filename: str) -> StreamingResponse:
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── H1 — Bank Upload CSV ──────────────────────────────────────────────────────
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/bank-upload")
+def export_bank_upload(workspace_id: str, run_id: str):
+    """Download net pay bank upload CSV (LOCKED or PAID runs only).
+
+    Columns: employee_number, employee_name, bank_name, account_number, net_pay
+    """
+    db = SessionLocal()
+    try:
+        _guard_locked_or_paid(db, workspace_id, run_id)
+        rows = db.execute(_EXPORT_RESULT_SQL, {"run_id": run_id}).fetchall()
+    finally:
+        db.close()
+
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow(["employee_number", "employee_name", "bank_name", "account_number", "net_pay"])
+    for r in rows:
+        biodata = r[2] or {}
+        writer.writerow([
+            r[0] or "",
+            r[1] or "",
+            biodata.get("BANK", ""),
+            biodata.get("ACCOUNT_NUMBER", ""),
+            f"{float(r[3]):.2f}" if r[3] is not None else "0.00",
+        ])
+
+    return _streaming_csv(buf.getvalue(), f"bank_upload_{run_id[:8]}.csv")
+
+
+# ── H2 — PAYE Remittance CSV ─────────────────────────────────────────────────
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/paye")
+def export_paye_remittance(workspace_id: str, run_id: str):
+    """Download PAYE remittance CSV (LOCKED or PAID runs only).
+
+    Columns: employee_number, employee_name, tin, gross_pay, paye_withheld, period
+    """
+    db = SessionLocal()
+    try:
+        _guard_locked_or_paid(db, workspace_id, run_id)
+        rows = db.execute(_EXPORT_RESULT_SQL, {"run_id": run_id}).fetchall()
+    finally:
+        db.close()
+
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow(["employee_number", "employee_name", "tin", "gross_pay", "paye_withheld", "period"])
+    for r in rows:
+        biodata = r[2] or {}
+        gross_components = r[4] or {}
+        deductions = r[5] or {}
+        gross_pay = sum(
+            float(v.get("amount", v) if isinstance(v, dict) else v)
+            for v in gross_components.values()
+        )
+        paye = float(deductions.get("PAYE", 0))
+        period = r[7].strftime("%Y-%m") if r[7] else ""
+        writer.writerow([
+            r[0] or "",
+            r[1] or "",
+            biodata.get("TIN", ""),
+            f"{gross_pay:.2f}",
+            f"{paye:.2f}",
+            period,
+        ])
+
+    return _streaming_csv(buf.getvalue(), f"paye_remittance_{run_id[:8]}.csv")
+
+
+# ── H3 — Pension Contribution CSV ────────────────────────────────────────────
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/pension")
+def export_pension_contribution(workspace_id: str, run_id: str):
+    """Download pension contribution CSV (LOCKED or PAID runs only).
+
+    Columns: employee_number, employee_name, rsa_pin, basic_pay,
+             pension_base, employee_contribution, employer_contribution, period
+    """
+    db = SessionLocal()
+    try:
+        _guard_locked_or_paid(db, workspace_id, run_id)
+        rows = db.execute(_EXPORT_RESULT_SQL, {"run_id": run_id}).fetchall()
+    finally:
+        db.close()
+
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow([
+        "employee_number", "employee_name", "rsa_pin",
+        "basic_pay", "pension_base",
+        "employee_contribution", "employer_contribution", "period",
+    ])
+    for r in rows:
+        biodata = r[2] or {}
+        gross_components = r[4] or {}
+        deductions = r[5] or {}
+        trace = r[6] or []
+
+        basic_amount = gross_components.get("BASIC", {})
+        basic_pay = float(
+            basic_amount.get("amount", basic_amount)
+            if isinstance(basic_amount, dict) else basic_amount
+        ) if basic_amount else 0.0
+
+        emp_contrib = float(deductions.get("PENSION_EMPLOYEE", 0))
+
+        # Employer contribution is an employer cost (not a statutory deduction) —
+        # read from the component trace where it is always recorded.
+        er_contrib = 0.0
+        for entry in (trace if isinstance(trace, list) else []):
+            if isinstance(entry, dict) and entry.get("component") == "PENSION_EMPLOYER":
+                try:
+                    er_contrib = float(entry.get("result", 0))
+                except (ValueError, TypeError):
+                    pass
+                break
+
+        # pension_base ≈ BASIC (standard Nigerian statutory base)
+        pension_base = basic_pay
+        period = r[7].strftime("%Y-%m") if r[7] else ""
+
+        writer.writerow([
+            r[0] or "",
+            r[1] or "",
+            biodata.get("RSA", ""),
+            f"{basic_pay:.2f}",
+            f"{pension_base:.2f}",
+            f"{emp_contrib:.2f}",
+            f"{er_contrib:.2f}",
+            period,
+        ])
+
+    return _streaming_csv(buf.getvalue(), f"pension_contribution_{run_id[:8]}.csv")

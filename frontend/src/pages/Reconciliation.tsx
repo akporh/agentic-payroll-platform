@@ -23,6 +23,11 @@ export function Reconciliation() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const [resolveNotes, setResolveNotes] = useState('');
+  const [resolveBy, setResolveBy] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
   function load() {
     if (!workspaceId || !runId) return;
     setLoading(true);
@@ -63,9 +68,29 @@ export function Reconciliation() {
     }
   }
 
+  async function handleResolve(e: React.FormEvent) {
+    e.preventDefault();
+    if (!workspaceId || !runId) return;
+    setResolving(true);
+    setResolveError(null);
+    try {
+      const updated = await payrollApi.resolveReconciliation(workspaceId, runId, {
+        notes: resolveNotes,
+        resolved_by: resolveBy,
+      });
+      setRecord(updated);
+    } catch (e: unknown) {
+      setResolveError(e instanceof Error ? e.message : 'Resolve failed');
+    } finally {
+      setResolving(false);
+    }
+  }
+
   const statusColor =
     record?.status === 'MATCHED'
       ? 'bg-green-100 text-green-700 border-green-200'
+      : record?.status === 'RESOLVED'
+      ? 'bg-blue-100 text-blue-700 border-blue-200'
       : record?.status === 'MISMATCH'
       ? 'bg-red-100 text-red-700 border-red-200'
       : 'bg-slate-100 text-slate-600 border-slate-200';
@@ -102,6 +127,14 @@ export function Reconciliation() {
                     <strong>{fmt(Math.abs(record.expected_total - record.actual_payment))}</strong>
                   </div>
                 )}
+
+                {record.resolved_by && (
+                  <div className="text-sm text-slate-500 space-y-1">
+                    <Row label="Resolved by" value={record.resolved_by} />
+                    {record.resolved_at && <Row label="Resolved at" value={new Date(record.resolved_at).toLocaleString()} />}
+                    {record.notes && <Row label="Notes" value={record.notes} />}
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -136,6 +169,50 @@ export function Reconciliation() {
           {record?.status === 'MATCHED' && (
             <AlertBox type="success" messages={['Reconciliation complete. Payment matches expected net pay.']} />
           )}
+
+          {record?.status === 'RESOLVED' && (
+            <AlertBox type="success" messages={['Mismatch resolved by operator. See resolution notes above.']} />
+          )}
+
+          {record?.status === 'MISMATCH' && (
+            <Card title="Mark as Resolved">
+              <form onSubmit={handleResolve} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Resolution Notes
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Explain why this discrepancy is considered resolved…"
+                    value={resolveNotes}
+                    onChange={(e) => setResolveNotes(e.target.value)}
+                    required
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Resolved By
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Your name or email"
+                    value={resolveBy}
+                    onChange={(e) => setResolveBy(e.target.value)}
+                    required
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+
+                {resolveError && <AlertBox type="error" messages={[resolveError]} />}
+
+                <Btn type="submit" loading={resolving}>
+                  Mark as Resolved
+                </Btn>
+              </form>
+            </Card>
+          )}
+
         </div>
       )}
     </div>

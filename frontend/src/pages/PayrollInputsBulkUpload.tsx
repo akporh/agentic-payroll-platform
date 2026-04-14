@@ -152,7 +152,7 @@ export function PayrollInputsBulkUpload() {
         setRows(parsed);
         setParseErr(errs);
       } catch {
-        setParseErr(['Failed to read file. Ensure it is a valid .xlsx file.']);
+        setParseErr(['Failed to read file. Ensure it is a valid .xlsx or .csv file.']);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -184,7 +184,7 @@ export function PayrollInputsBulkUpload() {
     <div>
       <PageHeader
         title="Bulk Period Inputs"
-        subtitle="Upload an Excel file to add multiple period inputs at once"
+        subtitle="Upload an Excel (.xlsx) or CSV (.csv) file to add multiple period inputs at once"
       />
 
       {/* Download template */}
@@ -201,7 +201,7 @@ export function PayrollInputsBulkUpload() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             onChange={handleFile}
             className="hidden"
           />
