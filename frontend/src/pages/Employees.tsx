@@ -1,32 +1,203 @@
-import { useEffect, useState } from 'react';
+/**
+ * Employees — Gate 4 rewrite
+ *
+ * Design decisions:
+ * - Edit opens a SlideOver (not inline row editing)
+ * - AlertBanner for unmatched employees with scroll-to link
+ * - border-l-4 border-amber-400 on unmatched rows (not colour alone — accessibility)
+ */
+
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
 import type { Employee } from '../types/payroll';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Card } from '../components/ui/Card';
-import { AlertBox } from '../components/ui/AlertBox';
+import {
+  ContentHeader,
+  Card,
+  Btn,
+  StatusBadge,
+  AlertBanner,
+  EmptyState,
+  SlideOver,
+  SearchableSelect,
+  useToast,
+  Breadcrumb,
+} from '../design-system';
+import { useWorkspaceContext } from '../context/WorkspaceContext';
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+function PeopleIcon() {
+  return (
+    <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+// ── Edit SlideOver ────────────────────────────────────────────────────────────
+
+interface EditSlideOverProps {
+  employee: Employee | null;
+  gradeOptions: string[];
+  designationOptions: string[];
+  onClose: () => void;
+  onSaved: () => void;
+  workspaceId: string;
+}
+
+function EditSlideOver({ employee, gradeOptions, designationOptions, onClose, onSaved, workspaceId }: EditSlideOverProps) {
+  const toast = useToast();
+  const [grade, setGrade] = useState(employee?.grade ?? '');
+  const [designation, setDesignation] = useState(employee?.designation ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (employee) {
+      setGrade(employee.grade ?? '');
+      setDesignation(employee.designation ?? '');
+      setError(null);
+    }
+  }, [employee]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await workspaceApi.updateEmployeeContract(workspaceId, employee.employee_id, {
+        grade_code: grade || null,
+        designation_code: designation || null,
+      });
+      toast.show('success', 'Contract updated');
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SlideOver
+      open={!!employee}
+      onClose={onClose}
+      title="Edit Employee Contract"
+      description={employee ? `${employee.full_name} · ${employee.employee_number}` : ''}
+      footer={
+        <div className="flex gap-3">
+          <Btn type="submit" form="edit-employee-form" variant="primary" size="md" loading={saving}>
+            Save Changes
+          </Btn>
+          <Btn type="button" variant="secondary" size="md" onClick={onClose}>
+            Cancel
+          </Btn>
+        </div>
+      }
+    >
+      <form id="edit-employee-form" onSubmit={handleSave} className="space-y-5">
+        <SearchableSelect
+          label="Grade"
+          value={grade}
+          onChange={setGrade}
+          options={[
+            { value: '', label: '— unassigned —' },
+            ...gradeOptions.map((g) => ({ value: g, label: g })),
+          ]}
+        />
+        <SearchableSelect
+          label="Designation"
+          value={designation}
+          onChange={setDesignation}
+          options={[
+            { value: '', label: '— unassigned —' },
+            ...designationOptions.map((d) => ({ value: d, label: d })),
+          ]}
+        />
+        {error && <AlertBanner variant="error" description={error} />}
+      </form>
+    </SlideOver>
+  );
+}
+
+// ── Employee table ────────────────────────────────────────────────────────────
+
+interface TableProps {
+  rows: Employee[];
+  unmatched: boolean;
+  onEdit: (emp: Employee) => void;
+}
+
+function EmployeeTable({ rows, unmatched, onEdit }: TableProps) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200 bg-gray-50">
+            {['Name', 'Employee #', 'Designation', 'Grade', 'Contract Start', 'Status', ''].map((h, i) => (
+              <th
+                key={i}
+                className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((emp) => (
+            <tr
+              key={emp.employee_id}
+              className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${
+                unmatched ? 'border-l-4 border-amber-400' : ''
+              }`}
+            >
+              <td className="px-4 py-3 font-medium text-gray-800">{emp.full_name}</td>
+              <td className="px-4 py-3 font-mono text-xs text-gray-500">{emp.employee_number}</td>
+              <td className="px-4 py-3 text-gray-600">{emp.designation ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
+              <td className="px-4 py-3 text-gray-600">{emp.grade ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
+              <td className="px-4 py-3 text-gray-500 text-xs">{emp.contract_start ?? '—'}</td>
+              <td className="px-4 py-3">
+                <StatusBadge status={emp.status ?? 'ACTIVE'} size="sm" />
+              </td>
+              <td className="px-4 py-3">
+                <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
+                  Edit
+                </Btn>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export function Employees() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
+  const { workspace } = useWorkspaceContext();
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [gradeOptions, setGradeOptions] = useState<string[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editGrade, setEditGrade] = useState('');
-  const [editDesignation, setEditDesignation] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const unmatchedRef = useRef<HTMLDivElement>(null);
 
   function loadEmployees() {
     if (!workspaceId) return;
-    return workspaceApi
+    workspaceApi
       .getEmployees(workspaceId)
       .then(setEmployees)
-      .catch((e) => setError(e.message));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to reload'));
   }
 
   useEffect(() => {
@@ -40,277 +211,114 @@ export function Employees() {
         setGradeOptions(config.grades.map((g) => g.code));
         setDesignationOptions(config.designations.map((d) => d.code));
       })
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [workspaceId]);
-
-  function startEdit(emp: Employee) {
-    setEditingId(emp.employee_id);
-    setEditGrade(emp.grade ?? '');
-    setEditDesignation(emp.designation ?? '');
-    setSaveError(null);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setSaveError(null);
-  }
-
-  async function saveEdit(employeeId: string) {
-    if (!workspaceId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await workspaceApi.updateEmployeeContract(workspaceId, employeeId, {
-        grade_code: editGrade || null,
-        designation_code: editDesignation || null,
-      });
-      await loadEmployees();
-      setEditingId(null);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const [unmatchedOpen, setUnmatchedOpen] = useState(true);
 
   const unmatched = employees.filter((e) => !e.grade || !e.designation);
   const matched   = employees.filter((e) => e.grade && e.designation);
 
   return (
-    <div>
-      <PageHeader title="Employees" subtitle={`Workspace ${workspaceId}`} />
+    <div className="max-w-5xl">
+      <ContentHeader
+        title="Employees"
+        subtitle={loading ? 'Loading…' : `${employees.length} employee${employees.length !== 1 ? 's' : ''}`}
+        back={
+          <Breadcrumb items={[
+            { label: 'Bureau Dashboard', to: '/' },
+            { label: workspace?.name ?? '…', to: `/workspaces/${workspaceId}` },
+            { label: 'Employees' },
+          ]} />
+        }
+      />
 
-      {loading && <p className="text-sm text-slate-500">Loading employees…</p>}
-      {error && <AlertBox type="error" messages={[error]} />}
+      {error && <AlertBanner variant="error" description={error} className="mb-4" />}
 
-      {!loading && !error && employees.length === 0 && (
-        <Card>
-          <p className="text-sm text-slate-400 py-8 text-center">
-            No employees found for this workspace.
-          </p>
-        </Card>
+      {/* Unmatched banner */}
+      {!loading && unmatched.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title={`${unmatched.length} employee${unmatched.length !== 1 ? 's' : ''} missing grade or designation`}
+          description="These employees cannot be included in a payroll run until their contract is complete."
+          action={{
+            label: 'View unmatched →',
+            onClick: () => unmatchedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          }}
+          className="mb-4"
+        />
       )}
 
-      {!loading && !error && employees.length > 0 && (
-        <div className="flex flex-col gap-4">
-          {/* ── Unmatched section ─────────────────────────────────────────── */}
+      {loading ? (
+        <Card padding="sm">
+          <table className="w-full">
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse border-b border-gray-100">
+                  {[40, 20, 20, 15, 15, 10, 5].map((w, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 bg-gray-200 rounded" style={{ width: `${w}%` }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ) : employees.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<PeopleIcon />}
+            headline="No employees yet"
+            body="Employees are added during workspace onboarding. Complete the setup wizard to import your headcount."
+          />
+        </Card>
+      ) : (
+        <div className="space-y-5">
+          {/* Unmatched section */}
           {unmatched.length > 0 && (
-            <Card>
-              <button
-                onClick={() => setUnmatchedOpen((v) => !v)}
-                className="w-full flex items-center justify-between text-left"
-              >
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
-                  ⚠ {unmatched.length} employee{unmatched.length !== 1 ? 's' : ''} with missing grade or designation
-                </span>
-                <span className="text-xs text-slate-400">{unmatchedOpen ? '▲ Hide' : '▼ Show'}</span>
-              </button>
-              {unmatchedOpen && (
-                <div className="mt-3">
-                  <EmployeeTable
-                    rows={unmatched}
-                    editingId={editingId}
-                    editGrade={editGrade}
-                    editDesignation={editDesignation}
-                    gradeOptions={gradeOptions}
-                    designationOptions={designationOptions}
-                    saving={saving}
-                    saveError={saveError}
-                    onEdit={startEdit}
-                    onCancel={cancelEdit}
-                    onSave={saveEdit}
-                    onEditGradeChange={setEditGrade}
-                    onEditDesignationChange={setEditDesignation}
-                    rowClassName="bg-amber-50"
-                  />
+            <div ref={unmatchedRef}>
+              <Card padding="sm">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                    Unmatched — {unmatched.length} employee{unmatched.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-gray-400">Grade or designation is missing</p>
                 </div>
-              )}
-            </Card>
+                <EmployeeTable
+                  rows={unmatched}
+                  unmatched
+                  onEdit={setEditingEmployee}
+                />
+              </Card>
+            </div>
           )}
 
-          {/* ── Matched section ───────────────────────────────────────────── */}
-          <Card>
-            {matched.length === 0 ? (
-              <p className="text-sm text-slate-400 py-4 text-center">No fully-matched employees.</p>
-            ) : (
+          {/* Matched section */}
+          {matched.length > 0 && (
+            <Card padding="sm">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Matched — {matched.length} employee{matched.length !== 1 ? 's' : ''}
+                </p>
+              </div>
               <EmployeeTable
                 rows={matched}
-                editingId={editingId}
-                editGrade={editGrade}
-                editDesignation={editDesignation}
-                gradeOptions={gradeOptions}
-                designationOptions={designationOptions}
-                saving={saving}
-                saveError={saveError}
-                onEdit={startEdit}
-                onCancel={cancelEdit}
-                onSave={saveEdit}
-                onEditGradeChange={setEditGrade}
-                onEditDesignationChange={setEditDesignation}
+                unmatched={false}
+                onEdit={setEditingEmployee}
               />
-            )}
-          </Card>
+            </Card>
+          )}
         </div>
       )}
+
+      <EditSlideOver
+        employee={editingEmployee}
+        gradeOptions={gradeOptions}
+        designationOptions={designationOptions}
+        workspaceId={workspaceId ?? ''}
+        onClose={() => setEditingEmployee(null)}
+        onSaved={loadEmployees}
+      />
     </div>
   );
-}
-
-// ── Shared table ──────────────────────────────────────────────────────────────
-
-interface TableProps {
-  rows: Employee[];
-  editingId: string | null;
-  editGrade: string;
-  editDesignation: string;
-  gradeOptions: string[];
-  designationOptions: string[];
-  saving: boolean;
-  saveError: string | null;
-  rowClassName?: string;
-  onEdit: (emp: Employee) => void;
-  onCancel: () => void;
-  onSave: (id: string) => void;
-  onEditGradeChange: (v: string) => void;
-  onEditDesignationChange: (v: string) => void;
-}
-
-function EmployeeTable({
-  rows,
-  editingId,
-  editGrade,
-  editDesignation,
-  gradeOptions,
-  designationOptions,
-  saving,
-  saveError,
-  rowClassName = '',
-  onEdit,
-  onCancel,
-  onSave,
-  onEditGradeChange,
-  onEditDesignationChange,
-}: TableProps) {
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-slate-100">
-          <Th>Name</Th>
-          <Th>Employee #</Th>
-          <Th>Designation</Th>
-          <Th>Grade</Th>
-          <Th>Contract Start</Th>
-          <Th>Status</Th>
-          <Th></Th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((emp) => {
-          const isEditing = editingId === emp.employee_id;
-          return (
-            <>
-              <tr
-                key={emp.employee_id}
-                className={`border-b border-slate-50 hover:bg-slate-50 ${rowClassName}`}
-              >
-                <Td className="font-medium text-slate-800">{emp.full_name}</Td>
-                <Td className="font-mono">{emp.employee_number}</Td>
-                <Td>
-                  {isEditing ? (
-                    <select
-                      value={editDesignation}
-                      onChange={(e) => onEditDesignationChange(e.target.value)}
-                      className="border border-slate-300 rounded px-2 py-0.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[140px]"
-                    >
-                      <option value="">— select —</option>
-                      {designationOptions.map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    emp.designation ?? '—'
-                  )}
-                </Td>
-                <Td>
-                  {isEditing ? (
-                    <select
-                      value={editGrade}
-                      onChange={(e) => onEditGradeChange(e.target.value)}
-                      className="border border-slate-300 rounded px-2 py-0.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[120px]"
-                    >
-                      <option value="">— select —</option>
-                      {gradeOptions.map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    emp.grade ?? '—'
-                  )}
-                </Td>
-                <Td>{emp.contract_start ?? '—'}</Td>
-                <Td>
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold uppercase ${
-                      emp.status === 'ACTIVE'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {emp.status}
-                  </span>
-                </Td>
-                <Td>
-                  {isEditing ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onSave(emp.employee_id)}
-                        disabled={saving}
-                        className="px-2.5 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50"
-                      >
-                        {saving ? 'Saving…' : 'Save'}
-                      </button>
-                      <button
-                        onClick={onCancel}
-                        disabled={saving}
-                        className="px-2.5 py-1 text-xs font-medium bg-slate-200 text-slate-700 rounded hover:bg-slate-300 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => onEdit(emp)}
-                      className="px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded"
-                    >
-                      Edit
-                    </button>
-                  )}
-                </Td>
-              </tr>
-              {isEditing && saveError && (
-                <tr key={`${emp.employee_id}-err`} className="bg-red-50">
-                  <td colSpan={7} className="px-3 py-1 text-xs text-red-600">{saveError}</td>
-                </tr>
-              )}
-            </>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide py-2 px-3">
-      {children}
-    </th>
-  );
-}
-
-function Td({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
-  return <td className={`py-3 px-3 text-slate-600 ${className}`}>{children}</td>;
 }

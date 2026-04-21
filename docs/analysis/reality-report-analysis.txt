@@ -1,0 +1,551 @@
+ System Reality Report
+
+  Payroll Platform — Business Rules & Workflow Reconciliation
+  Generated: 2026-04-07 | Basis: Codebase inspection against artefacts 0.0–0.6
+
+  ---
+  Legend
+
+  ┌──────────────┬───────────────────────────────────────────────┐
+  │    Symbol    │                    Meaning                    │
+  ├──────────────┼───────────────────────────────────────────────┤
+  │ ✅ Confirmed │ Fully implemented as described                │
+  ├──────────────┼───────────────────────────────────────────────┤
+  │ ⚠️  Partial   │ Implemented but with material gaps            │
+  ├──────────────┼───────────────────────────────────────────────┤
+  │ ❌ Missing   │ Not implemented                               │
+  ├──────────────┼───────────────────────────────────────────────┤
+  │ 🔴 Orphaned  │ Code or data exists but is never exercised    │
+  ├──────────────┼───────────────────────────────────────────────┤
+  │ 🔵 Corrected │ Analysis document was wrong — reality differs │
+  └──────────────┴───────────────────────────────────────────────┘
+
+  ---
+  Part 1 — Corrections to the Analysis Documents
+
+  These are cases where the artefacts (0.0–0.6) stated something that the code directly contradicts.
+
+  ---
+  C1 — Health/Levy/Life Insurance Handlers Do Have Logic
+
+  What the artefacts said: 0.0-highlights.md and 0.1-capability-inventory.md list health_insurance_flat, development_levy_flat, and life_insurance_rule as "Slot registered; no calculation logic." G3 in
+  0.4-gap-outcomes.md repeats this.
+
+  What the code actually does:
+
+  # sequential_executor.py
+  def _handle_health_insurance_flat(code, meta_json, results, salary_components, ctx):
+      amount = Decimal(str(ctx.get("health_insurance_employee_amount", "0")))
+      return {code: amount}
+
+  def _handle_development_levy_flat(code, meta_json, results, salary_components, ctx):
+      amount = Decimal(str(ctx.get("development_levy_amount", "0")))
+      return {code: amount}
+
+  def _handle_life_insurance_rule(code, meta_json, results, salary_components, ctx):
+      rate = Decimal(str(ctx.get("life_insurance_employer_rate", "0")))
+      return {code: (results.get("GROSS_PAY", Decimal("0")) * rate).quantize(...)}
+
+  Context keys are populated in both payroll.py:177–179 and payroll_retry_service.py:171–173:
+
+  health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
+  development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
+  life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
+
+  Verdict: 🔵 Corrected — logic exists. The real problem is a rules_jsonb key name mismatch (see R1 below). The handlers are NOT orphaned.
+
+  ---
+  C2 — platform-components and component-overrides Routes Exist
+
+  What the artefacts said: 0.0-highlights.md and 0.3-user-story-map.md state "GET /{wid}/platform-components and GET /{wid}/component-overrides — no matching routes found in backend route inventory."
+
+  What the code actually does: Both routes exist in backend/api/routes/workspace.py:
+
+  - GET /{workspace_id}/platform-components → line 527 — queries component_metadata WHERE component_class = 'statutory_deduction'
+  - GET /{workspace_id}/component-overrides → line 566 — queries client_component_metadata
+
+  Verdict: 🔵 Corrected — routes exist and are functional. The UI feature (component toggles step 3) has backend support.
+
+  ---
+  C3 — Timeline Endpoint Exists
+
+  What the artefacts said: 0.0-highlights.md says "API client function exists in payroll.ts but no backend route found."
+
+  What the code actually does: GET /{workspace_id}/payroll/runs/{run_id}/timeline exists at payroll.py:866 — calls get_trace_steps(run_id) which queries execution_trace table ordered by created_at.
+
+  Verdict: 🔵 Corrected — route exists. Whether it returns useful data depends on the tracer being active during runs (see R5 below).
+
+  ---
+  C4 — Duplicate Reconciliation Now Returns 409, Not 500
+
+  What the artefacts said: G5 states second reconcile call propagates as HTTP 500.
+
+  What the code actually does: reconciliation_repo.py:72–76 catches IntegrityError and re-raises as ValueError("A reconciliation record already exists..."). The workspace-scoped route at
+  payroll.py:860–862 catches ValueError and returns 409 when "already exists" is in the message.
+
+  Verdict: 🔵 Corrected — G5 is fixed. Duplicate reconciliation returns 409 Conflict, not 500.
+
+  ---
+  Part 2 — New Findings Not in the Analysis Documents
+
+  These issues were found during direct code inspection.
+
+  ---
+  R1 — rules_jsonb Key Mismatch for Health Insurance and Development Levy
+
+  Location: payroll.py:177–178, payroll_retry_service.py:171–172
+
+  The code reads:
+  - rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")
+  - rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")
+
+  The 0.5-business-rules-catalogue.md documents the actual seeded rules_jsonb structure as:
+  { "health_insurance": { "employee_amount": 15000 }, "development_levy": { "amount": 1200 } }
+
+  Keys "employee_amount" and "amount" do not match the keys the code reads ("employee_monthly_amount" and "monthly_amount"). No migration seeds these values with the correct key names into
+  statutory_rule.rules_jsonb.
+
+  Effect: Health insurance and development levy always compute ₦0 from the platform-level statutory rule. The only way they produce a non-zero value is if the workspace configures
+  client_component_metadata overrides using the correct keys (employee_monthly_amount, monthly_amount). If no override exists, both deductions are silently zero and net pay is overstated.
+
+  Classification: ⚠️  Partial — handler logic is correct; data pathway is broken at the rules_jsonb key name level.
+
+  ---
+  R2 — NHF Rate Key Mismatch in rules_jsonb
+
+  Location: payroll.py:176, payroll_retry_service.py:170
+
+  Code reads: rules_jsonb.get("nhf", {}).get("rate", "0.025")
+
+  The catalogue shows stored key as: "nhf": { "employee_rate": "0.025" }
+
+  The key "rate" does not exist in rules_jsonb; the stored key is "employee_rate". The code always falls through to the hardcoded default "0.025". This means:
+
+  - The NHF rate in statutory_rule.rules_jsonb is never read — it cannot be changed via the DB without a code change.
+  - The result is correct at the current statutory rate (2.5%) but the statutory_rule table does not actually control NHF.
+
+  Classification: ⚠️  Partial — NHF calculates correctly by accident (hardcoded default matches rate), but statutory rule governance is broken.
+
+  ---
+  R3 — Life Insurance is an Employer Cost, Not a Net Pay Deduction
+
+  Location: component_metadata migration c1d2e3f4a5b6, sequential_executor.py:423–435
+
+  Life insurance component_class is "employer_cost", not "statutory_deduction". The _handle_net_formula handler only sums components where component_class == "statutory_deduction" when computing
+  NET_PAY:
+
+  total_deductions = sum(
+      (v for k, v in results.items()
+       if component_map.get(k, {}).get("component_class") == "statutory_deduction"),
+      Decimal("0"),
+  )
+
+  Effect: Life insurance is computed (correctly) but does NOT reduce employee net pay — it is an employer-only cost per PRA 2014 s.9(3). The artefacts implied all three (health, levy, life) were payroll
+   deductions; only health and levy are.
+
+  Classification: ✅ Confirmed as correct — the design is intentional and legally accurate, but not clearly documented in the artefacts.
+
+  ---
+  R4 — Approve/Lock Transitions Hardcode performed_by = "admin@internal"
+
+  Location: payroll_approval_service.py:95, 164
+
+  approve_payroll_run() and lock_payroll_run() both write performed_by="admin@internal" to the audit log. Only mark_payroll_run_paid() accepts a real actor_id parameter.
+
+  Effect: The audit trail for approval and locking cannot identify the individual operator — both always appear as the same internal system identity.
+
+  Classification: ⚠️  Partial — audit log is written, but actor attribution is lost for two of three final-stage transitions.
+
+  ---
+  R5 — Execution Trace Written But Route Exposed Without Tracer Integration in Main Run
+
+  Location: execution_trace_repo.py:11, payroll.py:866
+
+  The GET /{wid}/payroll/runs/{run_id}/timeline route queries execution_trace table correctly. However, the main run_payroll path in payroll.py does not instantiate or pass a tracer — the
+  executor.py:144 shows tracer = tracer or NULL_TRACER and NULL_TRACER writes nothing. The execution_tracer.py is available as a decorator/context manager, but is not wired into the primary API-driven
+  run path.
+
+  Effect: The timeline endpoint exists and functions, but returns empty results for all runs triggered through the normal API because the tracer is not active. execution_trace remains empty in
+  production.
+
+  Classification: ⚠️  Partial — read path exists; write path is not connected.
+
+  ---
+  R6 — statutory_rule.state (DRAFT/LIVE) Never Checked at Rule Resolution
+
+  Location: payroll.py:142–150 — statutory rule query
+
+  The query resolves rules by effective_from <= period_end with no WHERE state = 'LIVE' filter. A DRAFT statutory rule with a recent effective_from will be selected and applied to a live run.
+
+  Classification: ⚠️  Partial — the state column exists and is stored; it is never used as a gate.
+
+  ---
+  Part 3 — Business Rules Status
+
+  Category 1: Multi-Client Isolation
+
+  ┌────────────────────────────────────────────┬───────────────────────────────────────────────┬───────────────────────────────────────────────┬──────────────────────────────────────────────────────┐
+  │                    Rule                    │                      DB                       │                     Code                      │                        Status                        │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W1 — workspace_id FK on all tables         │ workspace_id FK NOT NULL on every core table  │ All queries filter by workspace_id            │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W2 — Workspace name required               │ NOT NULL                                      │ —                                             │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W3 — country_code required                 │ NOT NULL                                      │ —                                             │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W4 — Base currency defaults NGN            │ DEFAULT 'NGN'                                 │ —                                             │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W5 — Status defaults DRAFT                 │ DEFAULT 'DRAFT'                               │ —                                             │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W6 — Payroll blocked if workspace not LIVE │ Trigger enforce_workspace_live_before_payroll │ —                                             │ ✅ Confirmed                                         │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W7 — Workspace state machine               │ —                                             │ workspace_state_machine.py — application only │ ⚠️  Partial — no DB-level state machine for workspace │
+  ├────────────────────────────────────────────┼───────────────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
+  │ W8 — country_code implies statutory rules  │ No FK, no CHECK                               │ No validation at workspace creation           │ ❌ Missing — confirmed (G8)                          │
+  └────────────────────────────────────────────┴───────────────────────────────────────────────┴───────────────────────────────────────────────┴──────────────────────────────────────────────────────┘
+
+  ---
+  Category 2: Employee & Contract
+
+  ┌────────────────────────────────────────────┬─────────────────────────────────────────────┬─────────────────────────────────────────┬─────────────────────────────────────────────────┐
+  │                    Rule                    │                     DB                      │                  Code                   │                     Status                      │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E1 — Employee belongs to workspace         │ FK NOT NULL                                 │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E2 — Full name required                    │ NOT NULL                                    │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E3 — Employee number unique per workspace  │ uq_employee_number_per_workspace            │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E4 — Status defaults ACTIVE                │ DEFAULT 'ACTIVE'                            │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E5 — One active contract per employee      │ Partial unique index WHERE end_date IS NULL │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E6 — Contract references salary definition │ FK NOT NULL                                 │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E8 — Contract start date required          │ NOT NULL                                    │ —                                       │ ✅ Confirmed                                    │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E11 — Salary definition effective dates    │ Columns exist                               │ Never queried during execution          │ ❌ Missing — dates stored, never enforced       │
+  ├────────────────────────────────────────────┼─────────────────────────────────────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ E12 — Only ACTIVE employees in payroll     │ —                                           │ WHERE status='ACTIVE' in payroll.py:111 │ ⚠️  Partial — application-only, no DB constraint │
+  └────────────────────────────────────────────┴─────────────────────────────────────────────┴─────────────────────────────────────────┴─────────────────────────────────────────────────┘
+
+  Orphaned fields on employee_contract: grade_id, designation_id — populated during onboarding, never read during payroll execution. Confirmed at payroll.py:111–122.
+
+  ---
+  Category 3: Salary Definition
+
+  ┌─────────────────────────────────────────────────────┬─────────────────────────────────────────────────┬────────────────────────────────────┬─────────────────────────────────────────────────────┐
+  │                        Rule                         │                       DB                        │                Code                │                       Status                        │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD1 — Belongs to workspace                          │ FK NOT NULL                                     │ —                                  │ ✅ Confirmed                                        │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD2 — Name unique per workspace                     │ uq_salary_definition_name_per_workspace         │ —                                  │ ✅ Confirmed                                        │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD3 — components_jsonb is JSON object               │ CHECK constraint                                │ —                                  │ ✅ Confirmed                                        │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD4 — Cannot modify if used in PAID run             │ Trigger                                         │ —                                  │ ✅ Confirmed                                        │
+  │                                                     │ prevent_salary_definition_change_if_used        │                                    │                                                     │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD5 — Must contain BASIC, HOUSING, TRANSPORT        │ —                                               │ hard_validator.py — onboarding     │ ⚠️  Partial — no DB-level check; direct insert       │
+  │                                                     │                                                 │ only                               │ bypasses                                            │
+  ├─────────────────────────────────────────────────────┼─────────────────────────────────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ SD7 — effective_from/effective_to constrains        │ Columns exist                                   │ Never queried at run time          │ 🔴 Orphaned — stored but unused                     │
+  │ validity                                            │                                                 │                                    │                                                     │
+  └─────────────────────────────────────────────────────┴─────────────────────────────────────────────────┴────────────────────────────────────┴─────────────────────────────────────────────────────┘
+
+  ---
+  Category 4: Pay Cycle
+
+  ┌──────────────────────────────────┬────────────────────────────────┬─────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────────┐
+  │               Rule               │               DB               │                              Code                               │                           Status                            │
+  ├──────────────────────────────────┼────────────────────────────────┼─────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ PC1 — Belongs to workspace       │ FK NOT NULL                    │ —                                                               │ ✅ Confirmed                                                │
+  ├──────────────────────────────────┼────────────────────────────────┼─────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ PC2 — frequency stored           │ Column present                 │ pay_cycle_frequency read at payroll.py:207, used to default     │ ✅ Confirmed                                                │
+  │                                  │                                │ period_type                                                     │                                                             │
+  ├──────────────────────────────────┼────────────────────────────────┼─────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ PC3 — definition_json stored     │ Nullable JSONB                 │ pay_cycle_definition loaded at payroll.py:207 and passed to     │ 🔴 Orphaned — passed through but never used in calculation  │
+  │                                  │                                │ persister                                                       │ or output                                                   │
+  ├──────────────────────────────────┼────────────────────────────────┼─────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ PC4 — At most one active pay     │ is_active column; LIMIT 1 in   │ —                                                               │ ⚠️  Partial — no unique constraint; LIMIT 1 is the only      │
+  │ cycle                            │ query                          │                                                                 │ guard                                                       │
+  ├──────────────────────────────────┼────────────────────────────────┼─────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ PC5 — Pay cycle defines run      │ —                              │ Nothing reads run_day, cutoff_day, payment_day                  │ 🔴 Orphaned — scheduling fields stored but unused           │
+  │ schedule                         │                                │                                                                 │                                                             │
+  └──────────────────────────────────┴────────────────────────────────┴─────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────────┘
+
+  ---
+  Category 5: Statutory Rules & Tax Bands
+
+  ┌────────────────────────────────────────┬────────────────────┬─────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────┐
+  │                  Rule                  │         DB         │                            Code                             │                                Status                                │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR1–SR3 — Required fields              │ NOT NULL           │ —                                                           │ ✅ Confirmed                                                         │
+  │                                        │ constraints        │                                                             │                                                                      │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR4 — Most recent rule governs run     │ —                  │ ORDER BY effective_from DESC, version DESC LIMIT 1 in       │ ✅ Confirmed                                                         │
+  │                                        │                    │ payroll.py:142                                              │                                                                      │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR5 — Tax band contiguity              │ No constraint      │ No validation                                               │ ❌ Missing                                                           │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR6 — Tax bands ordered ascending      │ No ORDER BY in     │ paye.py iterates as returned                                │ ⚠️  Partial — payroll.py:182–196 has ORDER BY lower_limit ✅, but no  │
+  │                                        │ query              │                                                             │ constraint                                                           │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR7 — Rate non-negative                │ No CHECK           │ No validation                                               │ ❌ Missing                                                           │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR8 — Pension rates from rules_jsonb   │ —                  │ payroll.py:162–169 — reads with hard error if absent        │ ✅ Confirmed                                                         │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR9 — NHF rate from rules_jsonb        │ —                  │ Reads nhf.rate; DB stores nhf.employee_rate                 │ ⚠️  Partial — always falls back to hardcoded 0.025 (R2)               │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR10 — Rent relief config from         │ —                  │ rent_relief_cfg passed to context; rate key is "TBD" string │ ⚠️  Partial — runtime error if RENT_RELIEF component triggers         │
+  │ rules_jsonb                            │                    │                                                             │                                                                      │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR11 — rules_jsonb keys validated      │ No schema          │ No validation                                               │ ❌ Missing                                                           │
+  │                                        │ validation         │                                                             │                                                                      │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ SR12 — Tie-breaking non-deterministic  │ No unique          │ VERSION DESC is best-effort                                 │ ⚠️  Partial — G7 confirmed                                            │
+  │                                        │ constraint         │                                                             │                                                                      │
+  ├────────────────────────────────────────┼────────────────────┼─────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ statutory_rule.state (DRAFT/LIVE)      │ Column exists      │ Never read in rule resolution                               │ 🔴 Orphaned                                                          │
+  └────────────────────────────────────────┴────────────────────┴─────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────┘
+
+  ---
+  Category 6: Payroll Rules & Rule Sets
+
+  ┌───────────────────────────────────────┬────────────────────┬────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────┐
+  │                 Rule                  │         DB         │                                Code                                │                             Status                             │
+  ├───────────────────────────────────────┼────────────────────┼────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ PR1–PR3 — Legacy rule constraints     │ FK, NOT NULL,      │ —                                                                  │ ✅ Confirmed                                                   │
+  │                                       │ CHECK              │                                                                    │                                                                │
+  ├───────────────────────────────────────┼────────────────────┼────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ PR4 — Legacy superseded by rule_set   │ No enforcement     │ payroll_rule still read for input code discovery; execution uses   │ ⚠️  Partial — split purpose creates inconsistency               │
+  │                                       │                    │ rule_set_item                                                      │                                                                │
+  ├───────────────────────────────────────┼────────────────────┼────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ RS1–RS3 — Rule set constraints        │ FK, NOT NULL       │ —                                                                  │ ✅ Confirmed                                                   │
+  ├───────────────────────────────────────┼────────────────────┼────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ RS4 — Latest rule set governs run     │ —                  │ payroll.py:235–242 — temporal resolution                           │ ✅ Confirmed                                                   │
+  ├───────────────────────────────────────┼────────────────────┼────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ RS6 — Multiple rule sets per          │ No unique          │ —                                                                  │ ❌ Missing — two rule sets with same effective_from cause      │
+  │ workspace/date                        │ constraint         │                                                                    │ non-determinism                                                │
+  └───────────────────────────────────────┴────────────────────┴────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────┘
+
+  ---
+  Category 7: Component Metadata
+
+  ┌─────────────────────────────────────────────┬──────────┬───────────────────────────────────────────────────────┬──────────────┐
+  │                    Rule                     │    DB    │                         Code                          │    Status    │
+  ├─────────────────────────────────────────────┼──────────┼───────────────────────────────────────────────────────┼──────────────┤
+  │ CM1 — execution_priority orders calculation │ —        │ sequential_executor.py:516–519 sorts ASC              │ ✅ Confirmed │
+  ├─────────────────────────────────────────────┼──────────┼───────────────────────────────────────────────────────┼──────────────┤
+  │ CM2 — calculation_method maps to handler    │ —        │ Handler registry; unrecognised method raises KeyError │ ✅ Confirmed │
+  ├─────────────────────────────────────────────┼──────────┼───────────────────────────────────────────────────────┼──────────────┤
+  │ CM3 — is_active=FALSE components skipped    │ —        │ payroll.py:324–326 filters disabled codes             │ ✅ Confirmed │
+  ├─────────────────────────────────────────────┼──────────┼───────────────────────────────────────────────────────┼──────────────┤
+  │ CM4 — client_component_metadata overrides   │ —        │ Deep merge applied in payroll.py:339–355              │ ✅ Confirmed │
+  ├─────────────────────────────────────────────┼──────────┼───────────────────────────────────────────────────────┼──────────────┤
+  │ CM5 — metadata_json structure validated     │ No CHECK │ No validation                                         │ ❌ Missing   │
+  └─────────────────────────────────────────────┴──────────┴───────────────────────────────────────────────────────┴──────────────┘
+
+  ---
+  Category 8: Payroll Run
+
+  ┌───────────────────────────────────────────┬───────────────────────────────────────────┬───────────────────────────────────────────────────────────┬─────────────────────────────────────────────┐
+  │                   Rule                    │                    DB                     │                           Code                            │                   Status                    │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN1–RUN2 — Required fields               │ FK, NOT NULL                              │ —                                                         │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN3 — One run per period                 │ uq_payroll_run_period                     │ HTTP 409 on violation                                     │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN4 — Idempotency key                    │ ux_payroll_run_idempotency                │ Header check + early return in payroll.py:91–108          │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN5 — New run starts DRAFT               │ Trigger                                   │ —                                                         │ ✅ Confirmed                                │
+  │                                           │ enforce_payroll_run_initial_status        │                                                           │                                             │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN6 — Status advances forward only       │ Trigger                                   │ state_machine.py double-gates                             │ ✅ Confirmed                                │
+  │                                           │ validate_payroll_status_transition        │                                                           │                                             │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN7 — PAID run immutable                 │ Trigger prevent_paid_payroll_run_update   │ —                                                         │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN8 — Snapshot immutable                 │ Trigger prevent_run_snapshot_update       │ —                                                         │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN9 — retry_strategy defaults            │ DEFAULT 'PER_EMPLOYEE'                    │ —                                                         │ ✅ Confirmed                                │
+  │ PER_EMPLOYEE                              │                                           │                                                           │                                             │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN11 — Totals equal sum of results       │ No constraint                             │ Not recalculated after retry (G1)                         │ ❌ Missing                                  │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ RUN13 — Readiness prerequisites           │ Trigger enforce_payroll_readiness         │ —                                                         │ ✅ Confirmed                                │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ payroll_run.pay_date                      │ Column present                            │ Stored from payload; never used in calculation            │ 🔴 Orphaned                                 │
+  ├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ payroll_run.rule_set_id                   │ Column present                            │ Written on ADJUSTMENT runs; not read in any downstream    │ ⚠️  Partial — stored but no downstream       │
+  │                                           │                                           │ logic                                                     │ consumer                                    │
+  └───────────────────────────────────────────┴───────────────────────────────────────────┴───────────────────────────────────────────────────────────┴─────────────────────────────────────────────┘
+
+  ---
+  Category 9: Payroll Result
+
+  ┌─────────────────────────────────────────────┬─────────────────────────────────────────┬───────────────────────────────────────────────────┬───────────────────────────────────────────────────┐
+  │                    Rule                     │                   DB                    │                       Code                        │                      Status                       │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES1 — One result per employee per run      │ uq_payroll_result_employee_run          │ —                                                 │ ✅ Confirmed                                      │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES2–RES3 — JSONB type checks               │ CHECK constraints                       │ —                                                 │ ✅ Confirmed                                      │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES4 — calculations_snapshot_json immutable │ Trigger prevent_snapshot_update         │ —                                                 │ ✅ Confirmed                                      │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES5 — Results frozen at CALCULATED+        │ Trigger prevent_payroll_result_mutation │ —                                                 │ ✅ Confirmed                                      │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES7 — Net pay cannot be negative           │ No CHECK                                │ By design; G9 confirmed                           │ ❌ Missing (intentional per design; but no guard) │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES8 — status ENUM                          │ No ENUM constraint                      │ Application-managed                               │ ⚠️  Partial — application only                     │
+  ├─────────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────────────────────────────┼───────────────────────────────────────────────────┤
+  │ RES9 — component_trace_jsonb per result     │ Nullable                                │ Populated by sequential path; NULL on legacy path │ ⚠️  Partial — G12 confirmed                        │
+  └─────────────────────────────────────────────┴─────────────────────────────────────────┴───────────────────────────────────────────────────┴───────────────────────────────────────────────────┘
+
+  ---
+  Category 10: Payroll Input
+
+  ┌───────────────────────────────────────┬──────────────────────┬───────────────────────────────────┬────────────────────────────┐
+  │                 Rule                  │          DB          │               Code                │           Status           │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP1–INP3 — Required fields           │ FK, NOT NULL         │ —                                 │ ✅ Confirmed               │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP4 — NULL means unclaimed           │ Nullable FK          │ —                                 │ ✅ Confirmed               │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP5–INP7 — Claiming logic            │ —                    │ link_inputs_to_run() WHERE clause │ ✅ Confirmed               │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP8 — Valid codes from payroll rules │ —                    │ _load_workspace_input_codes()     │ ✅ Confirmed               │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP9 — No duplicate guard             │ No unique constraint │ —                                 │ ❌ Missing — G11 confirmed │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ INP10 — Quantity must be positive     │ No CHECK             │ No validation                     │ ❌ Missing                 │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ payroll_input.source                  │ Written at INSERT    │ Never read after creation         │ 🔴 Orphaned                │
+  ├───────────────────────────────────────┼──────────────────────┼───────────────────────────────────┼────────────────────────────┤
+  │ payroll_input.input_json              │ Nullable JSONB       │ No reads in any execution path    │ 🔴 Orphaned                │
+  └───────────────────────────────────────┴──────────────────────┴───────────────────────────────────┴────────────────────────────┘
+
+  ---
+  Category 11: Reconciliation
+
+  ┌────────────────────────────────────────────────────┬───────────────────┬─────────────────────────────────────────────────────────────────────────┬────────────────────────────┐
+  │                        Rule                        │        DB         │                                  Code                                   │           Status           │
+  ├────────────────────────────────────────────────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────┼────────────────────────────┤
+  │ RC1 — One record per run                           │ UNIQUE constraint │ reconciliation_repo.py:72–76 converts IntegrityError → ValueError → 409 │ ✅ Confirmed (C4)          │
+  ├────────────────────────────────────────────────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────┼────────────────────────────┤
+  │ RC2 — Expected total from run at time of reconcile │ —                 │ Reads total_net_pay at reconcile time; stale after retry                │ ⚠️  Partial — G1 feeds here │
+  ├────────────────────────────────────────────────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────┼────────────────────────────┤
+  │ RC3 — MATCHED/MISMATCH comparison                  │ —                 │ reconciliation_service.py:62                                            │ ✅ Confirmed               │
+  ├────────────────────────────────────────────────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────┼────────────────────────────┤
+  │ RC4 — No run state gate                            │ No constraint     │ No state check in service                                               │ ❌ Missing — G4 confirmed  │
+  ├────────────────────────────────────────────────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────┼────────────────────────────┤
+  │ RC5 — MISMATCH triggers no action                  │ No workflow       │ —                                                                       │ ❌ Missing — G4 confirmed  │
+  └────────────────────────────────────────────────────┴───────────────────┴─────────────────────────────────────────────────────────────────────────┴────────────────────────────┘
+
+  ---
+  Category 12: Audit & Event Store
+
+  ┌────────────────────────────────────────────┬───────────┬────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────┐
+  │                    Rule                    │    DB     │                                      Code                                      │                        Status                         │
+  ├────────────────────────────────────────────┼───────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ AL1 — Every transition produces audit      │ —         │ All approval/lock/paid transitions call save_audit_log                         │ ⚠️  Partial — retry transitions are NOT logged (G2)    │
+  │ entry                                      │           │                                                                                │                                                       │
+  ├────────────────────────────────────────────┼───────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ AL2 — Audit records immutable              │ No        │ Convention only                                                                │ ❌ Missing                                            │
+  │                                            │ trigger   │                                                                                │                                                       │
+  ├────────────────────────────────────────────┼───────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ AL3 — performed_by                         │ —         │ Hardcoded "admin@internal" on approve and lock; actor_id used on paid only     │ ⚠️  Partial                                            │
+  │                                            │           │ (R4)                                                                           │                                                       │
+  ├────────────────────────────────────────────┼───────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ EV1 — Events on transitions                │ —         │ build_transition_event() + save_event()                                        │ ✅ Confirmed for status transitions; missing for      │
+  │                                            │           │                                                                                │ retry                                                 │
+  ├────────────────────────────────────────────┼───────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ EV2 — No read API                          │ —         │ No query endpoint for audit_log or event_store                                 │ ❌ Missing                                            │
+  └────────────────────────────────────────────┴───────────┴────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────┘
+
+  ---
+  Category 13: Data Integrity Guarantees
+
+  ┌───────────────────────────────────┬───────────────────────────────────┬────────────────────────────────────┬──────────────────────────┐
+  │               Rule                │                DB                 │                Code                │          Status          │
+  ├───────────────────────────────────┼───────────────────────────────────┼────────────────────────────────────┼──────────────────────────┤
+  │ Duplicate payroll runs impossible │ uq_payroll_run_period             │ —                                  │ ✅ Confirmed             │
+  ├───────────────────────────────────┼───────────────────────────────────┼────────────────────────────────────┼──────────────────────────┤
+  │ Concurrent transitions prevented  │ SELECT FOR UPDATE                 │ In all approval functions          │ ✅ Confirmed             │
+  ├───────────────────────────────────┼───────────────────────────────────┼────────────────────────────────────┼──────────────────────────┤
+  │ No employee appears twice per run │ uq_payroll_result_employee_run    │ —                                  │ ✅ Confirmed             │
+  ├───────────────────────────────────┼───────────────────────────────────┼────────────────────────────────────┼──────────────────────────┤
+  │ Calculations reproducible         │ Pure functions + frozen snapshots │ v2 snapshot embeds full rule state │ ✅ Confirmed             │
+  ├───────────────────────────────────┼───────────────────────────────────┼────────────────────────────────────┼──────────────────────────┤
+  │ Run totals equal sum of results   │ No constraint                     │ Not recalculated after retry       │ ❌ Missing — X1/RUN11/G1 │
+  └───────────────────────────────────┴───────────────────────────────────┴────────────────────────────────────┴──────────────────────────┘
+
+  ---
+  Part 4 — Execution Flow Reconciliation
+
+  Flow 1: Full Payroll Run
+
+  ┌─────────────────────────────────┬───────────┬─────────────────────────────────────────┬─────────────────────────────────────────────┐
+  │              Step               │ Described │               Implemented               │                   Status                    │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A1 Load workspace               │ ✅        │ payroll.py:79–88                        │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A2 Idempotency check            │ ✅        │ payroll.py:91–108                       │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A3 Load employees               │ ✅        │ payroll.py:110–133                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A4 Temporal statutory rule      │ ✅        │ payroll.py:142–159                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A5 Extract statutory rates      │ ✅        │ payroll.py:161–179                      │ ⚠️  NHF and HI/levy keys mismatched (R1, R2) │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A6 Load tax bands               │ ✅        │ payroll.py:182–196                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A7 Load pay cycle               │ ✅        │ payroll.py:198–208                      │ ⚠️  definition_json loaded but not used      │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A8 Build period context         │ ✅        │ payroll.py:212–221                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A9 Temporal rule set resolution │ ✅        │ payroll.py:223–291                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A10 Load component metadata     │ ✅        │ payroll.py:292–312                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A11 Load client overrides       │ ✅        │ payroll.py:314–355                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A12 Cross-period input prefetch │ ✅        │ payroll.py:370–440                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ A13 Build v2 snapshot           │ ✅        │ payroll.py:444–459                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ B1 Load unclaimed inputs        │ ✅        │ payroll.py:362–368                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ C1 Pure domain execution        │ ✅        │ payroll_run_service.py                  │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ D Persist in transaction        │ ✅        │ payroll_run_persister.py                │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ E Input claiming                │ ✅        │ payroll.py:532–537                      │ ✅                                          │
+  ├─────────────────────────────────┼───────────┼─────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ Execution trace steps           │ Described │ NULL_TRACER in place — no trace written │ 🔴 Orphaned flow                            │
+  └─────────────────────────────────┴───────────┴─────────────────────────────────────────┴─────────────────────────────────────────────┘
+
+  Flow 2: Retry
+
+  ┌────────────────────────────┬───────────┬────────────────────────────────────────┬────────┐
+  │            Step            │ Described │              Implemented               │ Status │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Row lock SELECT FOR UPDATE │ ✅        │ payroll_retry_service.py               │ ✅     │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Validate must be PARTIAL   │ ✅        │ Guards for PAID/APPROVED/LOCKED        │ ✅     │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ PER_EMPLOYEE path          │ ✅        │ Delete FAILED, re-execute, INSERT      │ ✅     │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ FULL_RUN path              │ ✅        │ Delete ALL, re-execute all employees   │ ✅     │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Recompute run status       │ ✅        │ CALCULATED if 0 failures remain        │ ✅     │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Recalculate run totals     │ Implied   │ Not done — totals remain from original │ ❌ G1  │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Write audit log for retry  │ Implied   │ Not done                               │ ❌ G2  │
+  ├────────────────────────────┼───────────┼────────────────────────────────────────┼────────┤
+  │ Write event for retry      │ Implied   │ **                                     │        │
+  └────────────────────────────┴───────────┴────────────────────────────────────────┴────────┘
+
+⏺ I now have everything needed. Writing the report directly.
+

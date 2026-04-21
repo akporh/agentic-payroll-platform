@@ -2,6 +2,7 @@
 Payroll Run Repository.
 """
 
+import json
 from decimal import Decimal
 
 from psycopg2.extras import Json
@@ -9,6 +10,20 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from backend.infra.db.session import SessionLocal
+
+
+def _decimal_safe_dumps(obj: object) -> str:
+    """JSON serializer that converts Decimal to float (not str) for JSONB compatibility."""
+    class _Enc(json.JSONEncoder):
+        def default(self, o: object) -> object:
+            if isinstance(o, Decimal):
+                return float(o)
+            return super().default(o)
+    return json.dumps(obj, cls=_Enc)
+
+
+def _Json(obj: object) -> Json:
+    return Json(obj, dumps=_decimal_safe_dumps)
 
 
 def save_payroll_run(
@@ -20,6 +35,7 @@ def save_payroll_run(
     period_start: str | None = None,
     period_end: str | None = None,
     total_gross_pay: Decimal = Decimal("0"),
+    total_deduction: Decimal = Decimal("0"),
     total_tax: Decimal = Decimal("0"),
     total_net_pay: Decimal = Decimal("0"),
     retry_strategy: str = "PER_EMPLOYEE",
@@ -98,12 +114,12 @@ def save_payroll_run(
             {
                 "payroll_run_id":          payroll_run_id,
                 "workspace_id":            workspace_id,
-                "rules_context_snapshot":  Json(rules_context_snapshot),
+                "rules_context_snapshot":  _Json(rules_context_snapshot),
                 "idempotency_key":         idempotency_key,
                 "period_start":            period_start,
                 "period_end":              period_end,
                 "total_gross_pay":         total_gross_pay,
-                "total_deduction":         total_tax,
+                "total_deduction":         total_deduction,
                 "total_tax":               total_tax,
                 "total_net_pay":           total_net_pay,
                 "retry_strategy":          retry_strategy,

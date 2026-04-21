@@ -24,9 +24,10 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from backend.infra.db.session import SessionLocal
-from backend.domain.payroll.sequential_executor import run_sequential_payroll
+from backend.domain.payroll.sequential_executor import run_sequential_payroll, build_runtime_component_registry
 from backend.domain.payroll.rule_evaluator import apply_payroll_rules
 from backend.domain.payroll.period_context import build_period_context
+from backend.infra.repositories.rate_code_repo import list_rate_codes
 
 console = Console(highlight=False)
 
@@ -64,7 +65,7 @@ ENGINE_CODE = {
         "annual_rent_paid = resolved.get('ANNUAL_RENT_PAID', Decimal('0'))\n"
         "rate = Decimal(str(rent_relief_cfg.get('rate', '0')))\n"
         "cap  = Decimal(str(rent_relief_cfg.get('cap',  '0')))\n"
-        "results[code] = calculate_rent_relief(annual_rent_paid, rate, cap)"
+        "results[code] = calculate_rent_relief_for_period(annual_rent_paid, rate, cap, annualization_factor)"
     ),
     "taxable_income": (
         "# TAXABLE_INCOME  (execution_priority: 300)\n"
@@ -77,8 +78,8 @@ ENGINE_CODE = {
     "paye_rule": (
         "# PAYE  (execution_priority: 400)\n"
         "# TAXABLE_INCOME already has pension + rent relief subtracted\n"
-        "results[code] = calculate_monthly_paye(\n"
-        "    results.get('TAXABLE_INCOME', Decimal('0')), tax_bands\n"
+        "results[code] = calculate_paye_for_period(\n"
+        "    results.get('TAXABLE_INCOME', Decimal('0')), tax_bands, annualization_factor\n"
         ")"
     ),
     "net_formula": (
@@ -124,7 +125,8 @@ def _fmt(amount, currency="NGN"):
 
 # ─────────────────────────────────────────────────────────────────────────────
 def run(employee_id: str, workspace_id: str | None = None,
-        period_start: str | None = None, period_end: str | None = None):
+        period_start: str | None = None, period_end: str | None = None,
+        employee_inputs_raw: dict | None = None):
     session = SessionLocal()
     console.print()
     console.rule("[bold cyan]STEP-THROUGH  ·  run_sequential_payroll()[/bold cyan]", style="cyan")
@@ -466,10 +468,32 @@ def run(employee_id: str, workspace_id: str | None = None,
     ).mappings().first()
     pay_cycle_frequency = pay_cycle_row["frequency"] if pay_cycle_row else None
 
+    # Load public holidays for the period
+    from datetime import date as _date
+    _ph_start = period_start or str(_date.today().replace(day=1))
+    _ph_end   = period_end   or str(_date.today())
+    ph_rows = session.execute(
+        text("""
+            SELECT holiday_date FROM national_public_holiday
+            WHERE country_code = :cc
+              AND holiday_date BETWEEN :start AND :end
+            UNION
+            SELECT holiday_date FROM workspace_public_holiday
+            WHERE workspace_id = :wid
+              AND holiday_date BETWEEN :start AND :end
+        """),
+        {"cc": country, "wid": workspace_id, "start": _ph_start, "end": _ph_end},
+    ).fetchall()
+    public_holiday_dates = {r[0] for r in ph_rows}
+    if public_holiday_dates:
+        console.print(f"  [dim]  {len(public_holiday_dates)} public holiday(s) in period: "
+                      f"{sorted(public_holiday_dates)}[/dim]")
+
     period_ctx = build_period_context(
         period_start=period_start,
         period_end=period_end,
         period_type=pay_cycle_frequency,
+        public_holiday_dates=public_holiday_dates,
     )
 
     # 10. payroll_input → employee_inputs dict
@@ -531,13 +555,24 @@ def run(employee_id: str, workspace_id: str | None = None,
     if employee_inputs:
         for code, events in employee_inputs.items():
             for ev in events:
-                claimed_note = " [claimed]" if ev["claimed"] else " [unclaimed]"
+                claimed_note = " [claimed]" if ev.get("claimed") else " [unclaimed]"
                 console.print(
                     f"  [dim]  {code:<28} qty={ev['quantity']}  "
-                    f"ref={ev['reference_date']}  category={ev['category']}{claimed_note}[/dim]"
+                    f"ref={ev['reference_date']}  category={ev.get('category', '—')}{claimed_note}[/dim]"
                 )
     else:
         console.print("  [dim]  (no payroll inputs for this employee in this period)[/dim]")
+
+    # Merge --inputs CLI overrides on top of DB inputs (CLI wins on collision)
+    if employee_inputs_raw:
+        console.print(f"  [bold yellow]  ⚡ --inputs override: {employee_inputs_raw}[/bold yellow]")
+        for code, value in employee_inputs_raw.items():
+            events = (
+                value if isinstance(value, list)
+                else [{"quantity": value, "reference_date": None, "category": "CLI", "claimed": False}]
+            )
+            employee_inputs[code] = events
+            console.print(f"  [yellow]  → injected {code} = {value}[/yellow]")
 
     session.close()
 
@@ -545,16 +580,11 @@ def run(employee_id: str, workspace_id: str | None = None,
     console.print()
     console.rule("[bold magenta]PHASE 2 — ASSEMBLE INPUTS[/bold magenta]", style="magenta")
 
-    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("rate", "0.025")))
-    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_monthly_amount", "0")))
-    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("monthly_amount", "0")))
-    life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
-
-    # Apply flat-amount client_component_metadata overrides (mirrors production payroll.py)
-    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
-        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
-    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
-        health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
+    # Read from component_metadata (client_meta already merges global defaults + workspace overrides)
+    nhf_rate                         = Decimal(str(client_meta.get("NHF_CONTRIBUTION", {}).get("employee_rate", "0.025")))
+    health_insurance_employee_amount = Decimal(str(client_meta.get("HEALTH_INSURANCE_EMPLOYEE", {}).get("employee_amount", "0")))
+    development_levy_amount          = Decimal(str(client_meta.get("DEVELOPMENT_LEVY", {}).get("amount", "0")))
+    life_insurance_employer_rate     = Decimal(str(client_meta.get("LIFE_INSURANCE", {}).get("employer_rate", "0")))
 
     step(
         "context dict",
@@ -622,6 +652,7 @@ def run(employee_id: str, workspace_id: str | None = None,
         "    client_meta       = client_meta,\n"
         ")",
     )
+    rate_code_map = {row["code"]: row for row in list_rate_codes(workspace_id)}
     salary_components, rule_trace = apply_payroll_rules(
         salary_components=salary_components,
         payroll_rules=payroll_rules,
@@ -629,6 +660,7 @@ def run(employee_id: str, workspace_id: str | None = None,
         client_meta=client_meta,
         working_days=period_ctx.working_days,
         calendar_days=period_ctx.calendar_days,
+        rate_code_map=rate_code_map,
     )
 
     for entry in rule_trace:
@@ -642,15 +674,30 @@ def run(employee_id: str, workspace_id: str | None = None,
 
     step(
         "call run_sequential_payroll()",
-        "from backend.domain.payroll.sequential_executor import run_sequential_payroll\n"
+        "from backend.domain.payroll.sequential_executor import (\n"
+        "    run_sequential_payroll, build_runtime_component_registry\n"
+        ")\n"
+        "\n"
+        "# Merge rule-injected components (OT, bonuses) into the registry so\n"
+        "# sum_earnings picks them up at priority 50 before GROSS_PAY at 100.\n"
+        "runtime_metadata = build_runtime_component_registry(\n"
+        "    platform_metadata = component_metadata,\n"
+        "    payroll_rules     = payroll_rules,\n"
+        "    employee_inputs   = employee_inputs,\n"
+        ")\n"
         "\n"
         "output = run_sequential_payroll(\n"
         "    salary_components  = salary_components,\n"
-        "    component_metadata = component_metadata,\n"
+        "    component_metadata = runtime_metadata,\n"
         "    context            = context,\n"
         ")",
     )
-    output = run_sequential_payroll(salary_components, component_metadata, context)
+    runtime_metadata = build_runtime_component_registry(
+        platform_metadata=component_metadata,
+        payroll_rules=payroll_rules,
+        employee_inputs=employee_inputs,
+    )
+    output = run_sequential_payroll(salary_components, runtime_metadata, context)
 
     results = output["results"]
     trace   = output["trace"]
@@ -701,19 +748,28 @@ def run(employee_id: str, workspace_id: str | None = None,
 
     console.print(t)
 
-    gross       = results.get("GROSS_PAY",        Decimal("0"))
-    pension     = results.get("PENSION_EMPLOYEE", Decimal("0"))
+    gross       = results.get("GROSS_PAY",                  Decimal("0"))
+    pension     = results.get("PENSION_EMPLOYEE",           Decimal("0"))
     rent_relief = results.get("RENT_RELIEF")
-    paye        = results.get("PAYE",             Decimal("0"))
-    net         = results.get("NET_PAY",          Decimal("0"))
+    paye        = results.get("PAYE",                       Decimal("0"))
+    nhf         = results.get("NHF_CONTRIBUTION",           Decimal("0"))
+    hi          = results.get("HEALTH_INSURANCE_EMPLOYEE",  Decimal("0"))
+    dev_levy    = results.get("DEVELOPMENT_LEVY",           Decimal("0"))
+    net         = results.get("NET_PAY",                    Decimal("0"))
 
     console.print()
-    console.print(f"  [bold green]Gross Pay           [/bold green] : {_fmt(gross, currency)}")
-    console.print(f"  [bold red]  − Pension          [/bold red] : {_fmt(pension, currency)}")
+    console.print(f"  [bold green]Gross Pay              [/bold green] : {_fmt(gross, currency)}")
+    console.print(f"  [bold red]  − Pension             [/bold red] : {_fmt(pension, currency)}")
     if rent_relief is not None:
-        console.print(f"  [bold bright_magenta]  − Rent Relief (↓ tax)[/bold bright_magenta] : {_fmt(rent_relief, currency)}")
-    console.print(f"  [bold red]  − PAYE             [/bold red] : {_fmt(paye, currency)}")
-    console.print(f"  [bold cyan]= Net Pay           [/bold cyan] : [bold]{_fmt(net, currency)}[/bold]")
+        console.print(f"  [bold bright_magenta]  − Rent Relief (↓ tax) [/bold bright_magenta] : {_fmt(rent_relief, currency)}")
+    console.print(f"  [bold red]  − PAYE                [/bold red] : {_fmt(paye, currency)}")
+    if nhf:
+        console.print(f"  [bold red]  − NHF                 [/bold red] : {_fmt(nhf, currency)}")
+    if hi:
+        console.print(f"  [bold red]  − Health Insurance    [/bold red] : {_fmt(hi, currency)}")
+    if dev_levy:
+        console.print(f"  [bold red]  − Development Levy    [/bold red] : {_fmt(dev_levy, currency)}")
+    console.print(f"  [bold cyan]= Net Pay              [/bold cyan] : [bold]{_fmt(net, currency)}[/bold]")
     console.print()
     console.rule(style="dim")
     console.print(f"[dim]  {STEP_N} steps shown  ·  {len(trace)} engine trace entries  ·  no DB writes[/dim]")
@@ -731,6 +787,14 @@ if __name__ == "__main__":
                         help="Pay period start date YYYY-MM-DD (default: first day of current month)")
     parser.add_argument("--period-end", default=None,
                         help="Pay period end date YYYY-MM-DD (default: last day of period_start's month)")
+    parser.add_argument("--inputs", metavar="JSON", default=None,
+                        help="Employee event data as JSON. Merged on top of any payroll_input DB rows. "
+                             "Example: '{\"regular_overtime_days\": 2, \"weekend_days\": 1}'")
     args = parser.parse_args()
+    employee_inputs_raw = None
+    if args.inputs:
+        import json as _json
+        employee_inputs_raw = _json.loads(args.inputs)
     run(args.employee_id, workspace_id=args.workspace_id,
-        period_start=args.period_start, period_end=args.period_end)
+        period_start=args.period_start, period_end=args.period_end,
+        employee_inputs_raw=employee_inputs_raw)

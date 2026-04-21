@@ -71,6 +71,7 @@ def create_salary_definition(
     db,
     workspace_id: str,
     name: str,
+    code: str,
     components_jsonb: dict,
     effective_from=None,
     effective_to=None,
@@ -79,6 +80,7 @@ def create_salary_definition(
     salary_definition = SalaryDefinition(
         workspace_id=workspace_id,
         name=name,
+        code=code.upper(),
         components_jsonb=components_jsonb,
         effective_from=effective_from,
         effective_to=effective_to,

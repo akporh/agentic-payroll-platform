@@ -44,6 +44,7 @@ export const workspaceApi = {
     workspaceId: string,
     payload: {
       name: string;
+      code: string;
       components_jsonb: Record<string, unknown>;
       effective_from?: string;
       effective_to?: string;
@@ -101,9 +102,18 @@ export const workspaceApi = {
     ),
 
   getConfiguration: (workspaceId: string) =>
-    api.get<{ grades: { code: string }[]; designations: { code: string }[] }>(
-      `/${workspaceId}/configuration`
-    ),
+    api.get<{
+      workspace: { id: string; name: string; country_code: string; currency_code: string; status: string };
+      pay_cycle: { frequency: string; run_day: number; cutoff_day: number; payment_day: number } | null;
+      grades: { code: string; description: string | null }[];
+      designations: { code: string; description: string | null }[];
+      salary_definitions: {
+        salary_definition_id: string; name: string; code: string;
+        components: { component_name: string; amount: number }[];
+      }[];
+      payroll_rules: { rule_id: string; name: string; rule_type: string; method: string; is_active: boolean; rule_definition_json: Record<string, unknown> }[];
+      component_overrides: { component_name: string; is_active: boolean; proration_strategy: string | null }[];
+    }>(`/${workspaceId}/configuration`),
 
   updateEmployeeContract: (
     workspaceId: string,
@@ -149,4 +159,35 @@ export const workspaceApi = {
 
   deletePublicHoliday: (workspaceId: string, holidayId: string) =>
     api.delete<{ status: string; holiday_id: string }>(`/workspaces/${workspaceId}/public-holidays/${holidayId}`),
+
+  // Track J — Post-Onboarding Config Management PATCH endpoints
+  updatePayCycle: (workspaceId: string, payload: {
+    frequency?: string; run_day?: number; cutoff_day?: number; payment_day?: number;
+  }) => api.patch<{ status: string }>(`/${workspaceId}/pay-cycle`, payload),
+
+  updateGrade: (workspaceId: string, gradeCode: string, payload: { description?: string }) =>
+    api.patch<{ status: string }>(`/${workspaceId}/grade/${encodeURIComponent(gradeCode)}`, payload),
+
+  updateDesignation: (workspaceId: string, designationCode: string, payload: { description?: string }) =>
+    api.patch<{ status: string }>(`/${workspaceId}/designation/${encodeURIComponent(designationCode)}`, payload),
+
+  updateSalaryDefinition: (workspaceId: string, salaryDefinitionId: string, payload: {
+    description?: string;
+    components_jsonb: Array<{ component_name: string; amount: number }>;
+  }) => api.patch<{ status: string }>(`/${workspaceId}/salary-definition/${salaryDefinitionId}`, payload),
+
+  updatePayrollRule: (workspaceId: string, ruleId: string, payload: { is_active?: boolean; rule_name?: string; rule_definition_json?: Record<string, unknown> }) =>
+    api.patch<{ status: string }>(`/${workspaceId}/payroll-rule/${ruleId}`, payload),
+
+  deletePayrollRule: (workspaceId: string, ruleId: string) =>
+    api.delete<{ status: string; rule_id: string }>(`/${workspaceId}/payroll-rule/${ruleId}`),
+
+  updateComponentOverride: (workspaceId: string, componentCode: string, payload: {
+    is_active?: boolean; proration_strategy?: string;
+  }) => api.patch<{ status: string }>(`/${workspaceId}/component-overrides/${encodeURIComponent(componentCode)}`, payload),
+
+  getPlatformComponents: (workspaceId: string) =>
+    api.get<Array<{ component_code: string; label: string; component_class: string }>>(
+      `/${workspaceId}/platform-components`
+    ),
 };

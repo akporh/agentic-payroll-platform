@@ -1,12 +1,39 @@
+/**
+ * S7 — Payroll Inputs (Input Inbox)
+ *
+ * Design decisions honoured:
+ * DD-8  Framed as an "Inbox" — title "Payroll Inputs", pending count in subtitle
+ * DD-5  Empty state has a specific action CTA
+ * DD-6  Input code dropdown groups by category (EARNING / DEDUCTION / INFORMATION)
+ * DD-3  Single primary action: "Add Input" opens a SlideOver (not inline form)
+ *
+ * Adaeze's mental model: she is clearing a to-do list before month-end.
+ * The inbox framing maps directly to that. Each pending input is something
+ * she has committed to include. The pending count tells her how much is ready.
+ */
+
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { payrollInputApi } from '../api/payrollInput';
 import { workspaceApi } from '../api/workspace';
 import type { PayrollInput, Employee } from '../types/payroll';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Btn } from '../components/ui/Btn';
-import { AlertBox } from '../components/ui/AlertBox';
+import {
+  ContentHeader,
+  SlideOver,
+  Card,
+  Btn,
+  IconBtn,
+  DownloadBtn,
+  SearchableSelect,
+  NumberInput,
+  DateInput,
+  AlertBanner,
+  EmptyState,
+  StatusBadge,
+  useToast,
+  Breadcrumb,
+} from '../design-system';
+import { useWorkspaceContext } from '../context/WorkspaceContext';
 
 interface InputCodeDef {
   code: string;
@@ -25,21 +52,77 @@ function showsAmt(def: InputCodeDef | undefined) {
   return def?.calculation_method === 'fixed_amount';
 }
 
+// ── Category badge (EARNING / DEDUCTION / INFORMATION) ───────────────────────
+
+function CategoryBadge({ category }: { category: string }) {
+  const cfg =
+    category === 'EARNING'
+      ? 'bg-green-100 text-green-800'
+      : category === 'DEDUCTION'
+      ? 'bg-red-100 text-red-800'
+      : 'bg-gray-100 text-gray-600';
+  return (
+    <span
+      style={{ borderRadius: 'var(--radius-badge)' }}
+      className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cfg}`}
+    >
+      {category}
+    </span>
+  );
+}
+
+// ── Trash icon ────────────────────────────────────────────────────────────────
+
+function TrashIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+    </svg>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+    </svg>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export function PayrollInputs() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
-  const [inputs,     setInputs]     = useState<PayrollInput[]>([]);
-  const [employees,  setEmployees]  = useState<Employee[]>([]);
-  const [inputDefs,  setInputDefs]  = useState<InputCodeDef[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
+  const toast = useToast();
+  const { workspace } = useWorkspaceContext();
 
-  // form state
-  const [employeeId,      setEmployeeId]      = useState('');
-  const [inputCode,       setInputCode]       = useState('');
-  const [quantity,        setQuantity]        = useState('');
-  const [rate,            setRate]            = useState('');
-  const [amount,          setAmount]          = useState('');
+  const [inputs, setInputs] = useState<PayrollInput[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [inputDefs, setInputDefs] = useState<InputCodeDef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
+
+  // slide-over state
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // form fields
+  const [employeeId, setEmployeeId] = useState('');
+  const [inputCode, setInputCode] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [rate, setRate] = useState('');
+  const [amount, setAmount] = useState('');
   const [effectivePeriod, setEffectivePeriod] = useState('');
 
   useEffect(() => {
@@ -54,15 +137,25 @@ export function PayrollInputs() {
         setInputs(data.inputs);
         setInputDefs(codesData.input_codes);
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setPageError(e.message))
       .finally(() => setLoading(false));
   }, [workspaceId]);
+
+  function resetForm() {
+    setEmployeeId('');
+    setInputCode('');
+    setQuantity('');
+    setRate('');
+    setAmount('');
+    setEffectivePeriod('');
+    setFormError(null);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!workspaceId || !employeeId || !inputCode) return;
     setSubmitting(true);
-    setError(null);
+    setFormError(null);
     try {
       const payload: {
         employee_id: string;
@@ -72,24 +165,19 @@ export function PayrollInputs() {
         amount?: number;
         reference_date?: string;
       } = { employee_id: employeeId, input_code: inputCode };
-      if (quantity)        payload.quantity       = parseFloat(quantity);
-      if (rate)            payload.rate           = parseFloat(rate);
-      if (amount)          payload.amount         = parseFloat(amount);
+      if (quantity) payload.quantity = parseFloat(quantity);
+      if (rate) payload.rate = parseFloat(rate);
+      if (amount) payload.amount = parseFloat(amount);
       if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
 
       await payrollInputApi.create(workspaceId, payload);
-      // Re-fetch list to get full row with employee name
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
-      // Reset form
-      setEmployeeId('');
-      setInputCode('');
-      setQuantity('');
-      setRate('');
-      setAmount('');
-      setEffectivePeriod('');
+      resetForm();
+      setPanelOpen(false);
+      toast.show('success', 'Input added to payroll inbox');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to add input');
+      setFormError(e instanceof Error ? e.message : 'Failed to add input');
     } finally {
       setSubmitting(false);
     }
@@ -100,234 +188,235 @@ export function PayrollInputs() {
     try {
       await payrollInputApi.delete(workspaceId, inputId);
       setInputs((prev) => prev.filter((i) => i.payroll_input_id !== inputId));
+      toast.show('success', 'Input removed');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to delete input');
+      toast.show('error', e instanceof Error ? e.message : 'Failed to delete input');
     }
   }
 
   const selectedDef = inputDefs.find((d) => d.code === inputCode);
-  const category = selectedDef?.category ?? '';
+
+  // Group input codes by category for DD-6
+  const employeeOptions = employees.map((e) => ({
+    value: e.employee_id,
+    label: `${e.full_name} (${e.employee_number})`,
+  }));
+
+  const inputCodeOptions = inputDefs.map((d) => ({
+    value: d.code,
+    label: `${d.rule_name}${d.code !== d.rule_name ? ` (${d.code})` : ''}`,
+    group: d.category,
+  }));
+
+  const pendingCount = inputs.length;
 
   return (
-    <div>
-      <PageHeader
-        title="Period Inputs"
-        subtitle="Variable events pending for next payroll run"
+    <div className="max-w-5xl">
+      {/* DD-8: Inbox framing — title + pending count */}
+      <ContentHeader
+        title="Payroll Inputs"
+        subtitle={
+          loading
+            ? 'Loading…'
+            : pendingCount > 0
+            ? `${pendingCount} pending — will be claimed on next payroll run`
+            : 'No pending inputs for next run'
+        }
+        back={
+          <Breadcrumb items={[
+            { label: 'Bureau Dashboard', to: '/' },
+            { label: workspace?.name ?? '…', to: `/workspaces/${workspaceId}` },
+            { label: 'Period Inputs' },
+          ]} />
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/workspaces/${workspaceId}/payroll/inputs/bulk`}
+              className="text-sm text-brand hover:underline"
+            >
+              Bulk upload
+            </Link>
+            <Btn
+              variant="primary"
+              size="md"
+              icon={<PlusIcon />}
+              iconPosition="left"
+              onClick={() => { resetForm(); setPanelOpen(true); }}
+            >
+              Add Input
+            </Btn>
+          </div>
+        }
       />
 
-      {error && <AlertBox type="error" messages={[error]} />}
-
-      {!loading && (
-        <div className="mb-4 px-1">
-          <span className="text-sm text-slate-500">
-            {inputs.length} input(s) pending — will be claimed on next payroll run
-          </span>
-        </div>
+      {pageError && (
+        <AlertBanner variant="error" title="Failed to load inputs" description={pageError} className="mb-4" />
       )}
 
-      {/* Add Input Form */}
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Add Input</h2>
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
-          {/* Employee */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500">Employee</label>
-            <select
-              className="border border-slate-200 rounded px-2 py-1.5 text-sm text-slate-700 min-w-[180px]"
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              required
-            >
-              <option value="">Select employee…</option>
-              {employees.map((emp) => (
-                <option key={emp.employee_id} value={emp.employee_id}>
-                  {emp.full_name} ({emp.employee_number})
-                </option>
+      {/* Inputs table */}
+      <Card padding="sm">
+        {loading ? (
+          <table className="w-full">
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse border-b border-gray-100">
+                  {[60, 80, 50, 40, 40, 40, 50, 30].map((w, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 bg-gray-200 rounded" style={{ width: `${w}%` }} />
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </select>
-          </div>
-
-          {/* Input Code */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500">Input Code</label>
-            <select
-              className="border border-slate-200 rounded px-2 py-1.5 text-sm text-slate-700 min-w-[180px]"
-              value={inputCode}
-              onChange={(e) => { setInputCode(e.target.value); setQuantity(''); setRate(''); setAmount(''); }}
-              required
-            >
-              <option value="">Select code…</option>
-              {inputDefs.map((def) => (
-                <option key={def.code} value={def.code}>
-                  {def.rule_name}{def.code !== def.rule_name ? ` (${def.code})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Category hint */}
-          {category && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Category</label>
-              <span
-                className={`px-2 py-1.5 rounded text-xs font-semibold ${
-                  category === 'EARNING'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-red-100 text-red-700'
-                }`}
-              >
-                {category}
-              </span>
-            </div>
-          )}
-
-          {/* Quantity */}
-          {inputCode && showsQty(selectedDef) && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Quantity</label>
-              <input
-                type="number"
-                step="0.01"
-                className="border border-slate-200 rounded px-2 py-1.5 text-sm w-24"
-                placeholder="0"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Rate */}
-          {inputCode && showsRate(selectedDef) && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Rate</label>
-              <input
-                type="number"
-                step="0.01"
-                className="border border-slate-200 rounded px-2 py-1.5 text-sm w-28"
-                placeholder="0.00"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Amount */}
-          {inputCode && showsAmt(selectedDef) && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                className="border border-slate-200 rounded px-2 py-1.5 text-sm w-28"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* For Period */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500">
-              For period <span className="text-slate-400">(optional)</span>
-            </label>
-            <input
-              type="month"
-              className="border border-slate-200 rounded px-2 py-1.5 text-sm w-36"
-              value={effectivePeriod}
-              onChange={(e) => setEffectivePeriod(e.target.value)}
-            />
-            <span className="text-xs text-slate-400 max-w-[160px] leading-tight">
-              Leave blank for current run. Set for late-arriving events from a previous month.
-            </span>
-          </div>
-
-          <Btn type="submit" disabled={submitting || !employeeId || !inputCode}>
-            {submitting ? 'Adding…' : 'Add Input'}
-          </Btn>
-        </form>
-      </Card>
-
-      {/* Inputs Table */}
-      {loading ? (
-        <p className="text-sm text-slate-500 mt-4">Loading inputs…</p>
-      ) : (
-        <Card>
-          {inputs.length === 0 ? (
-            <p className="text-sm text-slate-400 py-8 text-center">
-              No pending inputs. Add one above.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
+            </tbody>
+          </table>
+        ) : inputs.length === 0 ? (
+          <EmptyState
+            icon={<InboxIcon />}
+            headline="Inbox is clear"
+            body="Add variable inputs — overtime, bonuses, deductions — to be included in the next payroll run."
+            action={{ label: 'Add First Input', onClick: () => setPanelOpen(true) }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <Th>Employee</Th>
-                  <Th>Code</Th>
-                  <Th>Category</Th>
-                  <Th>Qty</Th>
-                  <Th>Rate</Th>
-                  <Th>Amount</Th>
-                  <Th>For Period</Th>
-                  <Th>Source</Th>
-                  <Th></Th>
+                <tr className="border-b border-gray-200 bg-gray-50 sticky top-0">
+                  {['Employee', 'Code', 'Category', 'Qty', 'Rate', 'Amount', 'For Period', 'Source', ''].map((h, i) => (
+                    <th
+                      key={i}
+                      className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 ${i >= 3 && i <= 6 ? 'text-right' : 'text-left'} ${i === 8 ? 'w-10' : ''}`}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {inputs.map((inp) => (
-                  <tr key={inp.payroll_input_id} className="border-b border-slate-50 hover:bg-slate-50">
-                    <Td>
-                      <span className="font-medium text-slate-700">{inp.employee_name}</span>
-                      <span className="block text-xs text-slate-400">{inp.employee_number}</span>
-                    </Td>
-                    <Td className="font-mono text-xs">{inp.input_code}</Td>
-                    <Td>
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          inp.input_category === 'EARNING'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {inp.input_category}
-                      </span>
-                    </Td>
-                    <Td>{inp.quantity ?? '—'}</Td>
-                    <Td>{inp.rate ?? '—'}</Td>
-                    <Td>{inp.amount ?? '—'}</Td>
-                    <Td>
-                      {inp.reference_date
-                        ? inp.reference_date.slice(0, 7)   // "YYYY-MM"
-                        : <span className="text-slate-400">current</span>}
-                    </Td>
-                    <Td>{inp.source}</Td>
-                    <Td>
-                      <Btn
-                        variant="ghost"
+                  <tr key={inp.payroll_input_id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{inp.employee_name}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inp.employee_number}</p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{inp.input_code}</td>
+                    <td className="px-4 py-3">
+                      <CategoryBadge category={inp.input_category} />
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.quantity ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.rate ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.amount ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-500 text-xs">
+                      {inp.reference_date ? inp.reference_date.slice(0, 7) : <span className="text-gray-400 italic">current</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{inp.source}</td>
+                    <td className="px-4 py-3">
+                      <IconBtn
+                        label={`Delete input for ${inp.employee_name}`}
                         size="sm"
+                        className="text-gray-400 hover:text-red-600"
                         onClick={() => handleDelete(inp.payroll_input_id)}
                       >
-                        Delete
-                      </Btn>
-                    </Td>
+                        <TrashIcon />
+                      </IconBtn>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Add Input — SlideOver (DD-3: primary action opens panel, not inline form) */}
+      <SlideOver
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="Add Payroll Input"
+        description="Record a variable event for the next run"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => setPanelOpen(false)} disabled={submitting}>
+              Cancel
+            </Btn>
+            <Btn
+              variant="primary"
+              loading={submitting}
+              disabled={!employeeId || !inputCode}
+              onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
+            >
+              Add Input
+            </Btn>
+          </>
+        }
+      >
+        <form id="add-input-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {formError && (
+            <AlertBanner variant="error" title="Failed to add input" description={formError} />
           )}
-        </Card>
-      )}
+
+          <SearchableSelect
+            label="Employee"
+            required
+            options={employeeOptions}
+            value={employeeId}
+            onChange={setEmployeeId}
+            placeholder="Select employee…"
+          />
+
+          {/* Input code — groups by category (DD-6) */}
+          <SearchableSelect
+            label="Input Code"
+            required
+            options={inputCodeOptions}
+            value={inputCode}
+            onChange={(v) => { setInputCode(v); setQuantity(''); setRate(''); setAmount(''); }}
+            placeholder="Select code…"
+          />
+
+          {/* Conditional fields based on calculation method */}
+          {inputCode && showsQty(selectedDef) && (
+            <NumberInput
+              label="Quantity"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              step="0.01"
+              min="0"
+              hint={selectedDef?.calculation_method === 'daily_rate_deduction' ? 'Number of days' : 'Number of units'}
+            />
+          )}
+
+          {inputCode && showsRate(selectedDef) && (
+            <NumberInput
+              label="Rate per unit"
+              currency
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              step="0.01"
+              min="0"
+            />
+          )}
+
+          {inputCode && showsAmt(selectedDef) && (
+            <NumberInput
+              label="Amount"
+              currency
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              step="0.01"
+              min="0"
+            />
+          )}
+
+          <DateInput
+            label="For period"
+            mode="month"
+            value={effectivePeriod}
+            onChange={setEffectivePeriod}
+            hint="Leave blank for current run. Set only for late inputs from a prior month."
+          />
+        </form>
+      </SlideOver>
     </div>
   );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide py-2 px-3">
-      {children}
-    </th>
-  );
-}
-
-function Td({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
-  return <td className={`py-3 px-3 text-slate-600 ${className}`}>{children}</td>;
 }

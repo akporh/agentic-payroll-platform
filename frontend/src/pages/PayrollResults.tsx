@@ -1,30 +1,545 @@
+/**
+ * S11 — Run Detail (tabbed)
+ *
+ * Design decisions honoured:
+ * DD-2  Four tabs: Results | Reconciliation | Timeline | Audit Log
+ *        Run header (status, period, pay date) always visible above tabs
+ * DD-3  Status-driven action panel — single primary action per status
+ * DD-4  Mark as Paid opens ConfirmDialog with full consequences, red button
+ * DD-7  Reconciliation tab: expected total hero card above the input form
+ * DD-12 StatusBadge uses dot + text
+ * DD-17 ExpandableRow uses grid-template-rows — no flicker (via DataTable renderExpanded)
+ * DD-18 5s polling while run status is CALCULATING
+ */
+
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
-import type { PayrollRun, PayrollResult, PayrollTotals, ExecutionTraceStep, AuditLogEntry, ComponentTraceEntry } from '../types/payroll';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Btn } from '../components/ui/Btn';
-import { AlertBox } from '../components/ui/AlertBox';
+import type {
+  PayrollRun,
+  PayrollResult,
+  PayrollTotals,
+  ExecutionTraceStep,
+  AuditLogEntry,
+  ReconciliationRecord,
+  ComponentTraceEntry,
+} from '../types/payroll';
+import {
+  ContentHeader,
+  Card,
+  Btn,
+  DownloadBtn,
+  StatusBadge,
+  SummaryCards,
+  SummaryCard,
+  TabBar,
+  DataTable,
+  ComponentTraceTable,
+  ReconciliationCard,
+  TimelineTable,
+  AlertBanner,
+  ConfirmDialog,
+  EmptyState,
+  NumberInput,
+  Textarea,
+  TextInput,
+  useToast,
+  formatNaira,
+} from '../design-system';
+import type { Tab, Column, TraceEntry } from '../design-system';
 import { PayrollTimeline } from '../components/payroll/PayrollTimeline';
 
-function fmt(n: number) {
-  return n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// ── Tab keys ──────────────────────────────────────────────────────────────────
+
+type TabKey = 'results' | 'reconciliation' | 'timeline' | 'audit';
+
+const TABS: Tab[] = [
+  { key: 'results',         label: 'Results' },
+  { key: 'reconciliation',  label: 'Reconciliation' },
+  { key: 'timeline',        label: 'Timeline' },
+  { key: 'audit',           label: 'Audit Log' },
+];
+
+// ── Helper: format date range ─────────────────────────────────────────────────
+
+function formatPeriod(start: string, end: string) {
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+  return `${new Date(start).toLocaleDateString('en-GB', opts)} – ${new Date(end).toLocaleDateString('en-GB', opts)}`;
 }
+
+// ── Helper: map ComponentTraceEntry → TraceEntry (design system type) ─────────
+
+function mapTrace(entries: ComponentTraceEntry[]): TraceEntry[] {
+  return entries.map((e) => ({
+    code: e.rule,
+    method: e.method,
+    status: e.status === 'applied' ? 'SUCCESS' : e.status === 'skipped' ? 'SKIPPED' : 'FAILED',
+    amount: e.amount != null ? parseFloat(e.amount) : null,
+    note: e.note,
+    warning: e.warning ?? undefined,
+  }));
+}
+
+// ── Status-driven Action Panel (DD-3) ─────────────────────────────────────────
+
+interface ActionPanelProps {
+  run: PayrollRun;
+  totals: PayrollTotals | null;
+  onApprove: () => Promise<void>;
+  onLock: () => Promise<void>;
+  onPay: () => void;    // opens confirm dialog
+  onRetry: () => Promise<void>;
+  actionLoading: boolean;
+}
+
+function ActionPanel({ run, totals, onApprove, onLock, onPay, onRetry, actionLoading }: ActionPanelProps) {
+  if (run.status === 'CALCULATING') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <svg className="w-4 h-4 text-blue-500 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        </svg>
+        <p className="text-sm text-blue-800 font-medium">Calculating payroll — refreshing automatically every 5 seconds…</p>
+      </div>
+    );
+  }
+
+  if (run.status === 'PARTIAL') {
+    return (
+      <AlertBanner
+        variant="warning"
+        title="Some employees failed to calculate"
+        description="Review the results table below. Retry to re-attempt failed employees — successful results are preserved."
+        action={{ label: 'Retry Failed Employees', onClick: onRetry }}
+        className="mb-5"
+      />
+    );
+  }
+
+  if (run.status === 'CALCULATED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-800">Results calculated — ready for approval</p>
+          <p className="text-xs text-gray-500 mt-0.5">Review the figures below, then approve to send for locking.</p>
+        </div>
+        <Btn variant="primary" size="md" loading={actionLoading} onClick={onApprove}>
+          Approve Run
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'APPROVED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-violet-50 border border-violet-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-violet-800">Run approved. Lock it when ready for payment processing.</p>
+          <p className="text-xs text-violet-600 mt-0.5">Locking prevents further changes and enables the Mark as Paid action.</p>
+        </div>
+        <Btn variant="primary" size="md" loading={actionLoading} onClick={onLock}>
+          Lock Run
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'LOCKED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-800">Run is locked — ready to mark as paid</p>
+          <p className="text-xs text-gray-500 mt-0.5">Once marked as PAID this cannot be undone.</p>
+        </div>
+        <Btn variant="destructive" size="md" onClick={onPay}>
+          Mark as Paid
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'PAID') {
+    return (
+      <div className="mb-5 px-4 py-3 bg-green-50 border border-green-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <p className="text-sm font-semibold text-green-800">Run is PAID — no further actions available.</p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── Results Tab ───────────────────────────────────────────────────────────────
+
+interface ResultsTabProps {
+  run: PayrollRun;
+  results: PayrollResult[];
+  totals: PayrollTotals | null;
+  timeline: ExecutionTraceStep[];
+  canExport: boolean;
+  workspaceId: string;
+  runId: string;
+  onApprove: () => Promise<void>;
+  onLock: () => Promise<void>;
+  onPay: () => void;
+  onRetry: () => Promise<void>;
+  actionLoading: boolean;
+  actionError: string | null;
+}
+
+function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, runId, onApprove, onLock, onPay, onRetry, actionLoading, actionError }: ResultsTabProps) {
+  const toast = useToast();
+  const [exportBusy, setExportBusy] = useState<string | null>(null);
+
+  async function handleExport(exportType: 'bank-upload' | 'paye' | 'pension') {
+    setExportBusy(exportType);
+    try {
+      await payrollApi.downloadExport(workspaceId, runId, exportType);
+    } catch (e: unknown) {
+      toast.show('error', e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  // PH warnings from timeline
+  const phWarnings = timeline.filter((s) => s.status === 'warn');
+
+  // Employee results table columns
+  const columns: Column<PayrollResult>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      render: (r) => (
+        <div>
+          <p className="font-medium text-gray-800">{r.employee_name}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{r.employee_number}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'gross',
+      header: 'Gross Pay',
+      align: 'right',
+      render: (r) => (
+        <span className="tabular-nums text-gray-700">
+          {r.gross_pay != null ? formatNaira(r.gross_pay) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'deductions',
+      header: 'Deductions',
+      align: 'right',
+      render: (r) => (
+        <span className="tabular-nums text-red-600">
+          {r.total_deductions != null ? formatNaira(r.total_deductions) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'net',
+      header: 'Net Pay',
+      align: 'right',
+      render: (r) => (
+        <span className="tabular-nums font-semibold text-gray-900">
+          {r.net_pay != null ? formatNaira(r.net_pay) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      align: 'center',
+      render: (r) => <StatusBadge status={r.status} size="sm" />,
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* DD-3: status-driven action panel */}
+      {actionError && (
+        <AlertBanner variant="error" title="Action failed" description={actionError} className="mb-0" />
+      )}
+      <ActionPanel
+        run={run}
+        totals={totals}
+        onApprove={onApprove}
+        onLock={onLock}
+        onPay={onPay}
+        onRetry={onRetry}
+        actionLoading={actionLoading}
+      />
+
+      {/* KPI summary cards — DAT-1 */}
+      {totals && (
+        <SummaryCards
+          cols={4}
+          cards={[
+            { label: 'Employees',   value: String(totals.employee_count) },
+            { label: 'Gross Pay',   value: `₦${totals.gross.toLocaleString('en-NG', { minimumFractionDigits: 2 })}` },
+            { label: 'Deductions',  value: `₦${totals.deductions.toLocaleString('en-NG', { minimumFractionDigits: 2 })}` },
+            { label: 'Net Pay',     value: `₦${totals.net.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`, sublabel: 'Total disbursement' },
+          ]}
+        />
+      )}
+
+      {/* Export downloads — only when LOCKED or PAID */}
+      {canExport && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Downloads:</span>
+          <DownloadBtn label="Bank Upload"      loading={exportBusy === 'bank-upload'} onClick={() => handleExport('bank-upload')} />
+          <DownloadBtn label="PAYE Remittance"  loading={exportBusy === 'paye'}        onClick={() => handleExport('paye')} />
+          <DownloadBtn label="Pension"          loading={exportBusy === 'pension'}     onClick={() => handleExport('pension')} />
+        </div>
+      )}
+
+      {/* PH warnings */}
+      {phWarnings.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title={`${phWarnings.length} public holiday warning${phWarnings.length !== 1 ? 's' : ''}`}
+          description={phWarnings.slice(0, 2).map((w) => w.step_name + (w.error_message ? ': ' + w.error_message : '')).join(' · ') + (phWarnings.length > 2 ? ` +${phWarnings.length - 2} more — see Timeline tab` : '')}
+        />
+      )}
+
+      {/* Employee results table — DD-17 via renderExpanded + ExpandableRow */}
+      <DataTable
+        columns={columns}
+        rows={results}
+        getKey={(r) => r.employee_id}
+        empty={
+          <EmptyState
+            headline="No results available"
+            body="Results will appear here once the run has completed calculating."
+          />
+        }
+        renderExpanded={(r) =>
+          r.component_trace && r.component_trace.length > 0 ? (
+            <ComponentTraceTable entries={mapTrace(r.component_trace)} />
+          ) : (
+            <ComponentTraceTable entries={[]} noTrace />
+          )
+        }
+      />
+
+      {/* Totals footer */}
+      {totals && results.length > 0 && (
+        <div
+          style={{ borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)' }}
+          className="bg-gray-50 border border-gray-200 px-4 py-3 flex justify-end gap-12"
+        >
+          <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Totals</span>
+          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+            Gross: {formatNaira(totals.gross)}
+          </span>
+          <span className="text-sm font-semibold text-red-600 tabular-nums">
+            Deductions: {formatNaira(totals.deductions)}
+          </span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums">
+            Net: {formatNaira(totals.net)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Reconciliation Tab (DD-7: expected total hero) ────────────────────────────
+
+interface RecTabProps {
+  workspaceId: string;
+  runId: string;
+  totals: PayrollTotals | null;
+}
+
+function ReconciliationTab({ workspaceId, runId, totals }: RecTabProps) {
+  const toast = useToast();
+  const [record, setRecord] = useState<ReconciliationRecord | null>(null);
+  const [recLoading, setRecLoading] = useState(true);
+  const [recError, setRecError] = useState<string | null>(null);
+
+  // Form: submit actual payment
+  const [actualPayment, setActualPayment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Form: resolve mismatch
+  const [resolveNotes, setResolveNotes] = useState('');
+  const [resolveBy, setResolveBy] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setRecLoading(true);
+    payrollApi
+      .getReconciliation(workspaceId, runId)
+      .then(setRecord)
+      .catch((e: { response?: { status?: number }; message?: string }) => {
+        if (e?.response?.status !== 404) setRecError(e.message ?? 'Failed to load');
+      })
+      .finally(() => setRecLoading(false));
+  }, [workspaceId, runId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(actualPayment);
+    if (isNaN(amount)) { setSubmitError('Enter a valid amount'); return; }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const updated = await payrollApi.submitReconciliation(workspaceId, runId, { actual_payment: amount });
+      setRecord(updated);
+      toast.show(updated.status === 'MATCHED' ? 'success' : 'warning',
+        updated.status === 'MATCHED' ? 'Reconciliation matched — payment confirmed' : 'Mismatch detected — review and resolve'
+      );
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : 'Submit failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResolve(e: React.FormEvent) {
+    e.preventDefault();
+    setResolving(true);
+    setResolveError(null);
+    try {
+      const updated = await payrollApi.resolveReconciliation(workspaceId, runId, { notes: resolveNotes, resolved_by: resolveBy });
+      setRecord(updated);
+      toast.show('success', 'Mismatch resolved');
+    } catch (e: unknown) {
+      setResolveError(e instanceof Error ? e.message : 'Resolve failed');
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  if (recLoading) {
+    return <p className="text-sm text-gray-500 py-8 text-center">Loading reconciliation…</p>;
+  }
+
+  if (recError) {
+    return <AlertBanner variant="error" title="Failed to load reconciliation" description={recError} />;
+  }
+
+  const expectedTotal = record?.expected_total ?? totals?.net ?? 0;
+  const actualTotal = record?.actual_payment;
+  const variance = record?.status === 'MISMATCH' && actualTotal != null
+    ? actualTotal - expectedTotal
+    : null;
+
+  return (
+    <div className="max-w-lg space-y-5">
+      {/* DD-7: Expected total is the hero */}
+      <SummaryCard
+        label="Expected Net Pay (engine)"
+        value={formatNaira(expectedTotal)}
+        large
+        sublabel="This is what the payroll engine calculated as the total disbursement"
+      />
+
+      {/* Reconciliation status card */}
+      {record && (
+        <ReconciliationCard
+          status={
+            record.status === 'PENDING' ? 'AWAITING'
+            : record.status === 'MATCHED' ? 'MATCHED'
+            : record.status === 'MISMATCH' ? 'MISMATCH'
+            : 'RESOLVED'
+          }
+          expectedTotal={expectedTotal}
+          actualTotal={actualTotal}
+          variance={variance}
+          resolvedBy={record.resolved_by ?? undefined}
+          resolvedAt={record.resolved_at ? new Date(record.resolved_at).toLocaleString() : undefined}
+          resolutionNote={record.notes ?? undefined}
+        />
+      )}
+
+      {/* Submit actual payment form */}
+      {(!record || record.status === 'PENDING' || record.status === 'MISMATCH') && (
+        <Card>
+          <p className="text-sm font-semibold text-gray-800 mb-4">Submit actual bank payment</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <NumberInput
+              label="Actual Payment Amount"
+              currency
+              value={actualPayment}
+              onChange={(e) => setActualPayment(e.target.value)}
+              step="0.01"
+              placeholder="0.00"
+              required
+              hint="Enter the exact amount disbursed by the bank"
+            />
+            {submitError && <AlertBanner variant="error" title="Submission failed" description={submitError} />}
+            <Btn type="submit" variant="primary" loading={submitting}>
+              Submit Reconciliation
+            </Btn>
+          </form>
+        </Card>
+      )}
+
+      {/* Resolve mismatch form */}
+      {record?.status === 'MISMATCH' && (
+        <Card>
+          <p className="text-sm font-semibold text-gray-800 mb-1">Mark mismatch as resolved</p>
+          <p className="text-xs text-gray-500 mb-4">Use this only if the discrepancy has been investigated and is acceptable.</p>
+          <form onSubmit={handleResolve} className="space-y-4">
+            <Textarea
+              label="Resolution Notes"
+              value={resolveNotes}
+              onChange={(e) => setResolveNotes(e.target.value)}
+              placeholder="Explain why this discrepancy is considered resolved…"
+              required
+            />
+            <TextInput
+              label="Resolved By"
+              value={resolveBy}
+              onChange={(e) => setResolveBy(e.target.value)}
+              placeholder="Your name or email"
+              required
+            />
+            {resolveError && <AlertBanner variant="error" title="Resolve failed" description={resolveError} />}
+            <Btn type="submit" variant="secondary" loading={resolving}>
+              Mark as Resolved
+            </Btn>
+          </form>
+        </Card>
+      )}
+
+      {record?.status === 'MATCHED' && (
+        <AlertBanner variant="success" title="Reconciliation complete" description="Payment matches expected net pay." />
+      )}
+      {record?.status === 'RESOLVED' && (
+        <AlertBanner variant="info" title="Mismatch resolved" description="This mismatch was closed by an operator. See resolution details above." />
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export function PayrollResults() {
   const { workspaceId, runId } = useParams<{ workspaceId: string; runId: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [run, setRun] = useState<PayrollRun | null>(null);
   const [results, setResults] = useState<PayrollResult[]>([]);
   const [totals, setTotals] = useState<PayrollTotals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<ExecutionTraceStep[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('results');
+  const [showPayConfirm, setShowPayConfirm] = useState(false);
+  const [payConfirmLoading, setPayConfirmLoading] = useState(false);
 
   const fetchRun = useCallback(() => {
     if (!workspaceId || !runId) return;
@@ -50,402 +565,181 @@ export function PayrollResults() {
       .finally(() => setLoading(false));
   }, [workspaceId, runId]);
 
-  async function handleAction(action: () => Promise<unknown>) {
+  // DD-18: poll every 5s while CALCULATING
+  useEffect(() => {
+    if (!run || run.status !== 'CALCULATING') return;
+    const id = setInterval(fetchRun, 5000);
+    return () => clearInterval(id);
+  }, [run?.status, fetchRun]);
+
+  // When run transitions out of CALCULATING, reload results
+  const prevStatus = run?.status;
+  useEffect(() => {
+    if (prevStatus && prevStatus !== 'CALCULATING' && run?.status !== 'CALCULATING') return;
+    if (run && run.status !== 'CALCULATING') {
+      if (!workspaceId || !runId) return;
+      payrollApi.getResults(workspaceId, runId)
+        .then((data) => { setResults(data.results); setTotals(data.totals); })
+        .catch(() => null);
+    }
+  }, [run?.status]);
+
+  async function handleAction(label: string, fn: () => Promise<unknown>) {
+    setActionLoading(true);
     setActionError(null);
     try {
-      await action();
+      await fn();
       fetchRun();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Action failed');
+      setActionError(e instanceof Error ? e.message : `${label} failed`);
+    } finally {
+      setActionLoading(false);
     }
   }
 
-  const canReconcile = run?.status === 'LOCKED' || run?.status === 'PAID';
+  async function handlePay() {
+    if (!runId) return;
+    setPayConfirmLoading(true);
+    try {
+      await payrollApi.payRun(runId);
+      fetchRun();
+      setShowPayConfirm(false);
+      toast.show('success', 'Run marked as PAID');
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Mark as paid failed');
+      setShowPayConfirm(false);
+    } finally {
+      setPayConfirmLoading(false);
+    }
+  }
+
   const canExport = run?.status === 'LOCKED' || run?.status === 'PAID';
 
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportBusy, setExportBusy] = useState<string | null>(null);
+  // Audit log adapted for TimelineTable
+  const auditEntries = auditLog.map((e) => ({
+    timestamp: new Date(e.performed_at).toLocaleString(),
+    action: e.action,
+    actor: e.performed_by,
+    details: e.old_value && e.new_value
+      ? `${JSON.stringify(e.old_value)} → ${JSON.stringify(e.new_value)}`
+      : undefined,
+  }));
 
-  async function handleExport(exportType: 'bank-upload' | 'paye' | 'pension') {
-    if (!workspaceId || !runId) return;
-    setExportError(null);
-    setExportBusy(exportType);
-    try {
-      await payrollApi.downloadExport(workspaceId, runId, exportType);
-    } catch (e: unknown) {
-      setExportError(e instanceof Error ? e.message : 'Export failed');
-    } finally {
-      setExportBusy(null);
-    }
+  if (loading) {
+    return (
+      <div className="max-w-5xl">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 bg-gray-200 rounded-lg" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-5xl">
+        <AlertBanner variant="error" title="Failed to load run" description={error} />
+      </div>
+    );
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Payroll Results"
-        subtitle={`Run ${runId?.slice(0, 8)}… · Workspace ${workspaceId}`}
-        action={
-          canReconcile ? (
-            <Btn
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                navigate(`/workspaces/${workspaceId}/payroll/${runId}/reconciliation`)
-              }
-            >
-              Reconcile →
-            </Btn>
-          ) : undefined
+    <div className="max-w-5xl">
+      {/* Back link */}
+      <ContentHeader
+        title={run ? `Run ${run.run_id.slice(0, 8)}…` : 'Run Detail'}
+        subtitle={run ? formatPeriod(run.period_start, run.period_end) + (run.pay_date ? ' · Pay date: ' + new Date(run.pay_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '') : ''}
+        back={
+          <button
+            onClick={() => navigate(`/workspaces/${workspaceId}/payroll`)}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            All Runs
+          </button>
         }
+        action={run && <StatusBadge status={run.status} />}
       />
 
-      {loading && <p className="text-sm text-slate-500">Loading results…</p>}
-      {error && <AlertBox type="error" messages={[error]} />}
-      {actionError && <AlertBox type="error" messages={[actionError]} />}
+      {/* DD-2: Tab bar — always visible, run header above it */}
+      <TabBar
+        tabs={TABS}
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as TabKey)}
+        className="mb-6"
+      />
 
-      {run && runId && (
-        <RunActions
+      {/* Tab content */}
+      {activeTab === 'results' && run && workspaceId && runId && (
+        <ResultsTab
           run={run}
-          onApprove={() => handleAction(() => payrollApi.approveRun(runId))}
-          onLock={() => handleAction(() => payrollApi.lockRun(runId))}
-          onPay={() => handleAction(() => payrollApi.payRun(runId))}
-          onRetry={() => handleAction(() => payrollApi.retryRun(runId))}
+          results={results}
+          totals={totals}
+          timeline={timeline}
+          canExport={canExport}
+          workspaceId={workspaceId}
+          runId={runId}
+          onApprove={() => handleAction('Approve', () => payrollApi.approveRun(runId))}
+          onLock={() => handleAction('Lock', () => payrollApi.lockRun(runId))}
+          onPay={() => setShowPayConfirm(true)}
+          onRetry={() => handleAction('Retry', () => payrollApi.retryRun(runId))}
+          actionLoading={actionLoading}
+          actionError={actionError}
         />
       )}
 
-      {totals && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
-          <StatCard label="Employees" value={String(totals.employee_count)} />
-          <StatCard label="Gross Pay" value={fmt(totals.gross)} />
-          <StatCard label="Deductions" value={fmt(totals.deductions)} />
-          <StatCard label="Net Pay" value={fmt(totals.net)} highlight />
-        </div>
+      {activeTab === 'reconciliation' && workspaceId && runId && (
+        <ReconciliationTab workspaceId={workspaceId} runId={runId} totals={totals} />
       )}
 
-      {/* H1/H2/H3 — Export buttons */}
-      {canExport && workspaceId && runId && (
-        <div className="mb-4">
-          <div className="flex gap-2 flex-wrap items-center">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mr-1">
-              Downloads:
-            </span>
-            {(
-              [
-                { type: 'bank-upload', label: 'Bank Upload' },
-                { type: 'paye',        label: 'PAYE Remittance' },
-                { type: 'pension',     label: 'Pension' },
-              ] as const
-            ).map(({ type, label }) => (
-              <button
-                key={type}
-                onClick={() => handleExport(type)}
-                disabled={exportBusy === type}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-wait"
-              >
-                <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                {exportBusy === type ? 'Downloading…' : label}
-              </button>
-            ))}
-          </div>
-          {exportError && <p className="text-xs text-red-500 mt-1.5">{exportError}</p>}
-        </div>
+      {activeTab === 'timeline' && (
+        timeline.length > 0
+          ? <PayrollTimeline steps={timeline} />
+          : <EmptyState headline="No timeline data" body="Execution timeline is only available for runs processed by the sequential executor." />
       )}
 
-      {/* PH warning banner (G6 — PH-10) */}
-      {(() => {
-        const phWarnings = timeline.filter((s) => s.status === 'warn');
-        if (phWarnings.length === 0) return null;
-        const shown = phWarnings.slice(0, 2);
-        const rest = phWarnings.length - shown.length;
-        return (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-            <h3 className="font-medium text-amber-800 mb-2">⚠ Public Holiday Warnings</h3>
-            <ul className="space-y-1">
-              {shown.map((w, i) => (
-                <li key={i} className="text-sm text-amber-700">
-                  <span className="font-mono font-medium mr-2">{w.step_name}</span>
-                  {w.error_message && <span className="text-amber-600">{w.error_message}</span>}
-                </li>
-              ))}
-            </ul>
-            {rest > 0 && (
-              <p className="text-xs text-amber-500 mt-1">+{rest} more warning{rest !== 1 ? 's' : ''} — see Execution Timeline below.</p>
+      {activeTab === 'audit' && (
+        auditEntries.length > 0
+          ? <Card padding="sm"><TimelineTable entries={auditEntries} /></Card>
+          : <EmptyState headline="No audit events" body="Audit events are recorded when the run status changes or actions are taken." />
+      )}
+
+      {/* DD-4: Mark as Paid — intentionally friction-heavy ConfirmDialog */}
+      <ConfirmDialog
+        open={showPayConfirm}
+        onClose={() => setShowPayConfirm(false)}
+        onConfirm={handlePay}
+        title="Mark run as PAID"
+        body={
+          <div className="space-y-2 text-sm text-gray-600">
+            {run && (
+              <p>
+                <strong>Period:</strong>{' '}
+                {formatPeriod(run.period_start, run.period_end)}
+              </p>
             )}
+            {totals && (
+              <p>
+                <strong>Net Pay:</strong>{' '}
+                <span className="font-mono">{formatNaira(totals.net)}</span>
+              </p>
+            )}
+            <p className="mt-3 font-semibold text-gray-800">
+              This action is irreversible. Once marked as PAID, this run cannot be modified and no further changes can be made to employee results.
+            </p>
           </div>
-        );
-      })()}
-
-      {!loading && !error && timeline.length > 0 && (
-        <div className="mb-5">
-          <PayrollTimeline steps={timeline} />
-        </div>
-      )}
-
-      {auditLog.length > 0 && (
-        <div className="mb-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">Audit Trail</h2>
-          <Card>
-            <ul className="divide-y divide-slate-100">
-              {auditLog.map((entry, i) => (
-                <li key={i} className="py-2 px-3 text-xs text-slate-600 flex gap-3">
-                  <span className="text-slate-400 whitespace-nowrap">
-                    {new Date(entry.performed_at).toLocaleString()}
-                  </span>
-                  <span className="font-medium text-slate-700">{entry.performed_by}</span>
-                  <span className="text-slate-500">{entry.action}</span>
-                  {entry.old_value && entry.new_value && (
-                    <span>
-                      <span className="text-red-500">{JSON.stringify(entry.old_value)}</span>
-                      {' → '}
-                      <span className="text-green-600">{JSON.stringify(entry.new_value)}</span>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <Card>
-          {results.length === 0 ? (
-            <p className="text-sm text-slate-400 py-8 text-center">No results available.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <Th>Employee</Th>
-                  <Th>Number</Th>
-                  <Th align="right">Gross Pay</Th>
-                  <Th align="right">Deductions</Th>
-                  <Th align="right">Net Pay</Th>
-                  <Th>Status</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r) => (
-                  <>
-                    <tr
-                      key={r.employee_id}
-                      className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
-                      onClick={() => setExpandedRow(expandedRow === r.employee_id ? null : r.employee_id)}
-                    >
-                      <Td className="font-medium text-slate-800">
-                        <span className="mr-1 text-slate-400">{expandedRow === r.employee_id ? '▼' : '▶'}</span>
-                        {r.employee_name}
-                      </Td>
-                      <Td className="font-mono text-xs">{r.employee_number}</Td>
-                      <Td align="right">{r.gross_pay != null ? fmt(r.gross_pay) : '—'}</Td>
-                      <Td align="right" className="text-red-600">
-                        {r.total_deductions != null ? fmt(r.total_deductions) : '—'}
-                      </Td>
-                      <Td align="right" className="font-semibold">
-                        {r.net_pay != null ? fmt(r.net_pay) : '—'}
-                      </Td>
-                      <Td>
-                        <span className="text-xs uppercase text-slate-500">{r.status}</span>
-                      </Td>
-                    </tr>
-                    {expandedRow === r.employee_id && r.component_trace && r.component_trace.length > 0 && (
-                      <tr key={`${r.employee_id}-trace`} className="bg-slate-50">
-                        <td colSpan={6} className="px-3 py-2">
-                          <ComponentTrace entries={r.component_trace} />
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-              {totals && (
-                <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                    <Td className="text-slate-700" colSpan={2}>
-                      Totals
-                    </Td>
-                    <Td align="right" className="text-slate-700">
-                      {fmt(totals.gross)}
-                    </Td>
-                    <Td align="right" className="text-red-600">
-                      {fmt(totals.deductions)}
-                    </Td>
-                    <Td align="right" className="text-slate-900">
-                      {fmt(totals.net)}
-                    </Td>
-                    <Td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          )}
-        </Card>
-      )}
+        }
+        confirmLabel="Mark as Paid"
+        cancelLabel="Go back"
+        destructive
+        loading={payConfirmLoading}
+      />
     </div>
-  );
-}
-
-function ComponentTrace({ entries }: { entries: ComponentTraceEntry[] }) {
-  return (
-    <table className="w-full text-xs border-collapse">
-      <thead>
-        <tr className="text-slate-400 uppercase tracking-wide">
-          <th className="text-left py-1 px-2">Rule</th>
-          <th className="text-left py-1 px-2">Method</th>
-          <th className="text-left py-1 px-2">Status</th>
-          <th className="text-right py-1 px-2">Amount</th>
-          <th className="text-left py-1 px-2">Note</th>
-          <th className="text-left py-1 px-2">Source</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((e, i) => (
-          <tr
-            key={i}
-            className={`border-t border-slate-200 ${e.warning ? 'bg-amber-50' : ''}`}
-          >
-            <td className="py-1 px-2 font-mono text-slate-700">{e.rule}</td>
-            <td className="py-1 px-2 text-slate-500">{e.method}</td>
-            <td className="py-1 px-2">
-              <span className={e.status === 'applied' ? 'text-green-600' : 'text-slate-400'}>
-                {e.status}
-              </span>
-            </td>
-            <td className="py-1 px-2 text-right font-mono">{e.amount}</td>
-            <td className="py-1 px-2 text-slate-500 max-w-xs truncate">{e.note}</td>
-            <td className="py-1 px-2">
-              {e.resolution_source === 'current_fallback' ? (
-                <span className="text-amber-600 font-medium">⚠ fallback</span>
-              ) : (
-                <span className="text-slate-400">{e.resolution_source}</span>
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function RunActions({
-  run,
-  onApprove,
-  onLock,
-  onPay,
-  onRetry,
-}: {
-  run: PayrollRun;
-  onApprove: () => void;
-  onLock: () => void;
-  onPay: () => void;
-  onRetry: () => void;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function wrap(label: string, fn: () => void) {
-    setBusy(label);
-    try { await fn(); } finally { setBusy(null); }
-  }
-
-  if (run.status === 'CALCULATED') {
-    return (
-      <div className="mb-4 flex gap-2">
-        <Btn variant="primary" size="sm" loading={busy === 'approve'} onClick={() => wrap('approve', onApprove)}>
-          Approve
-        </Btn>
-      </div>
-    );
-  }
-  if (run.status === 'PARTIAL') {
-    return (
-      <div className="mb-4 flex gap-2">
-        <Btn variant="secondary" size="sm" loading={busy === 'retry'} onClick={() => wrap('retry', onRetry)}>
-          Retry Failed
-        </Btn>
-      </div>
-    );
-  }
-  if (run.status === 'APPROVED') {
-    return (
-      <div className="mb-4 flex gap-2">
-        <Btn variant="primary" size="sm" loading={busy === 'lock'} onClick={() => wrap('lock', onLock)}>
-          Lock
-        </Btn>
-      </div>
-    );
-  }
-  if (run.status === 'LOCKED') {
-    return (
-      <div className="mb-4 flex gap-2">
-        <Btn variant="primary" size="sm" loading={busy === 'pay'} onClick={() => wrap('pay', onPay)}>
-          Mark Paid
-        </Btn>
-      </div>
-    );
-  }
-  return null;
-}
-
-function StatCard({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg border p-4 ${
-        highlight ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
-      }`}
-    >
-      <p className={`text-xs font-medium mb-1 ${highlight ? 'text-slate-400' : 'text-slate-500'}`}>
-        {label}
-      </p>
-      <p className={`text-lg font-bold ${highlight ? 'text-white' : 'text-slate-800'}`}>{value}</p>
-    </div>
-  );
-}
-
-function Th({
-  children,
-  align = 'left',
-}: {
-  children?: React.ReactNode;
-  align?: 'left' | 'right';
-}) {
-  return (
-    <th
-      className={`text-xs font-semibold text-slate-500 uppercase tracking-wide py-2 px-3 ${
-        align === 'right' ? 'text-right' : 'text-left'
-      }`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  className = '',
-  align = 'left',
-  colSpan,
-}: {
-  children?: React.ReactNode;
-  className?: string;
-  align?: 'left' | 'right';
-  colSpan?: number;
-}) {
-  return (
-    <td
-      colSpan={colSpan}
-      className={`py-3 px-3 text-slate-600 ${align === 'right' ? 'text-right' : ''} ${className}`}
-    >
-      {children}
-    </td>
   );
 }

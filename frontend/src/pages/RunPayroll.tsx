@@ -1,28 +1,54 @@
+/**
+ * S10 — New Payroll Run
+ *
+ * Design decisions honoured:
+ * DD-3  Single primary action: "Run Payroll"
+ * FRM-*  Form uses design system components throughout
+ */
+
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
 import { workspaceApi } from '../api/workspace';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Btn } from '../components/ui/Btn';
-import { AlertBox } from '../components/ui/AlertBox';
+import {
+  ContentHeader,
+  Card,
+  Btn,
+  DateInput,
+  SearchableSelect,
+  RadioGroup,
+  NumberInput,
+  AlertBanner,
+  useToast,
+} from '../design-system';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function firstOfMonth() {
+  return today().slice(0, 7) + '-01';
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function RunPayroll() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const [periodStart, setPeriodStart] = useState(today.slice(0, 7) + '-01');
-  const [periodEnd, setPeriodEnd] = useState(today);
-  const [payDate, setPayDate] = useState(today);
+  const [periodStart, setPeriodStart] = useState(firstOfMonth());
+  const [periodEnd, setPeriodEnd] = useState(today());
+  const [payDate, setPayDate] = useState(today());
   const [runType, setRunType] = useState<'REGULAR' | 'ADJUSTMENT'>('REGULAR');
   const [periodType, setPeriodType] = useState<'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM'>('MONTHLY');
-  const [workingDays, setWorkingDays] = useState<string>('');
+  const [workingDays, setWorkingDays] = useState('');
   const [retryStrategy, setRetryStrategy] = useState<'PER_EMPLOYEE' | 'FULL_RUN'>('PER_EMPLOYEE');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
@@ -40,174 +66,175 @@ export function RunPayroll() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!workspaceId || !isLive) return;
+
+    // Fix D: client-side date guard
+    if (periodStart > periodEnd) {
+      setError('Period start must be on or before period end.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const result = await payrollApi.createRun(workspaceId, {
         period_start: periodStart,
-        period_end:   periodEnd,
-        pay_date:     payDate,
-        run_type:     runType,
-        period_type:  periodType,
+        period_end: periodEnd,
+        pay_date: payDate,
+        run_type: runType,
+        period_type: periodType,
         ...(periodType === 'CUSTOM' && workingDays ? { working_days: Number(workingDays) } : {}),
         retry_strategy: retryStrategy,
       });
+      toast.show('success', 'Payroll run started — calculating results…');
       navigate(`/workspaces/${workspaceId}/payroll/${result.run_id}/results`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to create payroll run');
+      // Fix E: specific 409 message
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        setError('A run for this period already exists — view it in the Runs list.');
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to create payroll run');
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Run Payroll"
-        subtitle={`Workspace ${workspaceId}`}
+    <div className="max-w-lg">
+      <ContentHeader
+        title="New Payroll Run"
+        subtitle="Configure the period and submit to calculate results"
+        back={
+          <button
+            onClick={() => navigate(`/workspaces/${workspaceId}/payroll`)}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Runs
+          </button>
+        }
       />
 
-      <div className="max-w-md">
-        {!statusLoading && !isLive && (
-          <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-semibold mb-1">Workspace not activated</p>
-            <p className="text-xs">
-              Payroll runs are only available once the workspace is <strong>LIVE</strong>.
-              Your workspace is currently <strong>{workspaceStatus ?? 'unknown'}</strong>.{' '}
-              <Link
-                to={`/workspaces/${workspaceId}`}
-                className="underline font-medium"
-              >
-                Go to workspace settings to activate it.
-              </Link>
-            </p>
+      {!statusLoading && !isLive && (
+        <AlertBanner
+          variant="warning"
+          title="Workspace not activated"
+          description={`Payroll runs are only available when the workspace is LIVE. Current status: ${workspaceStatus ?? 'unknown'}.`}
+          action={{
+            label: 'Go to workspace settings →',
+            onClick: () => navigate(`/workspaces/${workspaceId}`),
+          }}
+          className="mb-4"
+        />
+      )}
+
+      <Card>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          {/* Period dates */}
+          <div className="grid grid-cols-2 gap-4">
+            <DateInput
+              label="Period Start"
+              value={periodStart}
+              onChange={setPeriodStart}
+              required
+              disabled={!isLive}
+            />
+            <DateInput
+              label="Period End"
+              value={periodEnd}
+              onChange={setPeriodEnd}
+              required
+              disabled={!isLive}
+            />
           </div>
-        )}
 
-        <Card title="New Payroll Run">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label="Period Start">
-              <input
-                type="date"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
-                required
-                disabled={!isLive}
-                className={inputClass}
-              />
-            </Field>
+          <DateInput
+            label="Pay Date"
+            value={payDate}
+            onChange={setPayDate}
+            required
+            disabled={!isLive}
+          />
 
-            <Field label="Period End">
-              <input
-                type="date"
-                value={periodEnd}
-                onChange={(e) => setPeriodEnd(e.target.value)}
-                required
-                disabled={!isLive}
-                className={inputClass}
-              />
-            </Field>
+          {/* Run type */}
+          <SearchableSelect
+            label="Run Type"
+            disabled={!isLive}
+            value={runType}
+            onChange={(v) => setRunType(v as 'REGULAR' | 'ADJUSTMENT')}
+            options={[
+              { value: 'REGULAR', label: 'Regular — standard monthly payroll' },
+              { value: 'ADJUSTMENT', label: 'Adjustment — corrections or supplemental run' },
+            ]}
+          />
 
-            <Field label="Pay Date">
-              <input
-                type="date"
-                value={payDate}
-                onChange={(e) => setPayDate(e.target.value)}
-                required
-                disabled={!isLive}
-                className={inputClass}
-              />
-            </Field>
+          {/* Period type */}
+          <RadioGroup
+            label="Period Type"
+            name="period_type"
+            value={periodType}
+            onChange={(v) => { setPeriodType(v as 'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM'); setWorkingDays(''); }}
+            options={[
+              { value: 'MONTHLY',      label: 'Monthly',      description: 'Standard calendar month — working days calculated automatically' },
+              { value: 'FORTNIGHTLY',  label: 'Fortnightly',  description: 'Two-week pay cycle' },
+              { value: 'CUSTOM',       label: 'Custom',       description: 'Specify working days manually' },
+            ]}
+          />
 
-            <Field label="Run Type">
-              <select
-                value={runType}
-                onChange={(e) => setRunType(e.target.value as 'REGULAR' | 'ADJUSTMENT')}
-                disabled={!isLive}
-                className={inputClass}
-              >
-                <option value="REGULAR">Regular</option>
-                <option value="ADJUSTMENT">Adjustment</option>
-              </select>
-            </Field>
+          {periodType === 'CUSTOM' && (
+            <NumberInput
+              label="Working Days"
+              value={workingDays}
+              onChange={(e) => setWorkingDays(e.target.value)}
+              min="1"
+              max="31"
+              required
+              disabled={!isLive}
+              hint="Number of working days in this pay period (e.g. 22)"
+            />
+          )}
 
-            <Field label="Period Type">
-              <select
-                value={periodType}
-                onChange={(e) => {
-                  setPeriodType(e.target.value as 'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM');
-                  setWorkingDays('');
-                }}
-                disabled={!isLive}
-                className={inputClass}
-              >
-                <option value="MONTHLY">Monthly</option>
-                <option value="FORTNIGHTLY">Fortnightly</option>
-                <option value="CUSTOM">Custom</option>
-              </select>
-            </Field>
+          {/* Retry strategy */}
+          <RadioGroup
+            label="Retry Strategy"
+            name="retry_strategy"
+            value={retryStrategy}
+            onChange={(v) => setRetryStrategy(v as 'PER_EMPLOYEE' | 'FULL_RUN')}
+            options={[
+              { value: 'PER_EMPLOYEE', label: 'Per Employee (recommended)', description: 'Failed employees are retried individually — successful employees are preserved' },
+              { value: 'FULL_RUN',     label: 'Full Run',                   description: 'The entire run is retried from scratch on failure' },
+            ]}
+          />
 
-            {periodType === 'CUSTOM' && (
-              <Field label="Working Days">
-                <input
-                  type="number"
-                  min="1"
-                  value={workingDays}
-                  onChange={(e) => setWorkingDays(e.target.value)}
-                  required
-                  disabled={!isLive}
-                  placeholder="e.g. 22"
-                  className={inputClass}
-                />
-              </Field>
-            )}
+          {error && (
+            <AlertBanner variant="error" title="Failed to create run" description={error} />
+          )}
 
-            <Field label="Retry Strategy">
-              <select
-                value={retryStrategy}
-                onChange={(e) => setRetryStrategy(e.target.value as 'PER_EMPLOYEE' | 'FULL_RUN')}
-                disabled={!isLive}
-                className={inputClass}
-              >
-                <option value="PER_EMPLOYEE">Per Employee (default)</option>
-                <option value="FULL_RUN">Full Run</option>
-              </select>
-            </Field>
-
-            {error && <AlertBox type="error" messages={[error]} />}
-
-            <div className="flex gap-2 pt-2">
-              <Btn
-                type="submit"
-                loading={loading}
-                disabled={statusLoading || !isLive}
-                title={!isLive ? 'Workspace must be LIVE to run payroll' : undefined}
-              >
-                Run Payroll
-              </Btn>
-              <Btn
-                type="button"
-                variant="secondary"
-                onClick={() => navigate(`/workspaces/${workspaceId}/payroll`)}
-              >
-                Cancel
-              </Btn>
-            </div>
-          </form>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-const inputClass =
-  'w-full border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed';
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-      {children}
+          <div className="flex gap-3 pt-2">
+            <Btn
+              type="submit"
+              variant="primary"
+              size="md"
+              loading={loading}
+              disabled={statusLoading || !isLive}
+            >
+              Run Payroll
+            </Btn>
+            <Btn
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => navigate(`/workspaces/${workspaceId}/payroll`)}
+            >
+              Cancel
+            </Btn>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

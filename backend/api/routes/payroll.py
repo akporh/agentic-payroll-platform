@@ -219,6 +219,23 @@ def run_payroll(
     pay_cycle_frequency  = pay_cycle_row[0] if pay_cycle_row else None
     pay_cycle_definition = pay_cycle_row[1] if pay_cycle_row else None
 
+    # Load public holidays (national + workspace overrides) for the period.
+    ph_rows = db.execute(text("""
+        SELECT holiday_date FROM national_public_holiday
+        WHERE country_code = :cc
+          AND holiday_date BETWEEN :start AND :end
+        UNION
+        SELECT holiday_date FROM workspace_public_holiday
+        WHERE workspace_id = :wid
+          AND holiday_date BETWEEN :start AND :end
+    """), {
+        "cc":    country_code,
+        "wid":   workspace_id,
+        "start": period_start or date.today().replace(day=1),
+        "end":   period_end   or date.today(),
+    }).fetchall()
+    public_holiday_dates = {r[0] for r in ph_rows}
+
     # Build PeriodContext now that we have the workspace's configured frequency.
     # Priority: explicit API field > workspace pay_cycle.frequency > infer from dates.
     try:
@@ -227,6 +244,7 @@ def run_payroll(
             period_end=period_end,
             period_type=period_type_raw or pay_cycle_frequency,
             working_days_override=working_days_input,
+            public_holiday_dates=public_holiday_dates,
         )
     except ValueError as exc:
         db.close()
@@ -441,7 +459,7 @@ def run_payroll(
                 if key not in historical_period_contexts:
                     h_start = ref_dt.replace(day=1)
                     h_end   = ref_dt.replace(day=calendar.monthrange(ref_dt.year, ref_dt.month)[1])
-                    h_ctx   = build_period_context(h_start, h_end)
+                    h_ctx   = build_period_context(h_start, h_end, public_holiday_dates=public_holiday_dates)
                     historical_period_contexts[key] = {
                         "working_days":  h_ctx.working_days,
                         "calendar_days": h_ctx.calendar_days,
@@ -523,30 +541,33 @@ def run_payroll(
     else:
         _calendar_ph_list = ph_list  # already fetched above
 
-    _calendar_ph_count = sum(1 for d in _calendar_ph_list if d["source"] == "NATIONAL")
-    _file_ph_count = sum(
-        len(emp.get("inputs", {}).get("ph_hours_worked", []))
-        for emp in employees
-    )
+    # Cross-check only makes sense in FILE_BASED mode — in AUTOMATIC mode there is
+    # no input file for PH data so comparing file count vs. calendar is meaningless.
+    if workspace_payroll_config["ph_mode"] != "AUTOMATIC":
+        _calendar_ph_count = sum(1 for d in _calendar_ph_list if d["source"] == "NATIONAL")
+        _file_ph_count = sum(
+            len(emp.get("inputs", {}).get("ph_hours_worked", []))
+            for emp in employees
+        )
 
-    if _file_ph_count > _calendar_ph_count:
-        _ph_pre_warnings.append((
-            "PH_COUNT_MISMATCH_EXCESS",
-            (
-                f"File contains {_file_ph_count} PH entries but calendar shows "
-                f"{_calendar_ph_count} for this period. Review whether the extra "
-                "entry is a contractual rate day that should be handled separately."
-            ),
-        ))
-    elif _file_ph_count < _calendar_ph_count:
-        _ph_pre_warnings.append((
-            "PH_COUNT_MISMATCH_DEFICIT",
-            (
-                f"Calendar shows {_calendar_ph_count} PHs for this period but only "
-                f"{_file_ph_count} appear in the input file. A public holiday may be "
-                "missing — review to avoid underpayment."
-            ),
-        ))
+        if _file_ph_count > _calendar_ph_count:
+            _ph_pre_warnings.append((
+                "PH_COUNT_MISMATCH_EXCESS",
+                (
+                    f"File contains {_file_ph_count} PH entries but calendar shows "
+                    f"{_calendar_ph_count} for this period. Review whether the extra "
+                    "entry is a contractual rate day that should be handled separately."
+                ),
+            ))
+        elif _file_ph_count < _calendar_ph_count:
+            _ph_pre_warnings.append((
+                "PH_COUNT_MISMATCH_DEFICIT",
+                (
+                    f"Calendar shows {_calendar_ph_count} PHs for this period but only "
+                    f"{_file_ph_count} appear in the input file. A public holiday may be "
+                    "missing — review to avoid underpayment."
+                ),
+            ))
 
     # Duplicate ph_hours_worked entries for the same employee on the same date
     for _emp in employees:

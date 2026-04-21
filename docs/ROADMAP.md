@@ -19,6 +19,7 @@
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
 | **Phase 1 — Sprints 1–6** | 3✅ 1⬜ | 2✅ | 8✅ | 6✅ | 3✅ 3⬜ | 6✅ |
 | **Phase 2 — Sprint 7+** | 9🔜 3⬜ | — | 18🔜 2✅ | 1🔜 | 4🔜 1⬜ | 2🔜 2⬜ |
+| **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ (6 amendments applied) Gate 4✅ Gate 5🔜 (nav modernisation + Rate Codes) | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
 ---
@@ -184,7 +185,7 @@ Open items needed to make the platform production-ready for real clients.
 ### Onboarding (A1 + A2)
 
 **A1 — Workspace Setup**
-- Configure pay cycle post-setup — update endpoint ⬜
+- Configure pay cycle post-setup — update endpoint 🔜 (WC-1, Track J)
 - View applicable statutory rules — read endpoint + UI ⬜ (P3-2)
 - Statutory rule management UI for bureau ⬜ (P3-2)
 - Configure WorkspacePayrollConfig (ph_mode, weekend PH rules, D3/D4 flags, effective_from versioned rows) 🔜 (PH-6) ← arch-council: effective_from required
@@ -197,7 +198,13 @@ Open items needed to make the platform production-ready for real clients.
 - PH-2b: Weekend PH classification config (saturday_ph_rule, sunday_ph_rule) 🔜 (PH-2b)
 
 **A2 — Workforce**
-- Define payroll rules — standalone form ⬜ (P3-1)
+- Define payroll rules — standalone form 🔜 (WC-9, Track J)
+- Add grade / designation post-onboarding via UI 🔜 (WC-2/WC-4, Track J)
+- Edit grade / designation description via UI 🔜 (WC-3/WC-5, Track J)
+- Add new salary definition via UI 🔜 (WC-6, Track J)
+- Edit salary definition components via UI (amounts, add/remove) 🔜 (WC-7, Track J)
+- Toggle payroll rule active/inactive via UI 🔜 (WC-8, Track J)
+- Edit/toggle statutory component override via UI 🔜 (WC-10/WC-11, Track J)
 - Enforce salary definition effective dates at run time ✅ (P3-5) — already done
 - Onboard ot_multiplier payroll rules via Excel/JSON (rate_code field) 🔜 (PH-8)
 - Onboard Client 3 shift allowance rules (basic_daily base) 🔜 (PH-12)
@@ -330,8 +337,79 @@ Reordered after arch-council review (April 2026). Defect fixes gate the feature 
 |---|------|------|-----|-------|
 | 35 | Real user identity in performed_by (X-Performed-By header) | Governance (A5) | P2-2 | |
 
+### Track J — Post-Onboarding Config Management (independent, parallel with H+)
+
+Arch-council reviewed April 2026. 8 binding decisions (D-ARCH-1 through D-ARCH-8).
+Stories: `docs/stories/track-j-workspace-config-management.md`
+UX/UI: `docs/ux-design-brief/gate-6/`
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| 36 | Migration: add `is_active` + `proration_strategy` to `client_component_metadata` | Onboarding (A1) | WC-10/D-ARCH-4 | **BLOCKER — must land first** |
+| 37 | PATCH `/{wid}/pay-cycle` — update active pay cycle with run-state + frequency guards | Onboarding (A1) | WC-1 | D-ARCH-6/7 |
+| 38 | PATCH `/{wid}/grade/{code}` + PATCH `/{wid}/designation/{code}` — update description | Onboarding (A2) | WC-3/WC-5 | |
+| 39 | PATCH `/{wid}/salary-definition/{id}` — update components_jsonb with edit-lock | Onboarding (A2) | WC-7 | D-ARCH-1/5 critical |
+| 40 | PATCH `/{wid}/payroll-rule/{id}` — toggle is_active, update definition | Onboarding (A2) | WC-8/WC-9 | |
+| 41 | Statutory component hard reject on component-override PATCH | Onboarding (A1) | WC-10/D-ARCH-2 | 422 for statutory_deduction class |
+| 42 | Extend GET `/{wid}/configuration` — add IDs, is_active, proration_strategy | Onboarding (A1) | All WC | Needed by frontend |
+| 43 | Frontend: WorkspaceConfig.tsx full interactive overhaul (Gate 6) | Onboarding (A1+A2) | WC-1→WC-11 | See Gate 6 in UI track |
+
 > **Arch-council gate:** Tracks B, C, and E introduce migrations and data contracts. Do not begin Track B without `/arch-council` sign-off (completed April 2026 — decisions recorded in `docs/stories/arch-council-sprint7-decisions.md` and `~/.claude/plans/peaceful-purring-starlight.md`).
 > Track A fixes are pre-approved — no gate needed.
+
+---
+
+### Track UI — UX/UI Design System & Screen Assembly
+
+Three-gate delivery. Skills active throughout: `/ui-designer`, `/ux-designer`.
+
+| Gate | Deliverable | Status | Notes |
+|------|-------------|--------|-------|
+| **Gate 1** | UX/UI Design Brief — IA, flows, wireframes, 18 design decisions, 45-component inventory (`docs/ux-design-brief/gate-1/`) | ✅ | Completed April 2026 |
+| **Gate 2** | Design System — `frontend/src/design-system/` — `tokens.css` (Tailwind v4 `@theme` + `:root`) + 45 React components across 7 files | ✅ | Completed April 2026 |
+| **Gate 3** | Adaeze's payroll operator journey — 6 screens migrated to design system (PayrollInputs, BulkUpload, PayrollRuns, RunPayroll, PayrollResults with 4-tab DD-2, Reconciliation redirect) + 6 amendments applied (Lock button bug, Inbox link, error hint, poll-failure banner, date guard, 409 copy) | ✅ | Completed April 2026 |
+| **Gate 4** | Bureau / workspace setup journey — 8 pages migrated (BureauDashboard + NewClient SlideOver, WorkspaceDashboard, WorkspaceSetup shell, Employees, WorkspaceConfig, PublicHolidays, JsonOnboarding deleted, router cleaned) | ✅ | Completed April 2026 |
+| **Gate 5** | Navigation modernisation + workspace context + Rate Codes page | 🔜 | Sprint 8 |
+| **Gate 6** | Post-Onboarding Config Management — WorkspaceConfig.tsx interactive overhaul (WC-1→WC-11, Track J) | 🔜 | Sprint 8 parallel |
+
+**Gate 5 — Sprint 8 scope**
+
+| Story | What | Status |
+|-------|------|--------|
+| **UI-NAV-1** | Wire `TopBar` + `WorkspaceSidebar` (design system NAV-1/NAV-2) into `MainLayout` — replaces legacy `Sidebar.tsx`. Workspace name + status visible in sidebar header. TopBar workspace picker for quick switching. Collapse toggle. | 🔜 |
+| **UI-NAV-2** | Breadcrumb (NAV-3) on all 8 workspace pages via `ContentHeader` `back` prop — `Bureau Dashboard / [Client Name] / [Section]`. Powered by `WorkspaceContext` React context in `MainLayout`. | 🔜 |
+| **UI-NAV-3** | Rate Code Registry page (`/workspaces/:id/rate-codes`) — Platform codes read-only, workspace codes CRUD. Exposes OT/PH/Shift multipliers (PH-7 UI). Backend API complete (Track F ✅). | 🔜 |
+
+PM story for UI-NAV-3:
+```
+As a payroll operator,
+I want a dedicated Rate Codes page to view platform codes and manage
+workspace-specific codes for overtime, public holidays, and shift allowances,
+So that I understand and control how special pay types are calculated without
+navigating through the setup wizard.
+```
+
+---
+
+**Gate 4 — Pages Remaining**
+
+| # | Page | File | Priority |
+|---|------|------|----------|
+| UI-1 | Bureau Dashboard | `BureauDashboard.tsx` | High |
+| UI-2 | Workspace Dashboard | `WorkspaceDashboard.tsx` | High |
+| UI-3 | Workspace Setup (onboarding wizard) | `WorkspaceSetup.tsx` | High |
+| UI-4 | Employees list | `Employees.tsx` | Medium |
+| UI-5 | JSON Onboarding | `JsonOnboarding.tsx` | Medium |
+| UI-6 | Workspace Config | `WorkspaceConfig.tsx` | Medium |
+| UI-7 | Public Holidays | `PublicHolidays.tsx` | Medium |
+
+**Design decisions carried into Gate 4 (from Gate 1 brief, all 18 must be honoured):**
+- DD-1: PageShell wraps every page (TopBar + WorkspaceSidebar)
+- DD-5: Every list page has an empty state with a specific CTA
+- DD-12: StatusBadge — dot + text, never colour alone
+- DD-14: 8pt grid — all spacing multiples of 4/8px
+- DD-15: WCAG AA — all status colours use `bg-*-100 text-*-800` (≥7:1 contrast)
+- Full list in `docs/ux-design-brief/gate-1/04-design-decisions.md`
 
 ---
 

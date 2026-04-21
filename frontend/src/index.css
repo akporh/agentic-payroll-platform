@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./design-system/tokens.css";
 
 * {
   box-sizing: border-box;
@@ -6,8 +7,21 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background-color: #f1f5f9;
-  color: #1e293b;
+  font-family: var(--font-sans);
+  background-color: #F8FAFC;
+  color: #111827;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numerals for all monetary columns — DD-9 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slide-in animation for toasts — FBK-1 */
+@keyframes slideInRight {
+  from { transform: translateX(calc(100% + 20px)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }

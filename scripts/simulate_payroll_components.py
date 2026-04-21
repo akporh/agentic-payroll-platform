@@ -11,10 +11,14 @@ Usage:
     python scripts/simulate_payroll_components.py --trace
     python scripts/simulate_payroll_components.py --workspace-id <uuid>
     python scripts/simulate_payroll_components.py --employee-id <uuid>
+    python scripts/simulate_payroll_components.py --period-start 2026-04-01 --period-end 2026-04-30
+    python scripts/simulate_payroll_components.py --inputs '{"regular_overtime_days": 2, "absent_days": 1}'
+    python scripts/simulate_payroll_components.py --inputs '{"ANNUAL_RENT_PAID": 600000}'
 """
 
 import sys
 import argparse
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
@@ -46,10 +50,27 @@ from backend.infra.db.models.component_metadata import (  # noqa: E402
 from backend.infra.db.models.designation import Designation  # noqa: E402
 from backend.infra.db.models.grade import Grade  # noqa: E402
 from backend.infra.db.models.pay_cycle import PayCycle  # noqa: E402
-from backend.domain.rules.paye import calculate_paye  # noqa: E402
+from backend.domain.payroll.period_context import build_period_context  # noqa: E402
+from backend.domain.payroll.rule_evaluator import apply_payroll_rules  # noqa: E402
+from backend.domain.rules.nhf import calculate_nhf  # noqa: E402
+from backend.domain.rules.paye import calculate_paye_for_period  # noqa: E402
 from backend.domain.rules.pension import calculate_pension  # noqa: E402
+from backend.domain.rules.rent_relief import calculate_rent_relief_for_period  # noqa: E402
+from backend.infra.repositories.rate_code_repo import list_rate_codes  # noqa: E402
 
-PENSION_BASE = {"BASIC", "HOUSING", "TRANSPORT"}
+# Statutory fallback pension base per PRA 2014 — used when no client override flags are present
+_STATUTORY_PENSION_BASE = {"BASIC", "HOUSING", "TRANSPORT"}
+
+
+def _normalize_employee_inputs(raw: dict) -> dict:
+    """Convert {code: scalar_or_list} to {code: [{quantity, reference_date}]} for rule_evaluator."""
+    result = {}
+    for code, value in raw.items():
+        if isinstance(value, list):
+            result[code] = value
+        else:
+            result[code] = [{"quantity": value, "reference_date": None}]
+    return result
 
 console = Console()
 
@@ -235,6 +256,9 @@ def _print_trace(
     statutory_names: list[str],
     paye_amount: Decimal,
     pension_employee: Decimal,
+    nhf_amount: Decimal,
+    health_insurance_amount: Decimal,
+    development_levy_amount: Decimal,
     net_pay: Decimal,
     currency: str,
 ):
@@ -257,25 +281,42 @@ def _print_trace(
             f"[dim]{_fmt(c['amount'], currency)}[/dim]"
         )
 
-    gross = sum(c["amount"] for c in components)
+    gross = sum(
+        c["amount"] for c in components
+        if _category(c.get("_meta", {})) == "earning" or not c.get("_meta")
+    )
     gross_node = tree.add(
         f"[bold green]GROSS_PAY  [dim]{_fmt(gross, currency)}[/dim][/bold green]"
     )
 
-    if statutory_names or paye_amount > 0 or pension_employee > 0:
-        deduct_branch = gross_node.add("[red]DEDUCTIONS[/red]")
-        if pension_employee > 0:
-            deduct_branch.add(
-                f"[red]PENSION_EMPLOYEE (PRA 2014)[/red]  "
-                f"[dim]- {_fmt(pension_employee, currency)}[/dim]"
-            )
-        if paye_amount > 0:
-            deduct_branch.add(
-                f"[red]PAYE (tax bands)[/red]  "
-                f"[dim]- {_fmt(paye_amount, currency)}[/dim]"
-            )
-        for name in statutory_names:
-            deduct_branch.add(f"[red]{name}[/red]")
+    deduct_branch = gross_node.add("[red]DEDUCTIONS[/red]")
+    if pension_employee > 0:
+        deduct_branch.add(
+            f"[red]PENSION_EMPLOYEE (PRA 2014)[/red]  "
+            f"[dim]- {_fmt(pension_employee, currency)}[/dim]"
+        )
+    if paye_amount > 0:
+        deduct_branch.add(
+            f"[red]PAYE (tax bands)[/red]  "
+            f"[dim]- {_fmt(paye_amount, currency)}[/dim]"
+        )
+    if nhf_amount > 0:
+        deduct_branch.add(
+            f"[red]NHF (2.5% of BASIC)[/red]  "
+            f"[dim]- {_fmt(nhf_amount, currency)}[/dim]"
+        )
+    if health_insurance_amount > 0:
+        deduct_branch.add(
+            f"[red]HEALTH_INSURANCE (flat)[/red]  "
+            f"[dim]- {_fmt(health_insurance_amount, currency)}[/dim]"
+        )
+    if development_levy_amount > 0:
+        deduct_branch.add(
+            f"[red]DEVELOPMENT_LEVY (flat)[/red]  "
+            f"[dim]- {_fmt(development_levy_amount, currency)}[/dim]"
+        )
+    for name in statutory_names:
+        deduct_branch.add(f"[red]{name}[/red]")
 
     gross_node.add(
         f"[bold cyan]NET_PAY  [dim]{_fmt(net_pay, currency)}[/dim][/bold cyan]"
@@ -294,6 +335,9 @@ def simulate_payroll(
     employee_id: str | None = None,
     workspace_id: str | None = None,
     trace: bool = False,
+    period_start: str | None = None,
+    period_end: str | None = None,
+    employee_inputs_raw: dict | None = None,
 ):
     # ── 1. Employee ──────────────────────────────────────────────────────────
     if employee_id:
@@ -330,6 +374,29 @@ def simulate_payroll(
 
     currency = workspace.base_currency or ""
     country_code = workspace.country_code or "NG"
+
+    # ── Period context ────────────────────────────────────────────────────────
+    _ph_start = period_start or str(date.today().replace(day=1))
+    _ph_end   = period_end   or str(date.today())
+    ph_rows = session.execute(
+        text("""
+            SELECT holiday_date FROM national_public_holiday
+            WHERE country_code = :cc
+              AND holiday_date BETWEEN :start AND :end
+            UNION
+            SELECT holiday_date FROM workspace_public_holiday
+            WHERE workspace_id = :wid
+              AND holiday_date BETWEEN :start AND :end
+        """),
+        {"cc": country_code, "wid": emp_workspace_id, "start": _ph_start, "end": _ph_end},
+    ).fetchall()
+    public_holiday_dates = {r[0] for r in ph_rows}
+
+    period = build_period_context(
+        period_start=period_start,
+        period_end=period_end,
+        public_holiday_dates=public_holiday_dates,
+    )
 
     # ── 3. Employee contract → salary definition, designation, grade ─────────
     contract_row = session.execute(
@@ -380,17 +447,35 @@ def simulate_payroll(
         .filter_by(workspace_id=emp_workspace_id, is_active=True)
         .all()
     )
+    payroll_rules_dicts = [
+        {
+            "rule_name": r.rule_name,
+            "rule_definition_json": r.rule_definition_json or {},
+            "rule_type": r.rule_type,
+            "is_active": r.is_active,
+        }
+        for r in payroll_rules
+    ]
 
-    # ── 6. Statutory rule + tax bands ────────────────────────────────────────
-    if workspace.statutory_rule_id:
-        statutory_row = session.execute(
-            text("SELECT * FROM statutory_rule WHERE statutory_rule_id = :sid"),
-            {"sid": str(workspace.statutory_rule_id)},
-        ).mappings().first()
-    else:
-        statutory_row = None
+    # Rate codes — same lookup the production route uses (payroll.py:494)
+    rate_code_map = {row["code"]: row for row in list_rate_codes(emp_workspace_id)}
+
+    # ── 6. Statutory rule — look up by country_code (most recent effective_from) ──
+    # Note: workspace does not carry a statutory_rule_id foreign key; the rule is
+    # resolved at run time by the payroll engine. Simulation picks the latest rule
+    # for the workspace's country as a best-effort approximation.
+    statutory_row = session.execute(
+        text("""
+            SELECT * FROM statutory_rule
+            WHERE country_code = :cc
+            ORDER BY effective_from DESC, version DESC
+            LIMIT 1
+        """),
+        {"cc": country_code},
+    ).mappings().first()
+    if not statutory_row:
         console.print(
-            "[yellow]WARNING: workspace has no statutory_rule_id set. "
+            f"[yellow]WARNING: no statutory_rule found for country={country_code}. "
             "PAYE will not be calculated.[/yellow]"
         )
 
@@ -423,6 +508,20 @@ def simulate_payroll(
                 f"PAYE will not be calculated.[/yellow]"
             )
 
+    # ── 6a. Flat statutory deduction config from component metadata ───────────
+    # NHF — check is_active in client_component_metadata before reading rate
+    nhf_meta = _component_meta(session, "NHF_CONTRIBUTION", emp_workspace_id, country_code)
+    nhf_active = nhf_meta.get("is_active", True)
+    nhf_rate = Decimal(str(nhf_meta.get("employee_rate", "0.025"))) if nhf_active else Decimal("0")
+
+    # Health Insurance — flat employee amount from client or platform metadata
+    hi_meta = _component_meta(session, "HEALTH_INSURANCE_EMPLOYEE", emp_workspace_id, country_code)
+    health_insurance_amount = Decimal(str(hi_meta.get("employee_amount", "0")))
+
+    # Development Levy — flat amount from client or platform metadata
+    dl_meta = _component_meta(session, "DEVELOPMENT_LEVY", emp_workspace_id, country_code)
+    development_levy_amount = Decimal(str(dl_meta.get("amount", "0")))
+
     # ── 7. Normalise components ───────────────────────────────────────────────
     raw_components = _normalize_components(
         salary_def.components_jsonb if salary_def else {}
@@ -433,6 +532,36 @@ def simulate_payroll(
         c["_meta"] = _component_meta(
             session, c["code"], emp_workspace_id, country_code
         )
+
+    # ── Apply payroll rules (modifies salary components before statutory calc) ──
+    employee_inputs = _normalize_employee_inputs(employee_inputs_raw or {})
+    salary_components_map = {c["code"]: c["amount"] for c in raw_components}
+    client_meta_for_rules = {c["code"]: c["_meta"] for c in raw_components if c.get("_meta")}
+
+    modified_components_map, rule_trace = apply_payroll_rules(
+        salary_components=salary_components_map,
+        payroll_rules=payroll_rules_dicts,
+        employee_inputs=employee_inputs,
+        client_meta=client_meta_for_rules,
+        working_days=period.working_days,
+        calendar_days=period.calendar_days,
+        rate_code_map=rate_code_map,
+    )
+
+    # Sync modified amounts back; append any rule-injected components (e.g. OVERTIME)
+    existing_codes = {c["code"] for c in raw_components}
+    for code, amount in modified_components_map.items():
+        if code in existing_codes:
+            for c in raw_components:
+                if c["code"] == code:
+                    c["amount"] = amount
+                    break
+        else:
+            raw_components.append({
+                "code": code,
+                "amount": amount,
+                "_meta": {"financial_role": {"category": "earning"}, "_source": "rule"},
+            })
 
     earnings = [c for c in raw_components if _category(c["_meta"]) == "earning"]
     other_components = [c for c in raw_components if _category(c["_meta"]) != "earning"]
@@ -474,6 +603,9 @@ def simulate_payroll(
         f"[bold]Workspace  :[/bold] {workspace.name}  "
         f"[dim]({workspace.country_code}  {workspace.base_currency})[/dim]",
         f"[bold]Status     :[/bold] {emp.get('status') or workspace.status or '—'}",
+        f"[bold]Period     :[/bold] {period.period_start} → {period.period_end}  "
+        f"[dim]({period.period_type.value}, {period.calendar_days} days, "
+        f"ann factor={period.annualization_factor})[/dim]",
     ]
     if pay_cycle:
         info_lines.append(
@@ -493,7 +625,7 @@ def simulate_payroll(
     )
     console.print()
 
-    # ── Metadata notice panel (after employee, before salary structure) ───────
+    # ── Metadata notice panel ─────────────────────────────────────────────────
     missing_meta_codes = [
         c["code"] for c in raw_components if not c.get("_meta")
     ]
@@ -563,6 +695,7 @@ def simulate_payroll(
     console.print()
 
     # ── Step-by-step component resolution ────────────────────────────────────
+    # gross = sum of earning-class components only (matches engine GROSS_PAY handler)
     console.rule("[bold green]COMPONENT RESOLUTION[/bold green]", style="green")
     console.print()
 
@@ -572,11 +705,14 @@ def simulate_payroll(
     for c in raw_components:
         step_n += 1
         amt = c["amount"]
-        gross += amt
         meta = c["_meta"]
         cat = _category(meta)
         color = "green" if cat == "earning" else ("red" if cat == "deduction" else "yellow")
         is_statutory = meta.get("legal_role", {}).get("is_statutory", False)
+
+        # Only earning-class components contribute to GROSS_PAY
+        if cat == "earning" or not meta:
+            gross += amt
 
         header = Text()
         header.append(f"[STEP {step_n}]  ", style="bold dim")
@@ -624,20 +760,31 @@ def simulate_payroll(
     console.print()
 
     if pension_cfg:
-        pensionable_base = sum(
-            c["amount"] for c in raw_components if c["code"] in PENSION_BASE
-        )
         emp_rate = Decimal(str(pension_cfg.get("employee_rate", 0)))
         er_rate = Decimal(str(pension_cfg.get("employer_rate", 0)))
+
+        # Replicate engine logic (_handle_pension_rule):
+        # Prefer client_meta components flagged is_pensionable=True;
+        # fall back to statutory base (BASIC + HOUSING + TRANSPORT).
+        _client_pensionable = {
+            c["code"] for c in raw_components
+            if c.get("_meta", {}).get("legal_role", {}).get("is_pensionable", False)
+        }
+        pensionable_set = _client_pensionable if _client_pensionable else _STATUTORY_PENSION_BASE
+
+        pensionable_base = sum(
+            c["amount"] for c in raw_components if c["code"] in pensionable_set
+        )
         pension_employee, pension_employer = calculate_pension(pensionable_base, emp_rate, er_rate)
 
-        pensionable_codes = [c["code"] for c in raw_components if c["code"] in PENSION_BASE]
+        pensionable_codes = [c["code"] for c in raw_components if c["code"] in pensionable_set]
         codes_str = " + ".join(pensionable_codes) if pensionable_codes else "none found"
+        pension_source = "client override" if _client_pensionable else "statutory default (PRA 2014)"
 
         console.print(
             f"  [bold]Pensionable Base[/bold] : "
             f"[bold]{_fmt(pensionable_base, currency)}[/bold]"
-            f"  [dim]({codes_str})[/dim]"
+            f"  [dim]({codes_str})  [{pension_source}][/dim]"
         )
         console.print(
             f"  [bold]Employee {float(emp_rate)*100:.1f}%  [/bold] : "
@@ -657,105 +804,89 @@ def simulate_payroll(
     console.print()
 
     # ── Payroll rules ─────────────────────────────────────────────────────────
-    if payroll_rules:
+    if rule_trace:
         console.rule("[bold yellow]PAYROLL RULES[/bold yellow]", style="yellow")
         console.print()
 
-        for i, rule in enumerate(payroll_rules, 1):
-            defn = rule.rule_definition_json or {}
-            rule_name = rule.rule_name or f"RULE_{i}"
-            rule_type = rule.rule_type or "unknown"
+        for i, entry in enumerate(rule_trace, 1):
+            rule_name = entry["rule"]
+            method = entry["method"]
+            status = entry["status"]
+            amount_str = entry.get("amount", "0")
+            note = entry.get("note", "")
+            applied = status == "applied"
 
             header = Text()
             header.append(f"[RULE {i}]  ", style="bold dim")
             header.append(rule_name.upper(), style="bold yellow")
             console.print(header)
+            console.print(f"  method        : {method}")
 
-            if rule_type == "unit_multiplier":
-                rate_val = defn.get("rate") or defn.get("rate_per_unit", "?")
-                unit = defn.get("unit", "unit")
-                input_field = defn.get("input_field") or defn.get("requires") or "?"
-                console.print(f"  method        : unit_multiplier  (rate={rate_val}/{unit})")
-                console.print(f"  requires      : {input_field}  [dim][employee event data][/dim]")
+            if applied:
+                amount_dec = Decimal(amount_str)
+                color = "green" if amount_dec >= 0 else "red"
                 console.print(
-                    "  status        : [bold red]NOT APPLIED[/bold red] — "
-                    "no employee event data supplied for this run"
+                    f"  status        : [bold green]APPLIED[/bold green]"
                 )
-                console.print("  impact        : [dim]NGN 0.00[/dim]")
-
-            elif rule_type == "daily_rate_deduction":
-                rate_val = defn.get("rate") or defn.get("daily_rate", "?")
-                input_field = defn.get("input_field") or defn.get("requires") or "?"
-                console.print(f"  method        : daily_rate_deduction  (rate={rate_val}/day)")
-                console.print(f"  requires      : {input_field}  [dim][employee event data][/dim]")
                 console.print(
-                    "  status        : [bold red]NOT APPLIED[/bold red] — "
-                    "no employee event data supplied for this run"
+                    f"  amount        : [{color}]{_fmt(abs(amount_dec), currency)}"
+                    f"{'  (deduction)' if amount_dec < 0 else ''}[/{color}]"
                 )
-                console.print("  impact        : [dim]NGN 0.00[/dim]")
-
-            elif rule_type == "fixed_amount":
-                amount_val = defn.get("amount", "?")
-                conditions = defn.get("conditions") or defn.get("condition") or {}
-                console.print(f"  method        : fixed_amount  ({currency} {amount_val})")
-                if conditions:
-                    if isinstance(conditions, dict):
-                        cond_parts = [f"{k}={v} ?" for k, v in conditions.items()]
-                        console.print(f"  conditions    : {' | '.join(cond_parts)}")
-                    else:
-                        console.print(f"  conditions    : {conditions}")
-                console.print(
-                    "  status        : [bold red]NOT APPLIED[/bold red] — "
-                    "condition data not available for this simulation"
-                )
-                console.print("  impact        : [dim]NGN 0.00[/dim]")
-
             else:
-                # Generic fallback for any other rule type
-                input_field = defn.get("input_field") or defn.get("requires") or "?"
-                console.print(f"  method        : {rule_type}")
-                if input_field and input_field != "?":
-                    console.print(f"  requires      : {input_field}  [dim][employee event data][/dim]")
                 console.print(
-                    "  status        : [bold red]NOT APPLIED[/bold red] — "
-                    "no employee event data supplied for this run"
+                    "  status        : [bold red]NOT APPLIED[/bold red]"
                 )
-                console.print("  impact        : [dim]NGN 0.00[/dim]")
+
+            if note:
+                console.print(f"  note          : [dim]{note}[/dim]")
+
+            if entry.get("warning"):
+                console.print(f"  [yellow]⚠ {entry['warning']}[/yellow]")
 
             console.print()
 
-        total_rules = len(payroll_rules)
+        n_applied = sum(1 for e in rule_trace if e["status"] == "applied")
         console.print(
-            f"[dim]{total_rules} rules checked — 0 applied "
-            "(no employee event data in simulation context)[/dim]"
+            f"[dim]{len(rule_trace)} rules evaluated — "
+            f"{n_applied} applied[/dim]"
         )
         console.print()
 
     # ── PAYE / Tax calculation ─────────────────────────────────────────────────
-    # Nigeria PAYE is assessed on annual income. Annualize the monthly gross,
-    # apply pension + rent relief deductions, then compute tax on taxable income.
     paye_amount = Decimal("0")
 
     if tax_bands:
         console.rule("[bold red]TAX CALCULATION (PAYE)[/bold red]", style="red")
         console.print()
 
-        annual_gross = gross * 12
-        annual_pension_employee = pension_employee * 12
+        ann = period.annualization_factor
 
-        # Rent relief
-        annual_rent_relief = Decimal("0")
-        if rent_relief_cfg.get("enabled"):
-            cap = Decimal(str(rent_relief_cfg.get("cap", 0)))
-            rate_rr = Decimal(str(rent_relief_cfg.get("rate", 0)))
-            annual_rent_relief = min(annual_gross * rate_rr, cap)
+        # Period rent relief — uses ANNUAL_RENT_PAID from --inputs if provided
+        period_rent_relief = Decimal("0")
+        annual_rent_paid = sum(
+            Decimal(str(e.get("quantity") or 0))
+            for e in employee_inputs.get("ANNUAL_RENT_PAID", [])
+        )
+        if rent_relief_cfg.get("enabled") and annual_rent_paid > 0:
+            rr_rate = Decimal(str(rent_relief_cfg.get("rate", 0)))
+            rr_cap = Decimal(str(rent_relief_cfg.get("cap", 0)))
+            period_rent_relief = calculate_rent_relief_for_period(
+                annual_rent_paid, rr_rate, rr_cap, ann
+            )
 
-        # CRA is abolished under Nigeria Tax Act 2025
-        deductible_relief = annual_pension_employee + annual_rent_relief
-        annual_taxable_income = annual_gross - deductible_relief
+        # Period taxable income = GROSS_PAY − PENSION_EMPLOYEE − RENT_RELIEF
+        # Matches sequential_executor TAXABLE_INCOME component (priority 300).
+        period_taxable_income = (gross - pension_employee - period_rent_relief).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
 
-        console.print(f"  [bold]Monthly Gross [/bold] : {_fmt(gross, currency)}")
-        console.print(f"  [bold]Annual Gross  [/bold] : {_fmt(annual_gross, currency)}  [dim](× 12)[/dim]")
+        # Annual equivalents for display
+        annual_gross = (gross * ann).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        annual_pension_employee = (pension_employee * ann).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        annual_taxable_income = (period_taxable_income * ann).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        console.print(f"  [bold]Period Gross  [/bold] : {_fmt(gross, currency)}  [dim]({period.period_start} → {period.period_end})[/dim]")
+        console.print(f"  [bold]Annual Gross  [/bold] : {_fmt(annual_gross, currency)}  [dim](× {ann})[/dim]")
         console.print(
             f"  [bold]Tax Method    [/bold] : "
             f"{statutory_rule.get('tax_method', 'CUMULATIVE')}"
@@ -765,21 +896,33 @@ def simulate_payroll(
             f"state={statutory_rule.get('state')}  "
             f"v{statutory_rule.get('version')}"
         )
+        console.print(
+            f"  [bold]Period Type   [/bold] : "
+            f"{period.period_type.value}  "
+            f"[dim]({period.calendar_days} cal days, {period.working_days} working days, "
+            f"ann factor={ann})[/dim]"
+        )
         console.print()
 
         # Relief section
-        console.print("  [bold]Deductible Reliefs[/bold]")
+        console.print("  [bold]Deductible Reliefs (annualised)[/bold]")
         console.print(
             f"    Annual Pension Employee : "
             f"[red]−{_fmt(annual_pension_employee, currency)}[/red]"
         )
         if rent_relief_cfg.get("enabled"):
-            rr_rate_pct = float(rent_relief_cfg.get("rate", 0)) * 100
-            console.print(
-                f"    Annual Rent Relief      : "
-                f"[red]−{_fmt(annual_rent_relief, currency)}[/red]"
-                f"  [dim]({rr_rate_pct:.0f}% of gross, capped)[/dim]"
-            )
+            annual_rent_relief_display = (period_rent_relief * ann).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if period_rent_relief > 0:
+                console.print(
+                    f"    Annual Rent Relief      : "
+                    f"[red]−{_fmt(annual_rent_relief_display, currency)}[/red]"
+                    f"  [dim](from ANNUAL_RENT_PAID={_fmt(annual_rent_paid, currency)})[/dim]"
+                )
+            else:
+                console.print(
+                    "    Annual Rent Relief      : "
+                    "[dim]0 — pass ANNUAL_RENT_PAID via --inputs to include[/dim]"
+                )
         else:
             console.print("    Annual Rent Relief      : [dim]n/a (not enabled)[/dim]")
         console.print("    CRA                     : [dim]n/a  (abolished under Nigeria Tax Act 2025)[/dim]")
@@ -839,20 +982,17 @@ def simulate_payroll(
                 f"[bold red]{_fmt(tax_here, currency)}[/bold red]",
             )
 
-        annual_paye = calculate_paye(
-            annual_taxable_income,
-            [
-                {
-                    "lower_limit": float(b["lower_limit"]),
-                    "upper_limit": float(b["upper_limit"])
-                    if b.get("upper_limit") is not None
-                    else None,
-                    "rate": float(b["rate"]),
-                }
-                for b in tax_bands
-            ],
-        )
-        paye_amount = (annual_paye / 12).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        # Period-aware PAYE — matches sequential_executor._handle_paye_rule
+        formatted_bands = [
+            {
+                "lower_limit": float(b["lower_limit"]),
+                "upper_limit": float(b["upper_limit"]) if b.get("upper_limit") is not None else None,
+                "rate": float(b["rate"]),
+            }
+            for b in sorted_bands
+        ]
+        paye_amount = calculate_paye_for_period(period_taxable_income, formatted_bands, ann)
+        annual_paye = (paye_amount * ann).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         console.print(band_table)
         console.print()
@@ -860,13 +1000,69 @@ def simulate_payroll(
             f"  [bold]ANNUAL PAYE [/bold] = [bold red]{_fmt(annual_paye, currency)}[/bold red]"
         )
         console.print(
-            f"  [bold]MONTHLY PAYE[/bold] = [bold red]{_fmt(paye_amount, currency)}[/bold red]"
-            f"  [dim](÷ 12)[/dim]"
+            f"  [bold]PERIOD PAYE [/bold] = [bold red]{_fmt(paye_amount, currency)}[/bold red]"
+            f"  [dim](÷ {ann})[/dim]"
         )
         console.print()
 
-    # statutory_names is used only for the trace graph — PENSION is now handled
-    # explicitly, so we leave this empty (rules_jsonb keys are config, not deductions)
+    # ── NHF Contribution ──────────────────────────────────────────────────────
+    nhf_amount = Decimal("0")
+    console.rule("[bold blue]NHF CONTRIBUTION[/bold blue]", style="blue")
+    console.print()
+
+    basic_comp = next((c for c in raw_components if c["code"] == "BASIC"), None)
+    basic_amount = basic_comp["amount"] if basic_comp else Decimal("0")
+
+    if not nhf_active:
+        console.print("  [dim]NHF disabled for this workspace (client_component_metadata.is_active = False)[/dim]")
+    elif nhf_rate > 0 and basic_amount > 0:
+        nhf_amount = calculate_nhf(basic_amount, nhf_rate)
+        console.print(f"  [bold]BASIC Salary  [/bold] : {_fmt(basic_amount, currency)}")
+        console.print(f"  [bold]NHF Rate      [/bold] : {float(nhf_rate)*100:.1f}%  [dim](National Housing Fund Act)[/dim]")
+        console.print(
+            f"  [bold]NHF Deduction [/bold] : "
+            f"[bold blue]{_fmt(nhf_amount, currency)}[/bold blue]"
+            f"  [dim][DEDUCTION][/dim]"
+        )
+    elif nhf_rate == 0:
+        console.print(
+            "  [dim]⚠  NHF rate is 0 — seed employee_rate into component_metadata "
+            "for NHF_CONTRIBUTION (statutory default 0.025)[/dim]"
+        )
+    else:
+        console.print("  [dim]BASIC salary not found — NHF not calculated[/dim]")
+    console.print()
+
+    # ── Health Insurance + Development Levy (flat deductions) ─────────────────
+    console.rule("[bold blue]FLAT STATUTORY DEDUCTIONS[/bold blue]", style="blue")
+    console.print()
+
+    if health_insurance_amount > 0:
+        console.print(
+            f"  [bold]Health Insurance[/bold] : "
+            f"[bold blue]{_fmt(health_insurance_amount, currency)}[/bold blue]"
+            f"  [dim](flat employee amount)[/dim]"
+        )
+    else:
+        console.print(
+            "  [dim]Health Insurance : 0  "
+            "(seed employee_amount into component_metadata for HEALTH_INSURANCE_EMPLOYEE)[/dim]"
+        )
+
+    if development_levy_amount > 0:
+        console.print(
+            f"  [bold]Development Levy[/bold] : "
+            f"[bold blue]{_fmt(development_levy_amount, currency)}[/bold blue]"
+            f"  [dim](flat amount)[/dim]"
+        )
+    else:
+        console.print(
+            "  [dim]Development Levy : 0  "
+            "(seed amount into component_metadata for DEVELOPMENT_LEVY)[/dim]"
+        )
+    console.print()
+
+    # statutory_names used only for trace graph
     statutory_names: list[str] = []
 
     # ── Final summary ─────────────────────────────────────────────────────────
@@ -881,9 +1077,13 @@ def simulate_payroll(
     if earnings_total == 0:
         earnings_total = gross  # treat all as earnings if no category tagged
 
-    total_deductions = (pension_employee + paye_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+    total_deductions = (
+        pension_employee
+        + paye_amount
+        + nhf_amount
+        + health_insurance_amount
+        + development_levy_amount
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     net_pay = (gross - total_deductions).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     summary = Table(
@@ -919,6 +1119,13 @@ def simulate_payroll(
             )
         if paye_amount > 0:
             summary.add_row("  PAYE (income tax)", _fmt(paye_amount, currency))
+        if nhf_amount > 0:
+            nhf_rate_pct = float(nhf_rate) * 100
+            summary.add_row(f"  NHF ({nhf_rate_pct:.1f}% of BASIC)", _fmt(nhf_amount, currency))
+        if health_insurance_amount > 0:
+            summary.add_row("  Health Insurance (flat)", _fmt(health_insurance_amount, currency))
+        if development_levy_amount > 0:
+            summary.add_row("  Development Levy (flat)", _fmt(development_levy_amount, currency))
         for c in other_components:
             summary.add_row(f"  {c['code']}", _fmt(c["amount"], currency))
         summary.add_row(
@@ -972,7 +1179,17 @@ def simulate_payroll(
 
     # ── Trace graph ────────────────────────────────────────────────────────────
     if trace:
-        _print_trace(raw_components, statutory_names, paye_amount, pension_employee, net_pay, currency)
+        _print_trace(
+            raw_components,
+            statutory_names,
+            paye_amount,
+            pension_employee,
+            nhf_amount,
+            health_insurance_amount,
+            development_levy_amount,
+            net_pay,
+            currency,
+        )
 
     console.rule(style="dim")
     console.print(
@@ -996,6 +1213,9 @@ Examples:
   python scripts/simulate_payroll_components.py --trace
   python scripts/simulate_payroll_components.py --workspace-id <uuid>
   python scripts/simulate_payroll_components.py --employee-id <uuid>
+  python scripts/simulate_payroll_components.py --period-start 2026-04-01 --period-end 2026-04-30
+  python scripts/simulate_payroll_components.py --inputs '{"regular_overtime_days": 2, "absent_days": 1}'
+  python scripts/simulate_payroll_components.py --inputs '{"ANNUAL_RENT_PAID": 600000}'
         """,
     )
     parser.add_argument(
@@ -1013,7 +1233,35 @@ Examples:
         metavar="UUID",
         help="Run simulation for a specific employee.",
     )
+    parser.add_argument(
+        "--period-start",
+        metavar="YYYY-MM-DD",
+        help="Pay period start date (ISO format). Defaults to first day of current month.",
+    )
+    parser.add_argument(
+        "--period-end",
+        metavar="YYYY-MM-DD",
+        help="Pay period end date (ISO format). Defaults to last day of period-start's month.",
+    )
+    parser.add_argument(
+        "--inputs",
+        metavar="JSON",
+        help=(
+            'Employee event data as a JSON object. Keys are input field names; '
+            'values are quantities (scalars) or lists of {quantity, reference_date} events. '
+            'Example: \'{"regular_overtime_days": 2, "absent_days": 1, "ANNUAL_RENT_PAID": 500000}\''
+        ),
+    )
     args = parser.parse_args()
+
+    employee_inputs_raw: dict | None = None
+    if args.inputs:
+        import json as _json_cli
+        try:
+            employee_inputs_raw = _json_cli.loads(args.inputs)
+        except Exception as exc:
+            print(f"ERROR: --inputs is not valid JSON: {exc}")
+            sys.exit(1)
 
     session = SessionLocal()
     try:
@@ -1022,6 +1270,9 @@ Examples:
             employee_id=args.employee_id,
             workspace_id=args.workspace_id,
             trace=args.trace,
+            period_start=args.period_start,
+            period_end=args.period_end,
+            employee_inputs_raw=employee_inputs_raw,
         )
     finally:
         session.close()

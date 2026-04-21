@@ -62,7 +62,8 @@ def process_payroll_run(
     results = []
 
     total_gross = Decimal("0")
-    total_deductions = Decimal("0")
+    total_deductions = Decimal("0")  # full aggregate: all statutory_deduction components
+    total_paye = Decimal("0")        # PAYE only, stored separately as total_tax
     total_net = Decimal("0")
 
     success_count = 0
@@ -109,9 +110,13 @@ def process_payroll_run(
             payroll_result = result["payroll_result"]
             snapshot = payroll_result["calculations_snapshot_json"]
 
-            total_gross += Decimal(snapshot["gross"])
-            total_deductions += Decimal(snapshot["paye"])
-            total_net += Decimal(snapshot["net"])
+            total_gross += Decimal(str(snapshot["gross"]))
+            total_paye += Decimal(str(snapshot["paye"]))
+            total_net += Decimal(str(snapshot["net"]))
+            deductions_jsonb = payroll_result.get("deductions_jsonb") or {}
+            total_deductions += sum(
+                Decimal(str(v)) for v in deductions_jsonb.values() if v is not None
+            )
 
             tracer.info(
                 f"  Gross: [green]{snapshot['gross']}[/green]  │  "
@@ -151,6 +156,7 @@ def process_payroll_run(
         "totals": {
             "total_gross_pay": total_gross,
             "total_deduction": total_deductions,
+            "total_paye": total_paye,
             "total_net_pay": total_net,
             "success_count": success_count,
             "failure_count": failure_count,

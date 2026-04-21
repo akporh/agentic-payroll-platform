@@ -1,5 +1,6 @@
 import json
 import uuid
+from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -338,13 +339,16 @@ def update_employee_contract(
 
         db.execute(
             text("""
-                UPDATE employee_contract
-                SET grade_id       = COALESCE(:grade_id::uuid, grade_id),
-                    designation_id = COALESCE(:designation_id::uuid, designation_id)
-                WHERE employee_id = :eid
-                  AND (end_date IS NULL OR end_date >= CURRENT_DATE)
+                UPDATE employee_contract ec
+                SET grade_id       = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
+                    designation_id = COALESCE(CAST(:designation_id AS uuid), ec.designation_id)
+                WHERE ec.employee_id = CAST(:eid AS uuid)
+                  AND ec.employee_id IN (
+                      SELECT employee_id FROM employee WHERE workspace_id = :wid
+                  )
+                  AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
             """),
-            {"grade_id": grade_id, "designation_id": designation_id, "eid": employee_id},
+            {"grade_id": grade_id, "designation_id": designation_id, "eid": employee_id, "wid": workspace_id},
         )
         db.commit()
         return {"status": "updated", "employee_id": employee_id}
@@ -484,12 +488,34 @@ def create_designation_endpoint(workspace_id: str, payload: DesignationCreateSch
 
 @router.post("/{workspace_id}/salary-definition")
 def create_salary_definition_endpoint(workspace_id: str, payload: SalaryDefinitionCreateSchema):
+    components = payload.components_jsonb or {}
+    if isinstance(components, list):
+        components = {item["component_name"]: {"amount": item["amount"]} for item in components}
+    mandatory = {"BASIC", "HOUSING", "TRANSPORT"}
+    missing = mandatory - {k.upper() for k in components}
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Required components missing: {', '.join(sorted(missing))}.",
+        )
+    for code, val in components.items():
+        amount = val.get("amount", val) if isinstance(val, dict) else val
+        try:
+            amount = float(Decimal(str(amount)))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"Invalid amount for '{code}'.")
+        if amount <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Amount for '{code}' must be greater than zero.",
+            )
     db = SessionLocal()
     try:
         return onboarding_service.create_salary_definition(
             db=db,
             workspace_id=workspace_id,
             name=payload.name,
+            code=payload.code,
             components_jsonb=payload.components_jsonb,
             effective_from=payload.effective_from,
             effective_to=payload.effective_to,
@@ -573,7 +599,6 @@ def list_platform_components(workspace_id: str):
                 SELECT component_code, metadata_json, component_class
                 FROM component_metadata
                 WHERE country_code = :cc
-                  AND component_class = 'statutory_deduction'
                   AND is_active = TRUE
                 ORDER BY execution_priority
             """),
@@ -599,7 +624,7 @@ def list_component_overrides(workspace_id: str):
     try:
         rows = db.execute(
             text("""
-                SELECT component_code, overrides_json
+                SELECT component_code, overrides_json, is_active, proration_strategy
                 FROM client_component_metadata
                 WHERE workspace_id = :wid
             """),
@@ -610,7 +635,8 @@ def list_component_overrides(workspace_id: str):
             {
                 "component_code": row[0],
                 "overrides_json": row[1],
-                "is_active": True,
+                "is_active": row[2] if row[2] is not None else True,
+                "proration_strategy": row[3],
             }
             for row in rows
         ]
@@ -664,31 +690,33 @@ def get_workspace_configuration(workspace_id: str):
             {"wid": workspace_id},
         ).fetchall()
 
-        # Salary definitions
+        # Salary definitions — include ID for PATCH routing
         sal_defs = db.execute(
             text("""
-                SELECT name, code, components_jsonb
+                SELECT salary_definition_id, name, code, components_jsonb
                 FROM salary_definition WHERE workspace_id = :wid ORDER BY code
             """),
             {"wid": workspace_id},
         ).fetchall()
 
-        # Payroll rules
+        # Payroll rules — all rules (active + inactive) for management; historical state in rule_set_item
         rules = db.execute(
             text("""
-                SELECT rule_name, rule_type,
-                       rule_definition_json->>'calculation_method' AS method
+                SELECT rule_id, rule_name, rule_type,
+                       rule_definition_json->>'calculation_method' AS method,
+                       is_active,
+                       rule_definition_json
                 FROM payroll_rule
-                WHERE workspace_id = :wid AND is_active = TRUE
+                WHERE workspace_id = :wid
                 ORDER BY rule_name
             """),
             {"wid": workspace_id},
         ).fetchall()
 
-        # Component overrides
+        # Component overrides — include is_active + proration_strategy columns (post-migration)
         overrides = db.execute(
             text("""
-                SELECT component_code, overrides_json
+                SELECT component_code, overrides_json, is_active, proration_strategy
                 FROM client_component_metadata WHERE workspace_id = :wid
             """),
             {"wid": workspace_id},
@@ -700,7 +728,7 @@ def get_workspace_configuration(workspace_id: str):
             for code, val in (components_jsonb or {}).items():
                 amount = val.get("amount", val) if isinstance(val, dict) else val
                 try:
-                    amount = float(amount)
+                    amount = float(Decimal(str(amount)))
                 except (TypeError, ValueError):
                     amount = 0.0
                 out.append({"component_name": code, "amount": amount})
@@ -728,19 +756,30 @@ def get_workspace_configuration(workspace_id: str):
             ],
             "salary_definitions": [
                 {
-                    "name": r[0],
-                    "code": r[1],
-                    "components": _components_to_list(r[2]),
+                    "salary_definition_id": str(r[0]),
+                    "name": r[1],
+                    "code": r[2],
+                    "components": _components_to_list(r[3]),
                 }
                 for r in sal_defs
             ],
             "payroll_rules": [
-                {"name": r[0], "rule_type": r[1], "method": r[2] or "—"} for r in rules
+                {
+                    "rule_id": str(r[0]),
+                    "name": r[1],
+                    "rule_type": r[2],
+                    "method": r[3] or "—",
+                    "is_active": r[4],
+                    "rule_definition_json": r[5] or {},
+                }
+                for r in rules
             ],
             "component_overrides": [
                 {
                     "component_name": r[0],
-                    "is_active": (r[1] or {}).get("is_active", True),
+                    "overrides_json": r[1] or {},
+                    "is_active": r[2] if r[2] is not None else True,
+                    "proration_strategy": r[3],
                 }
                 for r in overrides
             ],
@@ -755,32 +794,412 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
 
     Accepts any subset of: overrides_json, is_active, proration_strategy.
     Uses ON CONFLICT DO UPDATE so repeated calls are idempotent.
+
+    Guards:
+    - D-ARCH-2: Statutory deduction components cannot be disabled.
+    - D-ARCH-8: component_code must be valid for this workspace's country.
     """
     db = SessionLocal()
     try:
+        code_upper = component_code.upper()
+
+        # D-ARCH-8: validate component_code exists for this workspace's country
+        country_row = db.execute(
+            text("SELECT country_code FROM workspace WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchone()
+        if not country_row:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        country_code = country_row[0]
+
+        valid_code = db.execute(
+            text("""
+                SELECT 1 FROM component_metadata
+                WHERE component_code = :code AND country_code = :country
+                LIMIT 1
+            """),
+            {"code": code_upper, "country": country_code},
+        ).fetchone()
+        if not valid_code:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Component '{code_upper}' is not valid for country '{country_code}'.",
+            )
+
+        # D-ARCH-2: Statutory deduction components cannot be disabled
+        if payload.get("is_active") is False:
+            statutory = db.execute(
+                text("""
+                    SELECT component_class FROM component_metadata
+                    WHERE component_code = :code AND country_code = :country
+                    LIMIT 1
+                """),
+                {"code": code_upper, "country": country_code},
+            ).fetchone()
+            if statutory and statutory[0] == "statutory_deduction":
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{code_upper} cannot be disabled. It is a statutory obligation under Nigerian law.",
+                )
+
+        has_overrides = "overrides_json" in payload
         db.execute(
             text("""
                 INSERT INTO client_component_metadata
                     (workspace_id, component_code, overrides_json, is_active, proration_strategy)
                 VALUES
-                    (:wid, :code, :overrides::jsonb,
+                    (:wid, :code, CAST(:overrides AS jsonb),
                      COALESCE(:is_active, true),
-                     COALESCE(:proration, 'FULL_MONTH'))
+                     :proration)
                 ON CONFLICT (workspace_id, component_code) DO UPDATE
-                SET overrides_json     = EXCLUDED.overrides_json,
+                SET overrides_json     = CASE WHEN :has_overrides
+                                              THEN EXCLUDED.overrides_json
+                                              ELSE client_component_metadata.overrides_json END,
                     is_active          = COALESCE(EXCLUDED.is_active, client_component_metadata.is_active),
-                    proration_strategy = COALESCE(EXCLUDED.proration_strategy, client_component_metadata.proration_strategy)
+                    proration_strategy = COALESCE(EXCLUDED.proration_strategy, client_component_metadata.proration_strategy),
+                    updated_at         = NOW()
             """),
             {
                 "wid": workspace_id,
-                "code": component_code.upper(),
+                "code": code_upper,
                 "overrides": json.dumps(payload.get("overrides_json", {})),
                 "is_active": payload.get("is_active"),
                 "proration": payload.get("proration_strategy"),
+                "has_overrides": has_overrides,
             },
         )
         db.commit()
-        return {"status": "ok", "workspace_id": workspace_id, "component_code": component_code.upper()}
+        return {"status": "ok", "workspace_id": workspace_id, "component_code": code_upper}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Track J — Post-Onboarding Config Management (WC-1 through WC-9)
+# ---------------------------------------------------------------------------
+
+def _active_run_exists(db, workspace_id: str) -> bool:
+    """Return True if any run for this workspace is in the edit-lock window."""
+    row = db.execute(
+        text("""
+            SELECT 1 FROM payroll_run
+            WHERE workspace_id = :wid
+              AND status IN ('SUBMITTED','PROCESSING','CALCULATED','PARTIAL','APPROVED')
+            LIMIT 1
+        """),
+        {"wid": workspace_id},
+    ).fetchone()
+    return row is not None
+
+
+@router.patch("/{workspace_id}/pay-cycle")
+def patch_pay_cycle(workspace_id: str, payload: dict):
+    """Update the active pay cycle for a workspace (WC-1).
+
+    Guards: D-ARCH-1 (run-state lock), D-ARCH-6 (frequency change mid-year).
+    Note: run_day/cutoff_day/payment_day are informational only (D-ARCH-7).
+    """
+    db = SessionLocal()
+    try:
+        if not db.execute(
+            text("SELECT 1 FROM workspace WHERE workspace_id = :wid"),
+            {"wid": workspace_id},
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        # D-ARCH-1: block while any run is in the lock window
+        if _active_run_exists(db, workspace_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Pay cycle cannot be changed while a payroll run is in progress or pending approval.",
+            )
+
+        # D-ARCH-6: block frequency change if any PAID run exists this calendar year
+        new_freq = payload.get("frequency")
+        if new_freq:
+            current = db.execute(
+                text("SELECT frequency FROM pay_cycle WHERE workspace_id = :wid AND is_active = TRUE LIMIT 1"),
+                {"wid": workspace_id},
+            ).fetchone()
+            if current and current[0] != new_freq:
+                paid_this_year = db.execute(
+                    text("""
+                        SELECT 1 FROM payroll_run
+                        WHERE workspace_id = :wid
+                          AND status = 'PAID'
+                          AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW())
+                        LIMIT 1
+                    """),
+                    {"wid": workspace_id},
+                ).fetchone()
+                if paid_this_year:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Pay cycle frequency cannot be changed mid-year. A PAID run for this period exists.",
+                    )
+
+        fields = {}
+        if new_freq is not None:
+            fields["frequency"] = new_freq
+        if payload.get("run_day") is not None:
+            fields["run_day"] = int(payload["run_day"])
+        if payload.get("cutoff_day") is not None:
+            fields["cutoff_day"] = int(payload["cutoff_day"])
+        if payload.get("payment_day") is not None:
+            fields["payment_day"] = int(payload["payment_day"])
+
+        if not fields:
+            raise HTTPException(status_code=422, detail="No fields provided to update.")
+
+        set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+        params = {**fields, "wid": workspace_id}
+        db.execute(
+            text(f"UPDATE pay_cycle SET {set_clause}, updated_at = NOW() WHERE workspace_id = :wid AND is_active = TRUE"),
+            params,
+        )
+        db.commit()
+        return {
+            "status": "ok",
+            "workspace_id": workspace_id,
+            "note": "run_day, cutoff_day, and payment_day are informational only and are not used in payroll calculations.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.patch("/{workspace_id}/grade/{grade_code}")
+def patch_grade(workspace_id: str, grade_code: str, payload: dict):
+    """Update a grade description (WC-3). Grade code is immutable."""
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("""
+                UPDATE grade SET description = :desc, updated_at = NOW()
+                WHERE workspace_id = :wid AND UPPER(grade_code) = UPPER(:code)
+            """),
+            {"desc": payload.get("description"), "wid": workspace_id, "code": grade_code},
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Grade '{grade_code}' not found.")
+        db.commit()
+        return {"status": "ok", "workspace_id": workspace_id, "grade_code": grade_code.upper()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.patch("/{workspace_id}/designation/{designation_code}")
+def patch_designation(workspace_id: str, designation_code: str, payload: dict):
+    """Update a designation description (WC-5). Designation code is immutable."""
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("""
+                UPDATE designation SET description = :desc, updated_at = NOW()
+                WHERE workspace_id = :wid AND UPPER(designation_code) = UPPER(:code)
+            """),
+            {"desc": payload.get("description"), "wid": workspace_id, "code": designation_code},
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Designation '{designation_code}' not found.")
+        db.commit()
+        return {"status": "ok", "workspace_id": workspace_id, "designation_code": designation_code.upper()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.patch("/{workspace_id}/salary-definition/{salary_definition_id}")
+def patch_salary_definition(workspace_id: str, salary_definition_id: str, payload: dict):
+    """Update components_jsonb for a salary definition (WC-7).
+
+    Guards:
+    - D-ARCH-1: edit-lock if any run in SUBMITTED→APPROVED references an employee on this def.
+    - D-ARCH-5: workspace isolation via AND workspace_id = :wid.
+    - Validation: BASIC, HOUSING, TRANSPORT must be present; all amounts > 0.
+    """
+    db = SessionLocal()
+    try:
+        # D-ARCH-5: confirm ownership
+        existing = db.execute(
+            text("""
+                SELECT salary_definition_id FROM salary_definition
+                WHERE salary_definition_id = :id AND workspace_id = :wid
+            """),
+            {"id": salary_definition_id, "wid": workspace_id},
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Salary definition not found.")
+
+        # D-ARCH-1: edit-lock — check for in-flight runs where any employee uses this salary def.
+        # Goes payroll_run → employee (workspace match) → employee_contract to avoid joining
+        # through payroll_result, which has zero rows for SUBMITTED runs and bypasses the lock.
+        blocking = db.execute(
+            text("""
+                SELECT pr.payroll_run_id, pr.status
+                FROM payroll_run pr
+                JOIN employee e ON pr.workspace_id = e.workspace_id
+                JOIN employee_contract ec ON e.employee_id = ec.employee_id
+                WHERE ec.salary_definition_id = :sal_def_id
+                  AND pr.workspace_id = :wid
+                  AND pr.status IN ('SUBMITTED','PROCESSING','CALCULATED','PARTIAL','APPROVED')
+                LIMIT 1
+            """),
+            {"sal_def_id": salary_definition_id, "wid": workspace_id},
+        ).fetchone()
+        if blocking:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This salary definition cannot be edited while a payroll run is in progress or pending approval.",
+            )
+
+        components = payload.get("components_jsonb", {})
+        if not components:
+            raise HTTPException(status_code=422, detail="components_jsonb is required.")
+
+        # Normalise: accept list [{component_name, amount}] or dict {CODE: {amount}}
+        if isinstance(components, list):
+            components = {item["component_name"]: {"amount": item["amount"]} for item in components}
+
+        # Validate mandatory components present
+        mandatory = {"BASIC", "HOUSING", "TRANSPORT"}
+        missing = mandatory - {k.upper() for k in components}
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Required components missing: {', '.join(sorted(missing))}.",
+            )
+
+        # Validate all amounts > 0
+        normalised: dict = {}
+        for code, val in components.items():
+            amount = val.get("amount", val) if isinstance(val, dict) else val
+            try:
+                amount = float(Decimal(str(amount)))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail=f"Invalid amount for component '{code}'.")
+            if amount <= 0:
+                raise HTTPException(status_code=422, detail=f"Amount for '{code}' must be greater than zero.")
+            normalised[code.upper()] = {"amount": amount}
+
+        db.execute(
+            text("""
+                UPDATE salary_definition
+                SET components_jsonb = CAST(:components AS jsonb), updated_at = NOW()
+                WHERE salary_definition_id = :id AND workspace_id = :wid
+            """),
+            {
+                "components": json.dumps(normalised),
+                "id": salary_definition_id,
+                "wid": workspace_id,
+            },
+        )
+        db.commit()
+        return {"status": "ok", "salary_definition_id": salary_definition_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.patch("/{workspace_id}/payroll-rule/{rule_id}")
+def patch_payroll_rule(workspace_id: str, rule_id: str, payload: dict):
+    """Update a payroll rule's is_active, name, or definition (WC-8/WC-9).
+
+    Note: toggles the source payroll_rule record only. In-progress runs read from
+    rule_set_item snapshots and are not affected. Re-publish the rule set for the
+    change to take effect on future runs.
+    """
+    db = SessionLocal()
+    try:
+        existing = db.execute(
+            text("""
+                SELECT rule_id FROM payroll_rule
+                WHERE rule_id = :rid AND workspace_id = :wid
+            """),
+            {"rid": rule_id, "wid": workspace_id},
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Payroll rule not found.")
+
+        fields = {}
+        if payload.get("is_active") is not None:
+            fields["is_active"] = bool(payload["is_active"])
+        if payload.get("rule_name") is not None:
+            fields["rule_name"] = str(payload["rule_name"])
+        if payload.get("rule_definition_json") is not None:
+            fields["rule_definition_json"] = json.dumps(payload["rule_definition_json"])
+
+        if not fields:
+            raise HTTPException(status_code=422, detail="No fields provided to update.")
+
+        set_parts = []
+        params: dict = {"rid": rule_id, "wid": workspace_id}
+        for k, v in fields.items():
+            if k == "rule_definition_json":
+                set_parts.append(f"{k} = CAST(:rule_definition_json AS jsonb)")
+            else:
+                set_parts.append(f"{k} = :{k}")
+            params[k] = v
+
+        set_parts.append("updated_at = NOW()")
+        db.execute(
+            text(f"UPDATE payroll_rule SET {', '.join(set_parts)} WHERE rule_id = :rid AND workspace_id = :wid"),
+            params,
+        )
+        db.commit()
+        return {
+            "status": "ok",
+            "rule_id": rule_id,
+            "note": "Re-publish the rule set for this change to take effect on future runs.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.delete("/{workspace_id}/payroll-rule/{rule_id}")
+def delete_payroll_rule(workspace_id: str, rule_id: str):
+    """Delete a payroll rule.
+
+    Safe because rule_set_item snapshots rule content at publish time —
+    historical runs are not affected by deleting the source payroll_rule row.
+    """
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("DELETE FROM payroll_rule WHERE rule_id = :rid AND workspace_id = :wid"),
+            {"rid": rule_id, "wid": workspace_id},
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Payroll rule not found.")
+        db.commit()
+        return {"status": "ok", "rule_id": rule_id}
     except HTTPException:
         raise
     except Exception as e:
@@ -860,7 +1279,7 @@ def get_rate_codes(workspace_id: str):
 
 class RateCodeCreateSchema(BaseModel):
     code: str
-    multiplier: float
+    multiplier: Decimal
     unit: str
     base: str
     description: str | None = None

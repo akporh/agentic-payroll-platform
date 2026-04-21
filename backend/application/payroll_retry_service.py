@@ -133,9 +133,21 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     statutory_effective_date  = row[4]
     original_snapshot         = row[5] or {}
 
+    ph_rows = db.execute(text("""
+        SELECT holiday_date FROM national_public_holiday
+        WHERE country_code = :cc
+          AND holiday_date BETWEEN :start AND :end
+        UNION
+        SELECT holiday_date FROM workspace_public_holiday
+        WHERE workspace_id = :wid
+          AND holiday_date BETWEEN :start AND :end
+    """), {"cc": country_code, "wid": workspace_id, "start": period_start, "end": period_end}).fetchall()
+    public_holiday_dates = {r[0] for r in ph_rows}
+
     period_ctx = build_period_context(
         period_start=period_start,
         period_end=period_end,
+        public_holiday_dates=public_holiday_dates,
     )
 
     # ── Statutory rule — temporal selection ──────────────────────────────────

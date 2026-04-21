@@ -6,10 +6,8 @@ import { onboardingApi } from '../api/onboarding';
 import type { ValidateResponse, PreviewResponse, CommitResponse } from '../types/onboarding';
 import type { Workspace } from '../types/workspace';
 import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Btn } from '../components/ui/Btn';
-import { AlertBox } from '../components/ui/AlertBox';
+import { ContentHeader, Card, Btn, AlertBanner, OnboardingStepper, Breadcrumb } from '../design-system';
+import type { Step } from '../design-system';
 import { EmployeeUpload } from '../components/onboarding/EmployeeUpload';
 import type { MappedEmployee, SalaryDefinitionOption } from '../components/onboarding/EmployeeUpload';
 import { WorkspaceExcelUpload } from '../components/onboarding/WorkspaceExcelUpload';
@@ -401,7 +399,7 @@ export function WorkspaceSetup() {
   if (fetchError) {
     return (
       <div className="max-w-md mt-10">
-        <AlertBox type="error" messages={[fetchError]} />
+        <AlertBanner variant="error" description={fetchError} />
         <div className="mt-4">
           <Btn variant="secondary" onClick={() => navigate('/')}>← Back to Dashboard</Btn>
         </div>
@@ -421,56 +419,35 @@ export function WorkspaceSetup() {
 
   // ── Render (DRAFT wizard) ────────────────────────────────────────────────
 
+  const WIZARD_STEPS: Step[] = [
+    { label: 'Create Workspace' },
+    { label: 'Configure Client' },
+    { label: 'Component Settings' },
+    { label: 'Upload Employees' },
+    { label: 'Activate' },
+  ];
+  const wizardCurrentStep =
+    commitStage === 'committed' ? 5
+    : step === 'employee-upload' ? 3
+    : step === 'component-settings' ? 2
+    : 1;
+
   return (
     <div>
-      <PageHeader
+      <ContentHeader
         title="Client Setup"
         subtitle={workspace ? `${workspace.name} · Configure client · Upload employees · Commit` : 'Loading…'}
+        back={
+          <Breadcrumb items={[
+            { label: 'Bureau Dashboard', to: '/' },
+            { label: workspace?.name ?? '…', to: `/workspaces/${workspaceId}` },
+            { label: 'Setup Wizard' },
+          ]} />
+        }
       />
 
-      {/* ── Progress bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-0 mb-6 flex-wrap">
-        {/* Step 1 always done */}
-        <span className="px-3 py-1 rounded text-xs font-semibold whitespace-nowrap bg-green-100 text-green-700">
-          ✓ 1. Create Workspace
-        </span>
-
-        {(['client-config-json', 'component-settings', 'employee-upload'] as OnboardingDraftStep[]).map((s, i) => {
-          const labels: Record<string, string> = {
-            'client-config-json': 'Configure Client',
-            'component-settings': 'Component Settings',
-            'employee-upload': 'Upload Employees',
-          };
-          const stepOrder: OnboardingDraftStep[] = ['client-config-json', 'component-settings', 'employee-upload'];
-          const currentIdx = stepOrder.indexOf(step);
-          const thisIdx = stepOrder.indexOf(s);
-          const done = thisIdx < currentIdx || commitStage === 'committed';
-          const active = s === step;
-          return (
-            <div key={s} className="flex items-center">
-              <span className={`text-sm px-1 ${done ? 'text-green-400' : 'text-slate-300'}`}>→</span>
-              <span className={`px-3 py-1 rounded text-xs font-semibold whitespace-nowrap ${
-                done && !active ? 'bg-green-100 text-green-700'
-                : active ? 'bg-slate-800 text-white'
-                : 'bg-slate-100 text-slate-400'
-              }`}>
-                {done && !active ? '✓ ' : `${i + 2}. `}{labels[s]}
-              </span>
-            </div>
-          );
-        })}
-
-        <div className="flex items-center">
-          <span className={`text-sm px-1 ${commitStage === 'committed' ? 'text-green-400' : 'text-slate-300'}`}>→</span>
-          <span className={`px-3 py-1 rounded text-xs font-semibold whitespace-nowrap ${
-            commitStage === 'committed' ? 'bg-green-100 text-green-700'
-            : step === 'employee-upload' ? 'bg-slate-100 text-slate-500'
-            : 'bg-slate-100 text-slate-300'
-          }`}>
-            {commitStage === 'committed' ? '✓ ' : '5. '}Activate
-          </span>
-        </div>
-      </div>
+      {/* ── Progress stepper ──────────────────────────────────────────────── */}
+      <OnboardingStepper steps={WIZARD_STEPS} currentStep={wizardCurrentStep} className="mb-6" />
 
       {/* ── Workspace badge ───────────────────────────────────────────────── */}
       {workspace && (
@@ -605,7 +582,7 @@ export function WorkspaceSetup() {
 
             {componentError && (
               <div className="mb-3">
-                <AlertBox type="error" messages={[componentError]} />
+                <AlertBanner variant="error" description={componentError} />
               </div>
             )}
 
@@ -682,16 +659,16 @@ export function WorkspaceSetup() {
 
               {unresolvedMappings > 0 && (
                 <div className="mb-3">
-                  <AlertBox
-                    type="warning"
-                    messages={[`${unresolvedMappings} employee${unresolvedMappings !== 1 ? 's have' : ' has'} an unresolved salary mapping. Resolve above before committing.`]}
+                  <AlertBanner
+                    variant="warning"
+                    description={`${unresolvedMappings} employee${unresolvedMappings !== 1 ? 's have' : ' has'} an unresolved salary mapping. Resolve above before committing.`}
                   />
                 </div>
               )}
 
               {actionError && (
                 <div className="mb-3">
-                  <AlertBox type="error" messages={[actionError]} />
+                  <AlertBanner variant="error" description={actionError} />
                 </div>
               )}
 
@@ -729,24 +706,24 @@ export function WorkspaceSetup() {
             {validateResult && (
               <Card title="Validation Result">
                 {validateResult.status === 'valid' ? (
-                  <AlertBox type="success" messages={['Payload is structurally valid.']} />
+                  <AlertBanner variant="success" description="Payload is structurally valid." />
                 ) : (
-                  <AlertBox
-                    type="error"
+                  <AlertBanner
+                    variant="error"
                     title="Validation Failed"
-                    messages={validateResult.errors.map((e) => `${e.field}: ${e.message}`)}
+                    description={validateResult.errors.map((e) => `${e.field}: ${e.message}`).join(' · ')}
                   />
                 )}
                 {validateResult.warnings?.length > 0 && (
                   <div className="mt-2">
-                    <AlertBox
-                      type="warning"
+                    <AlertBanner
+                      variant="warning"
                       title="Warnings (non-blocking)"
-                      messages={validateResult.warnings.map((w) =>
+                      description={validateResult.warnings.map((w) =>
                         typeof w === 'object'
                           ? `${(w as { field: string }).field}: ${(w as { message: string }).message}`
                           : String(w)
-                      )}
+                      ).join(' · ')}
                     />
                   </div>
                 )}
@@ -756,14 +733,14 @@ export function WorkspaceSetup() {
             {previewResult && (
               <Card title="Hard Validation + AI Review">
                 {aiWarnings.length > 0 && (
-                  <AlertBox type="warning" title="AI Critic Warnings (non-blocking)" messages={aiWarnings} />
+                  <AlertBanner variant="warning" title="AI Critic Warnings (non-blocking)" description={aiWarnings.join(' · ')} />
                 )}
                 {previewResult.status === 'invalid' && previewResult.errors && (
                   <div className="mt-2">
-                    <AlertBox
-                      type="error"
+                    <AlertBanner
+                      variant="error"
                       title="Hard Validation Failed"
-                      messages={previewResult.errors.map((e) => `${e.field}: ${e.message}`)}
+                      description={previewResult.errors.map((e) => `${e.field}: ${e.message}`).join(' · ')}
                     />
                   </div>
                 )}
@@ -779,9 +756,9 @@ export function WorkspaceSetup() {
               <Card title="Commit Result">
                 {commitResult.status === 'success' ? (
                   <>
-                    <AlertBox
-                      type="success"
-                      messages={[commitResult.message ?? 'Onboarding committed successfully.']}
+                    <AlertBanner
+                      variant="success"
+                      description={commitResult.message ?? 'Onboarding committed successfully.'}
                     />
                     <div className="mt-3">
                       <Btn variant="secondary" onClick={() => navigate(`/workspaces/${workspace.workspace_id}`)}>
@@ -790,13 +767,13 @@ export function WorkspaceSetup() {
                     </div>
                   </>
                 ) : (
-                  <AlertBox
-                    type="error"
+                  <AlertBanner
+                    variant="error"
                     title="Commit Failed"
-                    messages={
+                    description={
                       commitResult.errors
-                        ? commitResult.errors.map((e) => `${e.field}: ${e.message}`)
-                        : [commitResult.message ?? 'Unknown error']
+                        ? commitResult.errors.map((e) => `${e.field}: ${e.message}`).join(' · ')
+                        : commitResult.message ?? 'Unknown error'
                     }
                   />
                 )}
@@ -886,7 +863,7 @@ function ExistingConfigView({
   // G3 — Payroll Behaviour
   const [payrollConfig, setPayrollConfig] = useState<WorkspacePayrollConfig | null>(null);
   const [configFetchError, setConfigFetchError] = useState<string | null>(null);
-  const [phBehaviourOpen, setPhBehaviourOpen] = useState(false);
+  const [phBehaviourOpen, setPhBehaviourOpen] = useState(true);
   const [editingBehaviour, setEditingBehaviour] = useState(false);
   const [behaviourForm, setBehaviourForm] = useState({
     effective_from: '',
@@ -922,7 +899,17 @@ function ExistingConfigView({
     if (!workspaceId) return;
     workspaceApi.getPayrollConfig(workspaceId)
       .then(setPayrollConfig)
-      .catch(() => setConfigFetchError('No payroll config found — defaults apply.'));
+      .catch(() => {
+        setConfigFetchError('Could not load saved config — showing platform defaults.');
+        setPayrollConfig({
+          ph_mode: 'FILE_BASED',
+          ph_rate_code: 'OT005',
+          saturday_ph_rule: 'PH_TAKES_PRECEDENCE',
+          sunday_ph_rule: 'PH_TAKES_PRECEDENCE',
+          d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH',
+          d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE',
+        });
+      });
   }, [workspaceId]);
 
   useEffect(() => {
@@ -958,7 +945,7 @@ function ExistingConfigView({
 
   return (
     <div>
-      <PageHeader
+      <ContentHeader
         title="Client Setup"
         subtitle={workspace ? `${workspace.name} · ${ws?.country_code ?? ''} · ${ws?.currency_code ?? ''}` : 'Loading…'}
       />
@@ -1112,21 +1099,21 @@ function ExistingConfigView({
 
           {uploadResult && (
             <div className="mt-3">
-              <AlertBox
-                type="success"
-                messages={[
+              <AlertBanner
+                variant="success"
+                description={[
                   `${uploadResult.updated} contract${uploadResult.updated !== 1 ? 's' : ''} updated.`,
                   ...(uploadResult.not_found.length > 0
                     ? [`Not found (${uploadResult.not_found.length}): ${uploadResult.not_found.slice(0, 5).join(', ')}${uploadResult.not_found.length > 5 ? '…' : ''}`]
                     : []),
-                ]}
+                ].join(' ')}
               />
             </div>
           )}
 
           {uploadError && (
             <div className="mt-3">
-              <AlertBox type="error" messages={[uploadError]} />
+              <AlertBanner variant="error" description={uploadError} />
             </div>
           )}
         </div>
@@ -1134,54 +1121,70 @@ function ExistingConfigView({
         {/* ── G3: Payroll Behaviour ──────────────────────────────────────── */}
         <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
           <button
-            className="w-full flex items-center justify-between px-5 py-3 text-left"
+            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors rounded-lg"
             onClick={() => setPhBehaviourOpen((v) => !v)}
           >
             <span className="text-sm font-semibold text-slate-700">Payroll Behaviour</span>
-            <span className="text-xs text-slate-400">{phBehaviourOpen ? '▲ Hide' : '▼ Show'}</span>
+            <svg className={`w-4 h-4 text-slate-400 transition-transform ${phBehaviourOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
           </button>
           {phBehaviourOpen && (
             <div className="px-5 pb-5 border-t border-slate-100">
-              {configFetchError && !payrollConfig && (
-                <p className="text-xs text-amber-600 mt-3">{configFetchError}</p>
+              {configFetchError && (
+                <div className="mt-3 mb-2">
+                  <AlertBanner variant="warning" description={configFetchError} />
+                </div>
               )}
 
               {payrollConfig && (
                 <div className="mt-3 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">PH Mode</p>
-                    <p className="font-medium text-slate-700">{payrollConfig.ph_mode}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Public Holiday Mode</p>
+                    <p className="font-medium text-slate-700">
+                      {payrollConfig.ph_mode === 'AUTOMATIC' ? 'Automatic (from calendar)' : 'File-based (per run)'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">PH Rate Code</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Public Holiday Rate Code</p>
                     <p className="font-mono text-slate-700">{payrollConfig.ph_rate_code}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-400 mb-0.5">Effective From</p>
-                    <p className="font-mono text-slate-700">{payrollConfig.effective_from ?? '—'}</p>
+                    <p className="font-medium text-slate-700">
+                      {payrollConfig.effective_from
+                        ? new Date(payrollConfig.effective_from).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">Saturday PH Rule</p>
-                    <p className="text-xs text-slate-600">{payrollConfig.saturday_ph_rule}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Saturday Public Holiday Rule</p>
+                    <p className="text-xs text-slate-600">
+                      {payrollConfig.saturday_ph_rule === 'PH_TAKES_PRECEDENCE' ? 'Public holiday takes precedence' : 'Day-of-week rate applies'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">Sunday PH Rule</p>
-                    <p className="text-xs text-slate-600">{payrollConfig.sunday_ph_rule}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Sunday Public Holiday Rule</p>
+                    <p className="text-xs text-slate-600">
+                      {payrollConfig.sunday_ph_rule === 'PH_TAKES_PRECEDENCE' ? 'Public holiday takes precedence' : 'Day-of-week rate applies'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">Leave + PH Overlap (D3)</p>
-                    <p className="text-xs text-slate-600">{payrollConfig.d3_leave_overlap_rule}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Leave + Public Holiday Overlap</p>
+                    <p className="text-xs text-slate-600">
+                      {payrollConfig.d3_leave_overlap_rule === 'LEAVE_ABSORBS_PH' ? 'Leave absorbs public holiday (no additive pay)' : 'Public holiday is additive (pay both)'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 mb-0.5">Absence on PH (D4)</p>
-                    <p className="text-xs text-slate-600">{payrollConfig.d4_absence_rule}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">Absence on a Public Holiday</p>
+                    <p className="text-xs text-slate-600">
+                      {payrollConfig.d4_absence_rule === 'ABSENT_IS_DEDUCTIBLE' ? 'Absence is deductible' : 'Public holiday excuses absence'}
+                    </p>
                   </div>
                 </div>
               )}
 
               {!editingBehaviour ? (
                 <button
-                  className="text-xs text-slate-500 underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded px-3 py-1.5 hover:bg-slate-50 transition-colors"
                   onClick={() => {
                     setBehaviourForm({
                       effective_from: new Date().toISOString().slice(0, 10),
@@ -1197,105 +1200,156 @@ function ExistingConfigView({
                     setBehaviourSaved(false);
                   }}
                 >
-                  {payrollConfig ? 'Update config →' : 'Set config →'}
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  {payrollConfig?.effective_from ? 'Update settings' : 'Configure settings'}
                 </button>
               ) : (
-                <div className="mt-2 space-y-3">
-                  <p className="text-xs text-slate-500">
-                    Creates a new versioned config. Running payrolls are not affected.
+                <div className="mt-3 space-y-5">
+                  <p className="text-xs text-slate-400">
+                    Changes take effect on the date below. Running payrolls are not affected.
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* ── Row 1: When + PH Rate Code ── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Effective From *</label>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Effective From *</label>
                       <input
                         type="date"
                         value={behaviourForm.effective_from}
                         onChange={(e) => setBehaviourForm((f) => ({ ...f, effective_from: e.target.value }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                        className="border border-slate-200 rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">PH Rate Code</label>
-                      <input
-                        type="text"
+                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Public Holiday Rate Code</label>
+                      <select
                         value={behaviourForm.ph_rate_code}
-                        onChange={(e) => setBehaviourForm((f) => ({ ...f, ph_rate_code: e.target.value }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      />
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setRateCodeOpen(true);
+                            setEditingBehaviour(false);
+                          } else {
+                            setBehaviourForm((f) => ({ ...f, ph_rate_code: e.target.value }));
+                          }
+                        }}
+                        className="border border-slate-200 rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      >
+                        {rateCodes.length === 0 && (
+                          <option value={behaviourForm.ph_rate_code}>{behaviourForm.ph_rate_code}</option>
+                        )}
+                        {rateCodes.map((rc) => (
+                          <option key={rc.code} value={rc.code}>
+                            {rc.code} — {rc.multiplier}× {rc.unit === 'hour' ? 'hourly' : 'daily'}
+                          </option>
+                        ))}
+                        <option disabled>──────────────</option>
+                        <option value="__new__">+ Add new rate code…</option>
+                      </select>
                     </div>
                   </div>
 
+                  {/* ── PH Mode ── */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">PH Mode</label>
-                    <div className="flex gap-4">
-                      {(['AUTOMATIC', 'FILE_BASED'] as const).map((v) => (
-                        <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Public Holiday Mode</p>
+                    <div className="flex gap-3">
+                      {([
+                        { v: 'AUTOMATIC', label: 'Automatic', sub: 'Uses the system calendar' },
+                        { v: 'FILE_BASED', label: 'File-based', sub: 'Supplied per payroll run' },
+                      ] as const).map(({ v, label, sub }) => (
+                        <label
+                          key={v}
+                          className={`flex-1 flex items-start gap-2.5 border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${behaviourForm.ph_mode === v ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
                           <input
                             type="radio"
                             name="ph_mode"
                             value={v}
                             checked={behaviourForm.ph_mode === v}
                             onChange={() => setBehaviourForm((f) => ({ ...f, ph_mode: v }))}
-                            className="accent-slate-700"
+                            className="mt-0.5 accent-slate-700 shrink-0"
                           />
-                          {v === 'AUTOMATIC' ? 'Automatic (from calendar)' : 'File-based (per run)'}
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">{label}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+                          </div>
                         </label>
                       ))}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Saturday PH Rule</label>
-                      <select
-                        value={behaviourForm.saturday_ph_rule}
-                        onChange={(e) => setBehaviourForm((f) => ({ ...f, saturday_ph_rule: e.target.value as typeof f.saturday_ph_rule }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      >
-                        <option value="PH_TAKES_PRECEDENCE">PH takes precedence</option>
-                        <option value="DAY_OF_WEEK_TAKES_PRECEDENCE">Day-of-week takes precedence</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Sunday PH Rule</label>
-                      <select
-                        value={behaviourForm.sunday_ph_rule}
-                        onChange={(e) => setBehaviourForm((f) => ({ ...f, sunday_ph_rule: e.target.value as typeof f.sunday_ph_rule }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      >
-                        <option value="PH_TAKES_PRECEDENCE">PH takes precedence</option>
-                        <option value="DAY_OF_WEEK_TAKES_PRECEDENCE">Day-of-week takes precedence</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Leave + PH Overlap (D3)</label>
-                      <select
-                        value={behaviourForm.d3_leave_overlap_rule}
-                        onChange={(e) => setBehaviourForm((f) => ({ ...f, d3_leave_overlap_rule: e.target.value as typeof f.d3_leave_overlap_rule }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      >
-                        <option value="LEAVE_ABSORBS_PH">Leave absorbs PH (no additive)</option>
-                        <option value="PH_ADDITIVE">PH additive (pay both)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Absence on PH (D4)</label>
-                      <select
-                        value={behaviourForm.d4_absence_rule}
-                        onChange={(e) => setBehaviourForm((f) => ({ ...f, d4_absence_rule: e.target.value as typeof f.d4_absence_rule }))}
-                        className="border border-slate-200 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      >
-                        <option value="ABSENT_IS_DEDUCTIBLE">Absence is deductible</option>
-                        <option value="PH_EXCUSES_ABSENCE">PH excuses absence</option>
-                      </select>
+                  {/* ── Weekend Rules ── */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Weekend Rules</p>
+                    <div className="border border-slate-100 rounded-lg divide-y divide-slate-100">
+                      {([
+                        { day: 'Saturday', field: 'saturday_ph_rule' as const },
+                        { day: 'Sunday',   field: 'sunday_ph_rule'   as const },
+                      ]).map(({ day, field }) => (
+                        <div key={day} className="flex items-center justify-between px-4 py-3">
+                          <span className="text-sm text-slate-600 w-20">{day}</span>
+                          <div className="flex gap-2">
+                            {([
+                              { v: 'PH_TAKES_PRECEDENCE',       label: 'Public holiday rate' },
+                              { v: 'DAY_OF_WEEK_TAKES_PRECEDENCE', label: 'Weekend rate' },
+                            ] as const).map(({ v, label }) => (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => setBehaviourForm((f) => ({ ...f, [field]: v }))}
+                                className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${behaviourForm[field] === v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  {behaviourError && <p className="text-xs text-red-500">{behaviourError}</p>}
-                  {behaviourSaved && <p className="text-xs text-green-600">Config saved.</p>}
+                  {/* ── Pay Calculation Rules ── */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Pay Calculation Rules</p>
+                    <div className="border border-slate-100 rounded-lg divide-y divide-slate-100">
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="mr-4">
+                          <p className="text-sm text-slate-600">Leave overlaps a public holiday</p>
+                          <p className="text-xs text-slate-400 mt-0.5">What happens when leave and a PH fall on the same day?</p>
+                        </div>
+                        <select
+                          value={behaviourForm.d3_leave_overlap_rule}
+                          onChange={(e) => setBehaviourForm((f) => ({ ...f, d3_leave_overlap_rule: e.target.value as typeof f.d3_leave_overlap_rule }))}
+                          className="border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400 shrink-0"
+                        >
+                          <option value="LEAVE_ABSORBS_PH">Leave absorbs — no additive pay</option>
+                          <option value="PH_ADDITIVE">Pay both — PH is additive</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="mr-4">
+                          <p className="text-sm text-slate-600">Employee is absent on a public holiday</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Is the absence deductible when the day is a PH?</p>
+                        </div>
+                        <select
+                          value={behaviourForm.d4_absence_rule}
+                          onChange={(e) => setBehaviourForm((f) => ({ ...f, d4_absence_rule: e.target.value as typeof f.d4_absence_rule }))}
+                          className="border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400 shrink-0"
+                        >
+                          <option value="ABSENT_IS_DEDUCTIBLE">Deductible — absence still counts</option>
+                          <option value="PH_EXCUSES_ABSENCE">Excused — PH covers the absence</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-                  <div className="flex gap-2">
+                  {behaviourError && (
+                    <AlertBanner variant="error" description={behaviourError} />
+                  )}
+                  {behaviourSaved && (
+                    <AlertBanner variant="success" description="Payroll behaviour config saved." />
+                  )}
+
+                  <div className="flex gap-2 pt-1">
                     <Btn
                       onClick={async () => {
                         if (!workspaceId || !behaviourForm.effective_from) return;
@@ -1315,11 +1369,11 @@ function ExistingConfigView({
                       loading={behaviourSaving}
                       disabled={!behaviourForm.effective_from}
                     >
-                      Save Config
+                      Save settings
                     </Btn>
                     <button
-                      className="text-xs text-slate-400 underline px-2"
-                      onClick={() => setEditingBehaviour(false)}
+                      className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 transition-colors"
+                      onClick={() => { setEditingBehaviour(false); setBehaviourError(null); setBehaviourSaved(false); }}
                     >
                       Cancel
                     </button>
@@ -1333,7 +1387,7 @@ function ExistingConfigView({
         {/* ── G4: Rate Code Registry ─────────────────────────────────────── */}
         <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
           <button
-            className="w-full flex items-center justify-between px-5 py-3 text-left"
+            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors rounded-lg"
             onClick={() => setRateCodeOpen((v) => !v)}
           >
             <div className="flex items-center gap-2">
@@ -1342,12 +1396,14 @@ function ExistingConfigView({
                 {rateCodes.length} code{rateCodes.length !== 1 ? 's' : ''}
               </span>
             </div>
-            <span className="text-xs text-slate-400">{rateCodeOpen ? '▲ Hide' : '▼ Show'}</span>
+            <svg className={`w-4 h-4 text-slate-400 transition-transform ${rateCodeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
           </button>
           {rateCodeOpen && (
             <div className="px-5 pb-5 border-t border-slate-100">
               {rateCodeFetchError && (
-                <p className="text-xs text-red-500 mt-3">{rateCodeFetchError}</p>
+                <div className="mt-3 mb-2">
+                  <AlertBanner variant="error" description={rateCodeFetchError} />
+                </div>
               )}
 
               <table className="w-full text-sm mt-3">
@@ -1366,8 +1422,10 @@ function ExistingConfigView({
                     <tr key={rc.code} className={`border-b border-slate-50 ${rc.is_platform ? 'opacity-60' : ''}`}>
                       <td className="py-2 pr-3 font-mono text-xs text-slate-700">{rc.code}</td>
                       <td className="py-2 pr-3 text-slate-600">{rc.multiplier}×</td>
-                      <td className="py-2 pr-3 text-slate-500 text-xs">{rc.unit}</td>
-                      <td className="py-2 pr-3 text-slate-500 text-xs">{rc.base}</td>
+                      <td className="py-2 pr-3 text-slate-500 text-xs capitalize">{rc.unit}</td>
+                      <td className="py-2 pr-3 text-slate-500 text-xs">
+                        {rc.base === 'basic_daily' ? 'Basic daily' : rc.base === 'basic_hourly' ? 'Basic hourly' : rc.base}
+                      </td>
                       <td className="py-2 pr-3">
                         {rc.is_platform ? (
                           <span className="text-xs text-slate-400 italic">platform</span>

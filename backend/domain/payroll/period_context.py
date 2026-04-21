@@ -34,12 +34,15 @@ class PeriodContext:
     period_fraction:      Decimal  # 1 / annualization_factor
 
 
-def _count_working_days(start: date, end: date) -> int:
-    """Count Mon–Fri days between start and end inclusive."""
+def _count_working_days(
+    start: date, end: date, public_holiday_dates: set | None = None
+) -> int:
+    """Count Mon–Fri days between start and end inclusive, excluding public holidays."""
+    ph = public_holiday_dates or set()
     total = 0
     current = start
     while current <= end:
-        if current.weekday() < 5:   # 0=Mon … 4=Fri
+        if current.weekday() < 5 and current not in ph:
             total += 1
         current += datetime.timedelta(days=1)
     return max(1, total)
@@ -131,6 +134,7 @@ def build_period_context(
     period_end:            date | str | None = None,
     period_type:           str | None = None,
     working_days_override: int | None = None,
+    public_holiday_dates:  set | None = None,
 ) -> PeriodContext:
     """Derive a PeriodContext from raw API inputs.
 
@@ -201,9 +205,7 @@ def build_period_context(
     if working_days_override is not None:
         wd = int(working_days_override)
     else:
-        # Count actual Mon–Fri days in the period for all period types.
-        # This gives the real figure (e.g. Feb 2026 = 20, not 22).
-        wd = _count_working_days(start, end)
+        wd = _count_working_days(start, end, public_holiday_dates)
 
     # --- Resolve annualization factor ---
     if ptype in _DEFAULT_ANNUALIZATION:

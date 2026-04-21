@@ -48,16 +48,27 @@ def upgrade() -> None:
     """)
 
     # ── NGA 2026 Tier-1 seeds ─────────────────────────────────────────────────
+    # Remove any stale rows for NG 2026 before inserting correct data
+    op.execute("""
+        DELETE FROM national_public_holiday
+        WHERE country_code = 'NG'
+          AND EXTRACT(YEAR FROM holiday_date) = 2026;
+    """)
+
     op.execute("""
         INSERT INTO national_public_holiday (country_code, holiday_date, name)
         VALUES
             ('NG', '2026-01-01', 'New Year''s Day'),
             ('NG', '2026-01-20', 'Armed Forces Remembrance Day'),
-            ('NG', '2026-04-18', 'Good Friday'),
-            ('NG', '2026-04-20', 'Easter Monday'),
+            ('NG', '2026-03-20', 'Eid al-Fitr (Day 1)'),
+            ('NG', '2026-03-21', 'Eid al-Fitr (Day 2)'),
+            ('NG', '2026-04-03', 'Good Friday'),
+            ('NG', '2026-04-06', 'Easter Monday'),
             ('NG', '2026-05-01', 'Workers'' Day'),
+            ('NG', '2026-05-27', 'Eid el-Kabir (Day 1)'),
+            ('NG', '2026-05-28', 'Eid el-Kabir (Day 2)'),
             ('NG', '2026-06-12', 'Democracy Day'),
-            ('NG', '2026-07-28', 'Eid al-Adha (estimated)'),
+            ('NG', '2026-08-25', 'Eid el-Maulud'),
             ('NG', '2026-10-01', 'Independence Day'),
             ('NG', '2026-12-25', 'Christmas Day'),
             ('NG', '2026-12-26', 'Boxing Day')

@@ -1,0 +1,116 @@
+/*
+ * Design System Tokens — Agentic Payroll Platform
+ *
+ * Gate 2 deliverable. All values sourced from Gate 1 design decisions:
+ *   DD-9  typeface: Inter, tabular-nums for monetary columns
+ *   DD-10 type scale: Minor Third (1.200 ratio) → 12/14/17/20/24/29/35px
+ *   DD-11 colour: 60% neutral, 30% surface, 10% accent; semantic status colours
+ *   DD-12 status badges: colour + text, never colour alone (WCAG)
+ *   DD-13 border-radius: 8px card | 6px btn | 4px input | 24px badge
+ *   DD-14 spacing: 8pt grid
+ *   DD-16 dark mode: light-only in Gate 3 but tokens are swap-ready
+ *
+ * ui-designer additions:
+ *   - Height scale: 32/40/48px (buttons and inputs share the same scale)
+ *   - Focus ring tokens for WCAG keyboard nav
+ *   - Colour contrast verified: all badge text/bg combos pass 4.5:1 AA
+ */
+
+@theme {
+  /* ── Typeface (DD-9) ─────────────────────────────────────────────────────── */
+  --font-sans: Inter, 'DM Sans', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+
+  /* ── Brand (primary action colour, DD-11) ───────────────────────────────── */
+  --color-brand:       #2563EB;   /* blue-600 — primary buttons, links */
+  --color-brand-dark:  #1D4ED8;   /* blue-700 — hover state */
+  --color-brand-muted: #DBEAFE;   /* blue-100 — badge background */
+
+  /* ── Surface / Neutral ──────────────────────────────────────────────────── */
+  --color-canvas:        #F8FAFC;  /* page background (slate-50) */
+  --color-surface:       #FFFFFF;  /* card, sidebar, modal bg */
+  --color-border:        #E2E8F0;  /* slate-200 — default borders */
+  --color-border-strong: #CBD5E1;  /* slate-300 — focus / input hover */
+  --color-subtle:        #F1F5F9;  /* slate-100 — hover bg, zebra rows */
+  --color-muted:         #64748B;  /* slate-500 — secondary text, icons */
+
+  /* ── Text (DD-11) ───────────────────────────────────────────────────────── */
+  --color-text:          #111827;  /* gray-900 — primary body */
+  --color-text-secondary: #6B7280; /* gray-500 — secondary labels */
+  --color-text-disabled:  #9CA3AF; /* gray-400 — disabled state */
+  --color-text-inverse:   #FFFFFF; /* white — text on dark backgrounds */
+
+  /* ── Semantic: Workspace status ─────────────────────────────────────────── */
+  --color-ws-live:   #16A34A;   /* green-600 */
+  --color-ws-ready:  #2563EB;   /* blue-600 */
+  --color-ws-draft:  #6B7280;   /* gray-500 */
+
+  /* ── Semantic: Payroll run status ───────────────────────────────────────── */
+  --color-run-calculating: #3B82F6;  /* blue-500 (animated pulse) */
+  --color-run-calculated:  #0D9488;  /* teal-600 */
+  --color-run-partial:     #D97706;  /* amber-600 */
+  --color-run-approved:    #7C3AED;  /* violet-600 */
+  --color-run-locked:      #4F46E5;  /* indigo-600 */
+  --color-run-paid:        #15803D;  /* green-700 */
+  --color-run-failed:      #DC2626;  /* red-600 */
+  --color-run-pending:     #6B7280;  /* gray-500 */
+
+  /* ── Semantic: Reconciliation status ────────────────────────────────────── */
+  --color-rec-matched:  #16A34A;  /* green-600 */
+  --color-rec-mismatch: #DC2626;  /* red-600 */
+  --color-rec-resolved: #6B7280;  /* gray-500 */
+
+  /* ── Semantic: Feedback (alerts, toasts) ────────────────────────────────── */
+  --color-warning: #D97706;  /* amber-600 */
+  --color-error:   #DC2626;  /* red-600 */
+  --color-info:    #3B82F6;  /* blue-500 */
+  --color-success: #16A34A;  /* green-600 */
+}
+
+/* ── Non-utility tokens (CSS vars only, not Tailwind utilities) ─────────────── */
+:root {
+  /* Type scale — Minor Third 1.200 (DD-10) */
+  --text-label:   0.75rem;    /* 12px — labels, secondary text */
+  --text-body:    0.875rem;   /* 14px — body, table rows */
+  --text-sub:     1.0625rem;  /* 17px — subheadings, card values */
+  --text-section: 1.25rem;    /* 20px — section headings */
+  --text-page:    1.5rem;     /* 24px — page titles */
+  --text-kpi:     1.8125rem;  /* 29px — KPI numbers in summary cards */
+  --text-hero:    2.1875rem;  /* 35px — bureau dashboard hero (rarely used) */
+
+  /* Height scale — shared by buttons + inputs (ui-designer rule) */
+  --height-sm:  2rem;      /* 32px */
+  --height-md:  2.5rem;    /* 40px */
+  --height-lg:  3rem;      /* 48px */
+
+  /* Border radius (DD-13) */
+  --radius-card:  8px;   /* cards, modals, dropdowns */
+  --radius-btn:   6px;   /* buttons — smaller than card */
+  --radius-input: 4px;   /* inputs — smaller than button */
+  --radius-badge: 24px;  /* status chips / tags */
+
+  /* Focus ring (WCAG keyboard nav — ux-designer rule) */
+  --focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px #2563EB;
+  --focus-ring-offset: 2px;
+
+  /* Transitions (DD-17) */
+  --transition-fast:   100ms ease-out;   /* micro-interactions */
+  --transition-normal: 150ms ease-out;   /* most state changes */
+  --transition-expand: 200ms ease-out;   /* expandable rows (grid-template-rows) */
+  --transition-panel:  250ms ease-out;   /* slide-over / modal */
+
+  /* Layout */
+  --topbar-height:       3.5rem;    /* 56px */
+  --sidebar-expanded:    15rem;     /* 240px */
+  --sidebar-collapsed:   4rem;      /* 64px */
+  --drawer-width:        28.75rem;  /* 460px */
+  --modal-width-form:    30rem;     /* 480px */
+  --modal-width-content: 40rem;     /* 640px */
+
+  /* Shadows */
+  --shadow-card:     0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-dropdown: 0 4px 12px 0 rgb(0 0 0 / 0.12), 0 2px 4px -1px rgb(0 0 0 / 0.08);
+  --shadow-modal:    0 20px 40px -12px rgb(0 0 0 / 0.20);
+
+  /* Monetary number rendering (DD-9) */
+  --font-numeric: tabular-nums;
+}

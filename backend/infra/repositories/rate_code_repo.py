@@ -4,6 +4,8 @@ Rate Code Registry Repository.
 Workspace-specific rows take precedence over platform seeds (workspace_id IS NULL).
 """
 
+from decimal import Decimal
+
 from sqlalchemy import text
 
 from backend.infra.db.session import SessionLocal
@@ -39,7 +41,7 @@ def get_rate_code(workspace_id: str, code: str) -> dict | None:
             "rate_code_id": str(row[0]),
             "workspace_id": str(row[1]) if row[1] else None,
             "code":         row[2],
-            "multiplier":   row[3],
+            "multiplier":   Decimal(str(row[3])),
             "unit":         row[4],
             "base":         row[5],
             "description":  row[6],
@@ -52,7 +54,7 @@ def get_rate_code(workspace_id: str, code: str) -> dict | None:
 def create_rate_code(
     workspace_id: str,
     code: str,
-    multiplier: float,
+    multiplier: Decimal,
     unit: str,
     base: str,
     description: str | None = None,
@@ -101,7 +103,7 @@ def create_rate_code(
             "rate_code_id": str(row[0]),
             "workspace_id": str(row[1]) if row[1] else None,
             "code":         row[2],
-            "multiplier":   row[3],
+            "multiplier":   Decimal(str(row[3])),
             "unit":         row[4],
             "base":         row[5],
             "description":  row[6],
@@ -181,7 +183,7 @@ def list_rate_codes(workspace_id: str) -> list[dict]:
                 "rate_code_id": str(r[0]),
                 "workspace_id": str(r[1]) if r[1] else None,
                 "code":         r[2],
-                "multiplier":   r[3],
+                "multiplier":   Decimal(str(r[3])),
                 "unit":         r[4],
                 "base":         r[5],
                 "description":  r[6],
