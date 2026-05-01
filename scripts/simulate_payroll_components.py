@@ -218,7 +218,7 @@ def _component_meta_debug(
 
         if found_client:
             row = next(r for r in client_rows if r.component_code == code)
-            console.print(f"    metadata              : {row.metadata_json}")
+            console.print(f"    metadata              : {row.overrides_json}")
         elif found_platform:
             row = next(r for r in platform_rows if r.component_code == code)
             console.print(f"    metadata              : {row.metadata_json}")
@@ -259,6 +259,7 @@ def _print_trace(
     nhf_amount: Decimal,
     health_insurance_amount: Decimal,
     development_levy_amount: Decimal,
+    life_insurance_amount: Decimal,
     net_pay: Decimal,
     currency: str,
 ):
@@ -314,6 +315,11 @@ def _print_trace(
         deduct_branch.add(
             f"[red]DEVELOPMENT_LEVY (flat)[/red]  "
             f"[dim]- {_fmt(development_levy_amount, currency)}[/dim]"
+        )
+    if life_insurance_amount > 0:
+        deduct_branch.add(
+            f"[red]LIFE_INSURANCE (% of gross)[/red]  "
+            f"[dim]- {_fmt(life_insurance_amount, currency)}[/dim]"
         )
     for name in statutory_names:
         deduct_branch.add(f"[red]{name}[/red]")
@@ -508,19 +514,26 @@ def simulate_payroll(
                 f"PAYE will not be calculated.[/yellow]"
             )
 
-    # ── 6a. Flat statutory deduction config from component metadata ───────────
-    # NHF — check is_active in client_component_metadata before reading rate
-    nhf_meta = _component_meta(session, "NHF_CONTRIBUTION", emp_workspace_id, country_code)
-    nhf_active = nhf_meta.get("is_active", True)
-    nhf_rate = Decimal(str(nhf_meta.get("employee_rate", "0.025"))) if nhf_active else Decimal("0")
+    # ── 6a. Statutory rates — read from rules_jsonb (same source as production engine) ──
+    nhf_rate                = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+    health_insurance_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+    development_levy_amount = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    life_insurance_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
-    # Health Insurance — flat employee amount from client or platform metadata
-    hi_meta = _component_meta(session, "HEALTH_INSURANCE_EMPLOYEE", emp_workspace_id, country_code)
-    health_insurance_amount = Decimal(str(hi_meta.get("employee_amount", "0")))
+    # Apply client overrides — same logic as payroll.py lines 354-363
+    override_rows = session.execute(
+        text("SELECT component_code, overrides_json FROM client_component_metadata WHERE workspace_id = :wid"),
+        {"wid": emp_workspace_id},
+    ).mappings().all()
+    client_overrides = {r["component_code"]: (r["overrides_json"] or {}) for r in override_rows}
 
-    # Development Levy — flat amount from client or platform metadata
-    dl_meta = _component_meta(session, "DEVELOPMENT_LEVY", emp_workspace_id, country_code)
-    development_levy_amount = Decimal(str(dl_meta.get("amount", "0")))
+    nhf_active = client_overrides.get("NHF_CONTRIBUTION", {}).get("is_active", True)
+    if not nhf_active:
+        nhf_rate = Decimal("0")
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_insurance_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 
     # ── 7. Normalise components ───────────────────────────────────────────────
     raw_components = _normalize_components(
@@ -532,6 +545,16 @@ def simulate_payroll(
         c["_meta"] = _component_meta(
             session, c["code"], emp_workspace_id, country_code
         )
+
+    # Build component_class_map — engine uses component_class column, not financial_role.category
+    _platform_rows = (
+        session.query(ComponentMetadata)
+        .filter_by(country_code=country_code, is_active=True)
+        .all()
+    )
+    component_class_map = {r.component_code: (r.component_class or "earning") for r in _platform_rows}
+    for c in raw_components:
+        c["_component_class"] = component_class_map.get(c["code"], "earning")
 
     # ── Apply payroll rules (modifies salary components before statutory calc) ──
     employee_inputs = _normalize_employee_inputs(employee_inputs_raw or {})
@@ -561,10 +584,11 @@ def simulate_payroll(
                 "code": code,
                 "amount": amount,
                 "_meta": {"financial_role": {"category": "earning"}, "_source": "rule"},
+                "_component_class": component_class_map.get(code, "earning"),
             })
 
-    earnings = [c for c in raw_components if _category(c["_meta"]) == "earning"]
-    other_components = [c for c in raw_components if _category(c["_meta"]) != "earning"]
+    earnings = [c for c in raw_components if c.get("_component_class", "earning") == "earning"]
+    other_components = [c for c in raw_components if c.get("_component_class", "earning") != "earning"]
     display_components = earnings or raw_components  # fallback if no meta tags
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -710,8 +734,8 @@ def simulate_payroll(
         color = "green" if cat == "earning" else ("red" if cat == "deduction" else "yellow")
         is_statutory = meta.get("legal_role", {}).get("is_statutory", False)
 
-        # Only earning-class components contribute to GROSS_PAY
-        if cat == "earning" or not meta:
+        # Only earning-class components contribute to GROSS_PAY (use component_class, same as engine)
+        if c.get("_component_class", "earning") == "earning":
             gross += amt
 
         header = Text()
@@ -1062,6 +1086,29 @@ def simulate_payroll(
         )
     console.print()
 
+    # ── Life Insurance ────────────────────────────────────────────────────────
+    life_insurance_amount = Decimal("0")
+    console.rule("[bold blue]LIFE INSURANCE[/bold blue]", style="blue")
+    console.print()
+    if life_insurance_rate > 0:
+        life_insurance_amount = (gross * life_insurance_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        li_pct = float(life_insurance_rate) * 100
+        console.print(f"  [bold]Gross Pay          [/bold] : {_fmt(gross, currency)}")
+        console.print(f"  [bold]Life Insurance Rate[/bold] : {li_pct:.2f}%  [dim](employer_rate from statutory_rule)[/dim]")
+        console.print(
+            f"  [bold]Life Insurance     [/bold] : "
+            f"[bold blue]{_fmt(life_insurance_amount, currency)}[/bold blue]"
+            f"  [dim][DEDUCTION][/dim]"
+        )
+    else:
+        console.print(
+            "  [dim]Life Insurance : 0  "
+            "(seed employer_rate into statutory_rule.rules_jsonb.life_insurance)[/dim]"
+        )
+    console.print()
+
     # statutory_names used only for trace graph
     statutory_names: list[str] = []
 
@@ -1072,7 +1119,7 @@ def simulate_payroll(
     earnings_total = sum(
         c["amount"]
         for c in raw_components
-        if _category(c["_meta"]) == "earning"
+        if c.get("_component_class", "earning") == "earning"
     )
     if earnings_total == 0:
         earnings_total = gross  # treat all as earnings if no category tagged
@@ -1083,6 +1130,7 @@ def simulate_payroll(
         + nhf_amount
         + health_insurance_amount
         + development_levy_amount
+        + life_insurance_amount
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     net_pay = (gross - total_deductions).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -1098,8 +1146,7 @@ def simulate_payroll(
     # Earnings section
     summary.add_row("[bold green]EARNINGS[/bold green]", "")
     for c in raw_components:
-        cat = _category(c["_meta"])
-        if cat in ("earning", "") or not c["_meta"]:
+        if c.get("_component_class", "earning") == "earning":
             summary.add_row(f"  {c['code']}", _fmt(c["amount"], currency))
 
     summary.add_row(
@@ -1126,6 +1173,9 @@ def simulate_payroll(
             summary.add_row("  Health Insurance (flat)", _fmt(health_insurance_amount, currency))
         if development_levy_amount > 0:
             summary.add_row("  Development Levy (flat)", _fmt(development_levy_amount, currency))
+        if life_insurance_amount > 0:
+            li_pct = float(life_insurance_rate) * 100
+            summary.add_row(f"  Life Insurance ({li_pct:.2f}% of gross)", _fmt(life_insurance_amount, currency))
         for c in other_components:
             summary.add_row(f"  {c['code']}", _fmt(c["amount"], currency))
         summary.add_row(
@@ -1187,6 +1237,7 @@ def simulate_payroll(
             nhf_amount,
             health_insurance_amount,
             development_levy_amount,
+            life_insurance_amount,
             net_pay,
             currency,
         )

@@ -25,6 +25,7 @@ from backend.domain.onboarding.sql_emitter import (
 )
 from backend.domain.onboarding.review_runner import review_client_onboarding
 from backend.application import onboarding_service
+from backend.infra.repositories.workspace_config_repo import upsert_workspace_payroll_config
 
 router = APIRouter()
 
@@ -569,6 +570,23 @@ async def commit_onboarding(request: Request):
         onboarding_service.publish_rule_sets(db, workspace_id, _rules_for_publish)
 
         db.commit()
+
+        # Seed workspace_payroll_config — best-effort; failure here does not rollback employee data.
+        _wpc = payload.get("workspace_payroll_config") or {}
+        try:
+            upsert_workspace_payroll_config(
+                workspace_id=workspace_id,
+                effective_from=str(_date.today()),
+                ph_mode=_wpc.get("ph_mode") or None,
+                ph_rate_code=_wpc.get("ph_rate_code") or None,
+                saturday_ph_rule=_wpc.get("saturday_ph_rule") or None,
+                sunday_ph_rule=_wpc.get("sunday_ph_rule") or None,
+                d3_leave_overlap_rule=_wpc.get("d3_leave_overlap_rule") or None,
+                d4_absence_rule=_wpc.get("d4_absence_rule") or None,
+                updated_by=None,
+            )
+        except Exception as _wpc_err:
+            warnings.append(f"workspace_payroll_config seed failed: {_wpc_err!s}")
 
         # ----------------------------
         # AUTO-ADVANCE STATE MACHINE

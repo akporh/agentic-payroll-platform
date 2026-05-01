@@ -8,6 +8,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    allowedHosts: ['carrousel-siesta-animator.ngrok-free.dev'],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

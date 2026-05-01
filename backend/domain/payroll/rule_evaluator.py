@@ -314,6 +314,12 @@ def apply_payroll_rules(
             )
             ref_date_str = None
             amount = Decimal(str(resolved_defn.get("amount", 0)))
+            component_source = resolved_defn.get("component_source")
+            # If amount is zero and component_source is set, derive from the named salary component.
+            # Rule output key is rule `name`; source key is `component_source` — no double-count
+            # unless operator names the rule identically to the component (future validation story).
+            if amount == Decimal("0") and component_source:
+                amount = components.get(component_source, Decimal("0"))
             condition = resolved_defn.get("condition") or {}
             met, reason = _evaluate_condition(condition, employee_inputs)
             if met:

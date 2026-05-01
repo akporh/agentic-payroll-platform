@@ -153,7 +153,14 @@ def _resolve_inputs(input_requirements: dict, employee_inputs: dict) -> dict:
     for field in input_requirements.get("fields", []):
         code = field["input_code"]
         if code in employee_inputs:
-            resolved[code] = Decimal(str(employee_inputs[code].get("amount") or 0))
+            raw = employee_inputs[code]
+            if isinstance(raw, list):
+                total = sum(float(e.get("quantity") or 0) for e in raw if isinstance(e, dict))
+            elif isinstance(raw, dict):
+                total = float(raw.get("quantity") or raw.get("amount") or 0)
+            else:
+                total = float(raw or 0)
+            resolved[code] = Decimal(str(total))
     return resolved
 
 

@@ -871,7 +871,7 @@ function ExistingConfigView({
     ph_rate_code: 'PH_OT',
     saturday_ph_rule: 'PH_TAKES_PRECEDENCE' as 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE',
     sunday_ph_rule: 'PH_TAKES_PRECEDENCE' as 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE',
-    d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH' as 'LEAVE_ABSORBS_PH' | 'PH_ADDITIVE',
+    d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH' as 'LEAVE_ABSORBS_PH',
     d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE' as 'ABSENT_IS_DEDUCTIBLE' | 'PH_EXCUSES_ABSENCE',
   });
   const [behaviourSaving, setBehaviourSaving] = useState(false);
@@ -1322,7 +1322,6 @@ function ExistingConfigView({
                           className="border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400 shrink-0"
                         >
                           <option value="LEAVE_ABSORBS_PH">Leave absorbs — no additive pay</option>
-                          <option value="PH_ADDITIVE">Pay both — PH is additive</option>
                         </select>
                       </div>
                       <div className="flex items-center justify-between px-4 py-3">

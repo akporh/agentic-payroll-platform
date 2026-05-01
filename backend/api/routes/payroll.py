@@ -406,11 +406,14 @@ def run_payroll(
         for _data in emp.get("inputs", {}).values():
             if not isinstance(_data, list):
                 continue
-            ref_dt = _data.get("reference_date")
-            if ref_dt and (
-                ref_dt < period_ctx.period_start or ref_dt > period_ctx.period_end
-            ):
-                cross_period_ref_dates.add(ref_dt)
+            for _item in _data:
+                if not isinstance(_item, dict):
+                    continue
+                ref_dt = _item.get("reference_date")
+                if ref_dt and (
+                    ref_dt < period_ctx.period_start or ref_dt > period_ctx.period_end
+                ):
+                    cross_period_ref_dates.add(ref_dt)
 
     historical_rule_sets_list: list[dict] = []
     historical_period_contexts: dict = {}
@@ -490,6 +493,15 @@ def run_payroll(
 
     # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
     workspace_payroll_config = get_workspace_payroll_config(workspace_id)
+    # PH_ADDITIVE has no engine implementation — treat as LEAVE_ABSORBS_PH.
+    if workspace_payroll_config.get("d3_leave_overlap_rule") == "PH_ADDITIVE":
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "workspace %s has d3_leave_overlap_rule=PH_ADDITIVE which is not implemented — "
+            "falling back to LEAVE_ABSORBS_PH",
+            workspace_id,
+        )
+        workspace_payroll_config = {**workspace_payroll_config, "d3_leave_overlap_rule": "LEAVE_ABSORBS_PH"}
     if workspace_payroll_config["ph_mode"] == "AUTOMATIC":
         ph_list = get_effective_ph_list(
             workspace_id, country_code,
@@ -499,7 +511,7 @@ def run_payroll(
             ph["date"] for ph in ph_list
             if ph["date"].weekday() < 5  # Mon–Fri only
         ]
-        expected_working_days = period_ctx.working_days - len(ph_weekday_dates)
+        expected_working_days = period_ctx.working_days  # PHs already excluded by build_period_context()
         ph_source = "AUTOMATIC"
     else:
         ph_weekday_dates = []
@@ -1137,6 +1149,21 @@ def _guard_locked_or_paid(db, workspace_id: str, run_id: str) -> None:
         )
 
 
+def _guard_calculated_or_later(db, workspace_id: str, run_id: str) -> None:
+    """Allow export once calculations are complete (CALCULATED, APPROVED, LOCKED, PAID)."""
+    row = db.execute(
+        text("SELECT status FROM payroll_run WHERE payroll_run_id = :rid AND workspace_id = :wid"),
+        {"rid": run_id, "wid": workspace_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    if row[0] not in ("CALCULATED", "APPROVED", "LOCKED", "PAID"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Export available from CALCULATED status. Current status: {row[0]}",
+        )
+
+
 def _streaming_csv(content: str, filename: str) -> StreamingResponse:
     return StreamingResponse(
         iter([content]),
@@ -1280,3 +1307,69 @@ def export_pension_contribution(workspace_id: str, run_id: str):
         ])
 
     return _streaming_csv(buf.getvalue(), f"pension_contribution_{run_id[:8]}.csv")
+
+
+# ── H4 — Full Payroll Detail CSV ─────────────────────────────────────────────
+
+@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/full-detail")
+def export_full_detail(workspace_id: str, run_id: str):
+    """Download full per-employee component breakdown CSV.
+
+    Available from CALCULATED status onwards (before approval).
+    Columns: employee_number, employee_name, period,
+             [one column per component code in execution order],
+             gross_pay, total_deductions, net_pay
+    """
+    db = SessionLocal()
+    try:
+        _guard_calculated_or_later(db, workspace_id, run_id)
+        rows = db.execute(_EXPORT_RESULT_SQL, {"run_id": run_id}).fetchall()
+    finally:
+        db.close()
+
+    # Pass 1 — discover ordered unique component codes across all employees.
+    # Exclude the _period_context sentinel entry (no monetary result).
+    seen: dict[str, None] = {}
+    for r in rows:
+        for entry in (r[6] or []):
+            if isinstance(entry, dict):
+                code = entry.get("component", "")
+                if code and code != "_period_context":
+                    seen[code] = None
+    component_cols = list(seen.keys())
+
+    # Pass 2 — write CSV.
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow(
+        ["employee_number", "employee_name", "period"]
+        + component_cols
+        + ["gross_pay", "total_deductions", "net_pay"]
+    )
+
+    for r in rows:
+        gross_components = r[4] or {}
+        deductions       = r[5] or {}
+        trace            = r[6] or []
+        net_pay          = float(r[3] or 0)
+        period           = r[7].strftime("%Y-%m") if r[7] else ""
+
+        trace_map = {
+            entry["component"]: entry.get("result", "")
+            for entry in (trace if isinstance(trace, list) else [])
+            if isinstance(entry, dict) and entry.get("component") != "_period_context"
+        }
+
+        gross_pay = sum(
+            float(v.get("amount", v) if isinstance(v, dict) else v)
+            for v in gross_components.values()
+        )
+        total_deductions = sum(float(v) for v in deductions.values())
+
+        writer.writerow(
+            [r[0] or "", r[1] or "", period]
+            + [trace_map.get(col, "") for col in component_cols]
+            + [f"{gross_pay:.2f}", f"{total_deductions:.2f}", f"{net_pay:.2f}"]
+        )
+
+    return _streaming_csv(buf.getvalue(), f"full_detail_{run_id[:8]}.csv")

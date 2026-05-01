@@ -71,7 +71,7 @@ export const payrollApi = {
     api.get<AuditLogEntry[]>(`/${workspaceId}/payroll/runs/${runId}/audit`),
 
   /** Fetch a CSV export and trigger a browser download. */
-  downloadExport: async (workspaceId: string, runId: string, exportType: 'bank-upload' | 'paye' | 'pension') => {
+  downloadExport: async (workspaceId: string, runId: string, exportType: 'bank-upload' | 'paye' | 'pension' | 'full-detail') => {
     const res = await fetch(`/api/${workspaceId}/payroll/runs/${runId}/exports/${exportType}`);
     if (!res.ok) {
       const text = await res.text();

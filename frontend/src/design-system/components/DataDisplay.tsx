@@ -111,6 +111,10 @@ export interface DataTableProps<T> {
   className?: string;
   /** Render an expandable detail row */
   renderExpanded?: (row: T) => React.ReactNode;
+  /** Use table-fixed layout (required when expanded content must align with columns) */
+  tableLayout?: 'fixed' | 'auto';
+  /** Content rendered inside <tfoot> — use <tr> elements for column-aligned totals */
+  footer?: React.ReactNode;
 }
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
@@ -127,6 +131,8 @@ export function DataTable<T>({
   sortDir,
   className = '',
   renderExpanded,
+  tableLayout = 'auto',
+  footer,
 }: DataTableProps<T>) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
@@ -144,7 +150,7 @@ export function DataTable<T>({
 
   return (
     <div className={`overflow-x-auto ${className}`} style={{ borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)' }}>
-      <table className="w-full border-collapse bg-white text-sm">
+      <table className={`w-full border-collapse bg-white text-sm${tableLayout === 'fixed' ? ' table-fixed' : ''}`}>
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
             {renderExpanded && <th className="w-10 px-3" />}
@@ -232,6 +238,11 @@ export function DataTable<T>({
                 );
               })}
         </tbody>
+        {footer && (
+          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+            {footer}
+          </tfoot>
+        )}
       </table>
     </div>
   );
@@ -303,32 +314,46 @@ export function ComponentTraceTable({ entries, noTrace }: ComponentTraceTablePro
     );
   }
 
+  const hasNotes = entries.some((e) => e.note || e.warning);
+
   return (
     <table className="w-full text-xs">
       <thead>
         <tr className="text-gray-500 uppercase tracking-wide">
-          <th className="text-left py-1.5 font-semibold w-24">Code</th>
+          <th className="text-left py-1.5 font-semibold w-44 pr-4">Code</th>
           <th className="text-left py-1.5 font-semibold">Method</th>
           <th className="text-center py-1.5 font-semibold w-16">Status</th>
-          <th className="text-right py-1.5 font-semibold w-32" style={{ fontVariantNumeric: 'tabular-nums' }}>Amount</th>
-          <th className="text-left py-1.5 font-semibold pl-4">Note</th>
+          <th className="text-right py-1.5 font-semibold w-36" style={{ fontVariantNumeric: 'tabular-nums' }}>Amount</th>
+          {hasNotes && <th className="text-left py-1.5 font-semibold pl-4">Note</th>}
         </tr>
       </thead>
       <tbody>
         {entries.map((e, i) => (
           <tr key={i} className={`border-t border-gray-100 ${e.status === 'FAILED' ? 'text-red-700' : 'text-gray-700'}`}>
-            <td className="py-1.5 font-mono font-medium">{e.code}</td>
-            <td className="py-1.5">{e.method}</td>
+            <td className="py-1.5 pr-4 font-mono font-medium whitespace-nowrap">{e.code}</td>
+            <td className="py-1.5 text-gray-500">{e.method}</td>
             <td className="py-1.5 text-center">
-              {e.status === 'SUCCESS' ? '✓' : e.status === 'FAILED' ? '✕' : '—'}
+              {e.status === 'SUCCESS' ? (
+                <svg className="inline w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              ) : e.status === 'FAILED' ? (
+                <svg className="inline w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <span className="text-gray-300">—</span>
+              )}
             </td>
             <td className="py-1.5 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {e.amount != null ? formatNaira(e.amount) : '—'}
+              {e.amount != null ? formatNaira(e.amount) : <span className="text-gray-300">—</span>}
             </td>
-            <td className="py-1.5 pl-4 text-gray-500">
-              {e.note}
-              {e.warning && <span className="ml-1 text-amber-600">⚠ {e.warning}</span>}
-            </td>
+            {hasNotes && (
+              <td className="py-1.5 pl-4 text-gray-500">
+                {e.note}
+                {e.warning && <span className="ml-1 text-amber-600">⚠ {e.warning}</span>}
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

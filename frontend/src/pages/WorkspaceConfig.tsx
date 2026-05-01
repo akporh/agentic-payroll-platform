@@ -1085,6 +1085,7 @@ function AddEarningComponentSlideOver({
 
 const RULE_TYPE_OPTIONS = [
   { value: 'UNIT_RATE', label: 'Unit × Rate' },
+  { value: 'OT_MULTIPLIER', label: 'OT Multiplier (Rate Code)' },
   { value: 'FIXED_AMOUNT', label: 'Fixed Amount' },
   { value: 'PERCENTAGE_OF_GROSS', label: 'Percentage of Gross' },
   { value: 'ALLOWANCE', label: 'Allowance' },
@@ -1093,6 +1094,7 @@ const RULE_TYPE_OPTIONS = [
 // calculation_method values recognised by the rule evaluator
 const RULE_TYPE_METHOD: Record<string, string> = {
   UNIT_RATE: 'unit_multiplier',
+  OT_MULTIPLIER: 'ot_multiplier',
   FIXED_AMOUNT: 'fixed_amount',
   PERCENTAGE_OF_GROSS: 'percentage_of_gross',
   ALLOWANCE: 'fixed_amount',
@@ -1103,30 +1105,49 @@ function RuleFields({
   originalMethod,
   values,
   onChange,
+  rateCodes,
 }: {
   ruleType: string;
   originalMethod?: string;
   values: Record<string, string>;
   onChange: (key: string, val: string) => void;
+  rateCodes: RateCode[];
 }) {
-  if (originalMethod === 'ot_multiplier') {
+  // OT Multiplier — uses a rate code reference from the registry
+  if (ruleType === 'OT_MULTIPLIER' || originalMethod === 'ot_multiplier') {
     return (
       <>
-        <TextInput
+        <SelectField
           label="Rate Code"
+          value={values.rate_code ?? values.ot_code ?? ''}
+          onChange={(v) => onChange('rate_code', v)}
+          hint="OT rate code from the rate code registry."
+        >
+          <option value="">— select a rate code —</option>
+          {rateCodes.map((rc) => (
+            <option key={rc.code} value={rc.code}>
+              {rc.code} — ×{rc.multiplier} {rc.unit}
+            </option>
+          ))}
+        </SelectField>
+        <TextInput
+          label="Input Field"
           required
-          value={values.rate_code ?? ''}
-          onChange={(e) => onChange('rate_code', e.target.value)}
-          hint="e.g. OT001"
+          value={values.input_field ?? ''}
+          onChange={(e) => onChange('input_field', e.target.value)}
+          placeholder="e.g. ot1_hours"
+          hint="The employee input key that carries the OT quantity."
           className="font-mono"
         />
-        <NumberInput
-          label="Multiplier"
-          required
-          value={values.multiplier ?? ''}
-          onChange={(e) => onChange('multiplier', e.target.value)}
-          hint="e.g. 1.5 for time-and-a-half"
-        />
+        <SelectField
+          label="Unit"
+          value={values.unit ?? 'hour'}
+          onChange={(v) => onChange('unit', v)}
+          hint="Unit of the input quantity."
+        >
+          <option value="hour">hour</option>
+          <option value="day">day</option>
+        </SelectField>
       </>
     );
   }
@@ -1170,13 +1191,15 @@ function RuleFields({
           placeholder="0.00"
           hint="Amount paid per unit of input."
         />
-        <TextInput
+        <SelectField
           label="Unit"
-          value={values.unit ?? ''}
-          onChange={(e) => onChange('unit', e.target.value)}
-          placeholder="e.g. hours"
-          hint="Display label used in pay run traces."
-        />
+          value={values.unit ?? 'hour'}
+          onChange={(v) => onChange('unit', v)}
+          hint="Unit of the input quantity."
+        >
+          <option value="hour">hour</option>
+          <option value="day">day</option>
+        </SelectField>
       </>
     );
   }
@@ -1210,11 +1233,13 @@ function RuleFields({
 function AddPayrollRuleSlideOver({
   open,
   workspaceId,
+  rateCodes,
   onClose,
   onSaved,
 }: {
   open: boolean;
   workspaceId: string;
+  rateCodes: RateCode[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1298,7 +1323,7 @@ function AddPayrollRuleSlideOver({
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </SelectField>
-        <RuleFields ruleType={ruleType} values={fieldValues} onChange={setField} />
+        <RuleFields ruleType={ruleType} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
   );
@@ -1310,7 +1335,7 @@ const METHOD_TO_RULE_TYPE: Record<string, string> = {
   unit_multiplier: 'UNIT_RATE',
   fixed_amount: 'FIXED_AMOUNT',
   percentage_of_gross: 'PERCENTAGE_OF_GROSS',
-  ot_multiplier: 'UNIT_RATE',
+  ot_multiplier: 'OT_MULTIPLIER',
   daily_rate_deduction: 'UNIT_RATE',
 };
 
@@ -1318,12 +1343,14 @@ function EditPayrollRuleSlideOver({
   open,
   rule,
   workspaceId,
+  rateCodes,
   onClose,
   onSaved,
 }: {
   open: boolean;
   rule: PayrollRule | null;
   workspaceId: string;
+  rateCodes: RateCode[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1414,7 +1441,7 @@ function EditPayrollRuleSlideOver({
           <p className="text-sm text-gray-700 font-mono">{methodLabel || '—'}</p>
           <p className="text-xs text-gray-400 mt-0.5">Method cannot be changed. Delete and recreate the rule to change it.</p>
         </div>
-        <RuleFields ruleType={ruleType} originalMethod={originalMethod} values={fieldValues} onChange={setField} />
+        <RuleFields ruleType={ruleType} originalMethod={originalMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
   );
@@ -1716,12 +1743,14 @@ function EditPayrollConfigSlideOver({
   open,
   workspaceId,
   current,
+  rateCodes,
   onClose,
   onSaved,
 }: {
   open: boolean;
   workspaceId: string;
   current: WorkspacePayrollConfig | null;
+  rateCodes: RateCode[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1740,8 +1769,8 @@ function EditPayrollConfigSlideOver({
       setPhRateCode(current.ph_rate_code ?? 'OT001');
       setSatRule(current.saturday_ph_rule);
       setSunRule(current.sunday_ph_rule);
-      setD3Rule(current.d3_leave_overlap_rule ?? '');
-      setD4Rule(current.d4_absence_rule ?? '');
+      setD3Rule(current.d3_leave_overlap_rule ?? 'LEAVE_ABSORBS_PH');
+      setD4Rule(current.d4_absence_rule ?? 'ABSENT_IS_DEDUCTIBLE');
       setError(null);
     }
   }, [open, current]);
@@ -1789,13 +1818,18 @@ function EditPayrollConfigSlideOver({
           <option value="AUTOMATIC">Automatic</option>
           <option value="FILE_BASED">Manual (file-based)</option>
         </SelectField>
-        <TextInput
+        <SelectField
           label="PH Rate Code"
           value={phRateCode}
-          onChange={(e) => setPhRateCode(e.target.value.toUpperCase())}
-          className="font-mono"
+          onChange={setPhRateCode}
           hint="Rate code applied to public holiday overtime pay."
-        />
+        >
+          {rateCodes.map((rc) => (
+            <option key={rc.code} value={rc.code}>
+              {rc.code} — ×{rc.multiplier} {rc.unit}
+            </option>
+          ))}
+        </SelectField>
         <SelectField label="Saturday PH Rule" value={satRule} onChange={setSatRule}>
           <option value="PH_TAKES_PRECEDENCE">PH takes precedence</option>
           <option value="DAY_OF_WEEK_TAKES_PRECEDENCE">Day of week takes precedence</option>
@@ -1806,7 +1840,6 @@ function EditPayrollConfigSlideOver({
         </SelectField>
         <SelectField label="Leave Overlap Rule" value={d3Rule} onChange={setD3Rule}>
           <option value="LEAVE_ABSORBS_PH">Leave absorbs PH</option>
-          <option value="PH_ADDITIVE">PH additive</option>
         </SelectField>
         <SelectField label="Absence Rule" value={d4Rule} onChange={setD4Rule}>
           <option value="ABSENT_IS_DEDUCTIBLE">Absent is deductible</option>
@@ -2668,6 +2701,7 @@ export function WorkspaceConfig() {
         open={editPhConfigOpen}
         workspaceId={workspaceId}
         current={phConfig}
+        rateCodes={rateCodes}
         onClose={() => setEditPhConfigOpen(false)}
         onSaved={loadPhConfig}
       />
@@ -2699,6 +2733,7 @@ export function WorkspaceConfig() {
       <AddPayrollRuleSlideOver
         open={addRuleOpen}
         workspaceId={workspaceId}
+        rateCodes={rateCodes}
         onClose={() => setAddRuleOpen(false)}
         onSaved={loadConfig}
       />
@@ -2706,6 +2741,7 @@ export function WorkspaceConfig() {
         open={editRule !== null}
         rule={editRule}
         workspaceId={workspaceId}
+        rateCodes={rateCodes}
         onClose={() => setEditRule(null)}
         onSaved={loadConfig}
       />

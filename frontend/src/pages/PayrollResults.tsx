@@ -34,7 +34,6 @@ import {
   SummaryCard,
   TabBar,
   DataTable,
-  ComponentTraceTable,
   ReconciliationCard,
   TimelineTable,
   AlertBanner,
@@ -46,7 +45,7 @@ import {
   useToast,
   formatNaira,
 } from '../design-system';
-import type { Tab, Column, TraceEntry } from '../design-system';
+import type { Tab, Column } from '../design-system';
 import { PayrollTimeline } from '../components/payroll/PayrollTimeline';
 
 // ── Tab keys ──────────────────────────────────────────────────────────────────
@@ -65,19 +64,6 @@ const TABS: Tab[] = [
 function formatPeriod(start: string, end: string) {
   const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
   return `${new Date(start).toLocaleDateString('en-GB', opts)} – ${new Date(end).toLocaleDateString('en-GB', opts)}`;
-}
-
-// ── Helper: map ComponentTraceEntry → TraceEntry (design system type) ─────────
-
-function mapTrace(entries: ComponentTraceEntry[]): TraceEntry[] {
-  return entries.map((e) => ({
-    code: e.rule,
-    method: e.method,
-    status: e.status === 'applied' ? 'SUCCESS' : e.status === 'skipped' ? 'SKIPPED' : 'FAILED',
-    amount: e.amount != null ? parseFloat(e.amount) : null,
-    note: e.note,
-    warning: e.warning ?? undefined,
-  }));
 }
 
 // ── Status-driven Action Panel (DD-3) ─────────────────────────────────────────
@@ -178,6 +164,7 @@ interface ResultsTabProps {
   totals: PayrollTotals | null;
   timeline: ExecutionTraceStep[];
   canExport: boolean;
+  canDownloadDetail: boolean;
   workspaceId: string;
   runId: string;
   onApprove: () => Promise<void>;
@@ -188,11 +175,11 @@ interface ResultsTabProps {
   actionError: string | null;
 }
 
-function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, runId, onApprove, onLock, onPay, onRetry, actionLoading, actionError }: ResultsTabProps) {
+function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDetail, workspaceId, runId, onApprove, onLock, onPay, onRetry, actionLoading, actionError }: ResultsTabProps) {
   const toast = useToast();
   const [exportBusy, setExportBusy] = useState<string | null>(null);
 
-  async function handleExport(exportType: 'bank-upload' | 'paye' | 'pension') {
+  async function handleExport(exportType: 'bank-upload' | 'paye' | 'pension' | 'full-detail') {
     setExportBusy(exportType);
     try {
       await payrollApi.downloadExport(workspaceId, runId, exportType);
@@ -206,7 +193,14 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
   // PH warnings from timeline
   const phWarnings = timeline.filter((s) => s.status === 'warn');
 
-  // Employee results table columns
+  // Column widths — mirrored in TRACE_GRID below so expanded rows align exactly
+  // chevron: w-10 (2.5rem) | employee: auto | gross: w-36 (9rem) | deductions: w-36 | net: w-36 | status: w-28 (7rem)
+  const TRACE_GRID = '2.5rem 1fr 9rem 9rem 9rem 7rem';
+
+  const EARNING_METHODS  = new Set(['salary_component', 'sum_earnings']);
+  const DEDUCT_METHODS   = new Set(['pension_rule', 'paye_rule', 'life_insurance_rule']);
+  const INFO_METHODS     = new Set(['pension_employer', 'taxable_income']);
+
   const columns: Column<PayrollResult>[] = [
     {
       key: 'employee',
@@ -222,6 +216,7 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
       key: 'gross',
       header: 'Gross Pay',
       align: 'right',
+      width: 'w-36',
       render: (r) => (
         <span className="tabular-nums text-gray-700">
           {r.gross_pay != null ? formatNaira(r.gross_pay) : '—'}
@@ -232,6 +227,7 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
       key: 'deductions',
       header: 'Deductions',
       align: 'right',
+      width: 'w-36',
       render: (r) => (
         <span className="tabular-nums text-red-600">
           {r.total_deductions != null ? formatNaira(r.total_deductions) : '—'}
@@ -242,6 +238,7 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
       key: 'net',
       header: 'Net Pay',
       align: 'right',
+      width: 'w-36',
       render: (r) => (
         <span className="tabular-nums font-semibold text-gray-900">
           {r.net_pay != null ? formatNaira(r.net_pay) : '—'}
@@ -252,9 +249,102 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
       key: 'status',
       header: 'Status',
       align: 'center',
+      width: 'w-28',
       render: (r) => <StatusBadge status={r.status} size="sm" />,
     },
   ];
+
+  function renderTrace(r: PayrollResult) {
+    if (!r.component_trace || r.component_trace.length === 0) {
+      return (
+        <p className="py-2 px-4 text-xs text-gray-400 italic">
+          No component trace — legacy executor run.
+        </p>
+      );
+    }
+
+    const entries = r.component_trace.filter((e) => e.component !== '_period_context');
+    const primary = entries.filter((e) => !INFO_METHODS.has(e.method));
+    const info    = entries.filter((e) =>  INFO_METHODS.has(e.method));
+
+    const CheckIcon = () => (
+      <svg className="inline w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+      </svg>
+    );
+
+    return (
+      <div className="bg-slate-50 border-t border-gray-200">
+        {/* Mini column headers — labelled to match parent columns */}
+        <div style={{ display: 'grid', gridTemplateColumns: TRACE_GRID }} className="border-b border-gray-200">
+          <div />
+          <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Component</div>
+          <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-right">Gross Pay</div>
+          <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-right">Deductions</div>
+          <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-right">Net Pay</div>
+          <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-center">Applied</div>
+        </div>
+
+        {primary.map((e, i) => {
+          const hasResult  = e.result != null && e.result !== 'None';
+          const amount     = hasResult ? parseFloat(e.result!) : null;
+          const isEarning  = EARNING_METHODS.has(e.method);
+          const isDeduct   = DEDUCT_METHODS.has(e.method);
+          const isNet      = e.method === 'net_formula';
+          const isSummary  = e.method === 'sum_earnings' || e.method === 'net_formula';
+
+          return (
+            <div
+              key={i}
+              style={{ display: 'grid', gridTemplateColumns: TRACE_GRID }}
+              className={`text-xs border-t ${isSummary ? 'border-gray-200 bg-white font-semibold' : 'border-gray-100'}`}
+            >
+              <div className="flex items-center justify-center">
+                <div className="w-px self-stretch bg-gray-200" />
+              </div>
+              <div className="px-4 py-1.5 min-w-0">
+                <span className="font-mono font-medium text-gray-700 whitespace-nowrap">{e.component}</span>
+                {!isSummary && (
+                  <span className="ml-2 text-[10px] text-gray-400">{e.method}</span>
+                )}
+              </div>
+              <div className="px-4 py-1.5 text-right tabular-nums text-gray-700">
+                {isEarning && amount != null ? formatNaira(amount) : ''}
+              </div>
+              <div className="px-4 py-1.5 text-right tabular-nums text-red-600">
+                {isDeduct && amount != null ? formatNaira(amount) : ''}
+              </div>
+              <div className="px-4 py-1.5 text-right tabular-nums text-gray-900">
+                {isNet && amount != null ? formatNaira(amount) : ''}
+              </div>
+              <div className="px-4 py-1.5 flex items-center justify-center">
+                {hasResult ? <CheckIcon /> : <span className="text-gray-300">—</span>}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Intermediates (taxable_income, pension_employer) — contextual, not column-aligned */}
+        {info.length > 0 && (
+          <div className="border-t border-dashed border-gray-200 px-4 py-2 flex flex-wrap gap-x-6 gap-y-0.5">
+            {info.map((e, i) => {
+              const hasResult = e.result != null && e.result !== 'None';
+              const amount    = hasResult ? parseFloat(e.result!) : null;
+              return (
+                <span key={i} className="text-[11px] text-gray-400">
+                  <span className="font-mono font-medium text-gray-500">{e.component}</span>
+                  <span className="mx-1 text-gray-300">·</span>
+                  <span>{e.method}</span>
+                  <span className="mx-1 text-gray-300">·</span>
+                  <span className="tabular-nums">{amount != null ? formatNaira(amount) : '—'}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -285,13 +375,18 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
         />
       )}
 
-      {/* Export downloads — only when LOCKED or PAID */}
-      {canExport && (
+      {/* Downloads — Full Detail from CALCULATED onwards; remittance files from LOCKED/PAID only */}
+      {canDownloadDetail && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Downloads:</span>
-          <DownloadBtn label="Bank Upload"      loading={exportBusy === 'bank-upload'} onClick={() => handleExport('bank-upload')} />
-          <DownloadBtn label="PAYE Remittance"  loading={exportBusy === 'paye'}        onClick={() => handleExport('paye')} />
-          <DownloadBtn label="Pension"          loading={exportBusy === 'pension'}     onClick={() => handleExport('pension')} />
+          <DownloadBtn label="Full Detail"      loading={exportBusy === 'full-detail'} onClick={() => handleExport('full-detail')} />
+          {canExport && (
+            <>
+              <DownloadBtn label="Bank Upload"      loading={exportBusy === 'bank-upload'} onClick={() => handleExport('bank-upload')} />
+              <DownloadBtn label="PAYE Remittance"  loading={exportBusy === 'paye'}        onClick={() => handleExport('paye')} />
+              <DownloadBtn label="Pension"          loading={exportBusy === 'pension'}     onClick={() => handleExport('pension')} />
+            </>
+          )}
         </div>
       )}
 
@@ -304,44 +399,30 @@ function ResultsTab({ run, results, totals, timeline, canExport, workspaceId, ru
         />
       )}
 
-      {/* Employee results table — DD-17 via renderExpanded + ExpandableRow */}
+      {/* Employee results table — column-aligned expandable trace + tfoot totals */}
       <DataTable
         columns={columns}
         rows={results}
         getKey={(r) => r.employee_id}
+        tableLayout="fixed"
         empty={
           <EmptyState
             headline="No results available"
             body="Results will appear here once the run has completed calculating."
           />
         }
-        renderExpanded={(r) =>
-          r.component_trace && r.component_trace.length > 0 ? (
-            <ComponentTraceTable entries={mapTrace(r.component_trace)} />
-          ) : (
-            <ComponentTraceTable entries={[]} noTrace />
-          )
-        }
+        renderExpanded={renderTrace}
+        footer={totals && results.length > 0 ? (
+          <tr>
+            <td />
+            <td className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Totals</td>
+            <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-gray-700">{formatNaira(totals.gross)}</td>
+            <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-red-600">{formatNaira(totals.deductions)}</td>
+            <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-gray-900">{formatNaira(totals.net)}</td>
+            <td />
+          </tr>
+        ) : undefined}
       />
-
-      {/* Totals footer */}
-      {totals && results.length > 0 && (
-        <div
-          style={{ borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)' }}
-          className="bg-gray-50 border border-gray-200 px-4 py-3 flex justify-end gap-12"
-        >
-          <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Totals</span>
-          <span className="text-sm font-semibold text-gray-700 tabular-nums">
-            Gross: {formatNaira(totals.gross)}
-          </span>
-          <span className="text-sm font-semibold text-red-600 tabular-nums">
-            Deductions: {formatNaira(totals.deductions)}
-          </span>
-          <span className="text-sm font-bold text-gray-900 tabular-nums">
-            Net: {formatNaira(totals.net)}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -613,6 +694,7 @@ export function PayrollResults() {
     }
   }
 
+  const canDownloadDetail = ['CALCULATED', 'APPROVED', 'LOCKED', 'PAID'].includes(run?.status ?? '');
   const canExport = run?.status === 'LOCKED' || run?.status === 'PAID';
 
   // Audit log adapted for TimelineTable
@@ -683,6 +765,7 @@ export function PayrollResults() {
           totals={totals}
           timeline={timeline}
           canExport={canExport}
+          canDownloadDetail={canDownloadDetail}
           workspaceId={workspaceId}
           runId={runId}
           onApprove={() => handleAction('Approve', () => payrollApi.approveRun(runId))}

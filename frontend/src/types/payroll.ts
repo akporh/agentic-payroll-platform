@@ -18,13 +18,11 @@ export interface PayrollRun {
 }
 
 export interface ComponentTraceEntry {
-  rule: string;
-  method: string;
-  status: string;
-  amount: string;
-  note: string;
-  resolution_source: string;
-  warning?: string | null;
+  component: string;      // component_code, e.g. "BASIC_SALARY"
+  method: string;         // calculation_method, e.g. "salary_component"
+  result: string | null;  // Decimal serialised as string; null for the period header
+  annualization_factor?: string;
+  period_fraction?: string;
 }
 
 export interface PayrollResult {
@@ -105,7 +103,7 @@ export interface WorkspacePayrollConfig {
   ph_rate_code: string;
   saturday_ph_rule: 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE';
   sunday_ph_rule: 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE';
-  d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH' | 'PH_ADDITIVE';
+  d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH';
   d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE' | 'PH_EXCUSES_ABSENCE';
 }
 

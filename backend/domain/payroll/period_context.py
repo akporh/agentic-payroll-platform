@@ -79,6 +79,7 @@ def _resolve_period_type(raw: str) -> PeriodType:
 _DEFAULT_ANNUALIZATION: dict[PeriodType, Decimal] = {
     PeriodType.MONTHLY:     Decimal("12"),
     PeriodType.FORTNIGHTLY: Decimal("26"),
+    PeriodType.CUSTOM:      Decimal("12"),
 }
 
 # Maximum calendar days permitted per period type.

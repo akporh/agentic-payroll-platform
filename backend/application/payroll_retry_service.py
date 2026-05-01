@@ -210,7 +210,14 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         {"sr_id": statutory_rule_id},
     ).fetchall()
 
-    tax_bands = [{"lower_limit": r[0], "upper_limit": r[1], "rate": r[2]} for r in tax_rows]
+    tax_bands = [
+        {
+            "lower_limit": Decimal(str(r[0])) if r[0] is not None else None,
+            "upper_limit": Decimal(str(r[1])) if r[1] is not None else None,
+            "rate":        Decimal(str(r[2])) if r[2] is not None else None,
+        }
+        for r in tax_rows
+    ]
 
     # ── Component metadata ────────────────────────────────────────────────────
     comp_rows = db.execute(

@@ -18,7 +18,10 @@
 |-------|--------------------|-----------------|----------------|-----------------|-------------------|--------------------------------------|
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
 | **Phase 1 — Sprints 1–6** | 3✅ 1⬜ | 2✅ | 8✅ | 6✅ | 3✅ 3⬜ | 6✅ |
-| **Phase 2 — Sprint 7+** | 9🔜 3⬜ | — | 18🔜 2✅ | 1🔜 | 4🔜 1⬜ | 2🔜 2⬜ |
+| **Phase 2 — Sprints 7–8** | 9🔜 3⬜ | — | 18🔜 2✅ | 1🔜 | 4🔜 1⬜ | 2🔜 2⬜ |
+| **Phase 2 — Client B Sprint 10+** | 6⬜ (Tracks L+) | — | 10⬜ 1🔮 (Tracks K+M+N) | — | — | 1⬜ (Track N) |
+| **Track S — Security** | — | — | — | — | — | 3🔜 (SEC-S1 Medium, SEC-S2/S3 Low) |
+| **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ (6 amendments applied) Gate 4✅ Gate 5🔜 (nav modernisation + Rate Codes) | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -359,6 +362,99 @@ UX/UI: `docs/ux-design-brief/gate-6/`
 
 ---
 
+### Track S — Security (rolling register; no arch-council gate)
+
+Findings are logged here as they are identified by `/security` reviews. Full narrative for each sprint lives in `docs/security/`. No finding is discarded — closed items are marked ✅.
+
+| # | Item | Severity | File | Ref | Sprint Found | Status |
+|---|------|----------|------|-----|--------------|--------|
+| S1 | Replace raw `_wpc_err!s` exception string in `warnings` response with a generic message; log internally | Medium | `backend/api/routes/onboarding.py:589` | SEC-S1 | Sprint 10 | 🔜 |
+| S2 | Add application-level allowlist validation for `workspace_payroll_config` enum fields before DB upsert | Low | `backend/api/routes/onboarding.py:575–586` | SEC-S2 | Sprint 10 | 🔜 |
+| S3 | Move `import logging` to module level in `payroll.py`; replace inline `_logging.getLogger` call | Low | `backend/api/routes/payroll.py:498` | SEC-S3 | Sprint 10 | 🔜 |
+
+> **Policy:** Security findings are batched into the next sprint unless severity is Critical or High, in which case they block sprint closure. Full review narratives: `docs/security/`.
+
+---
+
+### Track Q — Audit Observations (rolling register; no arch-council gate)
+
+Observations are logged here as they are identified by `/auditor` reviews. Full narrative for each sprint lives in `docs/audit/`. Observations do not block sprint closure but must be addressed before external audit or UAT sign-off. Closed items are marked ✅.
+
+| # | Item | Type | File | Ref | Sprint Found | Status |
+|---|------|------|------|-----|--------------|--------|
+| Q1 | Add `"component_source"` field to `fixed_amount` trace entry when fallback fires — derivation path must be auditable | Observation | `backend/domain/payroll/rule_evaluator.py:327–338` | AUD-1 | Sprint 10 | 🔜 |
+| Q2 | Store `period_type` on `payroll_run` row; pass to `build_period_context` on retry — CUSTOM runs must reproduce with correct annualization | Observation | `backend/application/payroll_retry_service.py:147–151` (migration required) | AUD-2 | Sprint 10 | 🔜 |
+| Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
+
+> **Policy:** Observations are batched into the next available sprint. Any Observation rated "must fix before UAT/external audit" is escalated to Finding status and blocks the relevant sign-off gate. Full review narratives: `docs/audit/`.
+
+---
+
+### Track K — Client B Engine Defect Fixes (Sprint 9, Track A class — no arch-council gate)
+
+Identified during Client B gap audit (2026-04-30). These are pre-approved defect fixes with no migration or data-contract change.
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| K1 | GAP-2-FIX: Remove double-subtraction of PH days in AUTOMATIC mode (`payroll.py:505`) ⬜ | Execution (A4) | GAP-2 | `period_ctx.working_days` already excludes PHs; second `- len(ph_weekday_dates)` overcounts |
+| K2 | GAP-5-FIX: PAYE CUSTOM annualization → ×12 (`period_context.py:211–216`) ⬜ | Execution (A4) | GAP-5 | Currently `365/period_days` ≈ 13× for Feb 21–Mar 20; use 12 or `pay_cycle.annualization_factor` |
+| K3 | WI-04 Sub-A: `component_source` in `fixed_amount` handler (`rule_evaluator.py:316`) — ₦0 fix for salary-referenced rules ⬜ | Execution (A4) | WI-04a | When `amount=0` and `component_source` present, read from `components` dict; double-count guard required |
+
+---
+
+### Track L — Client B Onboarding & Rate Code Foundations (Sprint 9, Track B class)
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| L1 | WI-01: OT multiplier seed correction — guarded `UPDATE rate_code_registry`: OT001→1.5×, OT002→2.0×, OT003→3.25× ⬜ | Onboarding (A1) | WI-01 | Idempotent `WHERE code=X AND multiplier=<old>` guards; no drop/re-insert; workspace shadow rows preserved |
+| L2 | WI-02: `ot_code`→`rate_code` normalisation — defensive read in evaluator + one-time migration + onboarding handler ⬜ | Onboarding (A2) | WI-02 | Prevents hard crash on rules stored with old key; canonical `rate_code` field going forward |
+| L3 | WI-05: Excel `ot_multiplier` rule-type parsing — add `'ot multiplier': 'ot_multiplier'` to `RULE_TYPE_MAP`; write `rate_code` to `rule_definition_json` ⬜ | Onboarding (A2) | WI-05 | Requires L1 (seeds) + L2 (normalisation pattern); rate-code validation against registry |
+| L4 | WI-06/H2: `workspace_payroll_config` onboarding integration — optional 7th Excel sheet; seed `ph_mode=FILE_BASED` default if absent ⬜ | Onboarding (A1) | WI-06 | Requires K1 (GAP-2-FIX) before AUTOMATIC mode is production-safe |
+| L5 | VERIFY-PH-ADDITIVE: grep for PH_ADDITIVE/leave_overlap — remove from d3 dropdown if absent, document + test if present ⬜ | Onboarding (A1) | WI-12 | Verification gate — no dead UI option that silently produces wrong results |
+| L6 | VERIFY-API-COVERAGE: confirm `rate_code_registry` + `public-holidays` GET/POST/DELETE are live ⬜ | Onboarding (A1) | WI-35 | Precondition for RATE-CODES-UI-PAGE (Track G #3) |
+
+---
+
+### Track M — Statutory Deduction Completeness (arch-council joint review required before any implementation)
+
+Run a **single arch-council session covering NEW-GAP14 + NEW-GAP15 together** before writing any code — they share the executor GROSS_PAY / TAXABLE_INCOME data-contract surface.
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| M1 | NEW-GAP14: Non-taxable component class — `component_class='non_taxable'`; exclude from `_handle_sum_earnings` (GROSS_PAY); include in net-pay total but not TAXABLE_INCOME ⬜ | Execution (A4) | NEW-GAP14 | **Arch-council required** — changes GROSS_PAY + TAXABLE_INCOME aggregation contract; coordinate with M2 |
+| M2 | NEW-GAP15: PAYE-only additions path — `payroll_input.input_category VARCHAR(20) DEFAULT 'standard'`; executor aggregates `paye_only` rows into TAXABLE_INCOME only ⬜ | Execution (A4) | NEW-GAP15 | **Arch-council required (joint with M1)** — new additive term in TAXABLE_INCOME; cross-cutting to retry service + trace schema |
+| M3 | NEW-GAP6: Check-off dues handler — `2% × (BASIC + HOUSING + TRANSPORT)`, `component_class='statutory_deduction'`; seed `component_metadata` row ⬜ | Execution (A4) | NEW-GAP6 | Requires M1 class map; follows established handler pattern |
+| M4 | GAP-10-FIX: Life insurance flat ₦2,000 — change `rate × GROSS_PAY` to flat-amount pattern; seed `employer_amount=2000` in `rules_jsonb` ⬜ | Execution (A4) | GAP-10 | Parked — backward-compat fallback to rate-based for other clients |
+| M5 | NEW-GAP7: NSITF/ITF employer cost handlers — `1% × (BASIC + HOUSING + TRANSPORT)` each; `component_class='employer_cost'`; no employee net-pay deduction ⬜ | Execution (A4) | NEW-GAP7 | Parked — requires M1 `employer_cost` class map extension |
+
+---
+
+### Track N — Proration Audit Trail & Proration Fix (arch-council gate)
+
+WI-08 must land before WI-03 can be safely implemented. WI-03 remains blocked until the client confirms the proration ordering model.
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| N1 | WI-08: Merge `_rule_trace` from `apply_payroll_rules()` into `component_trace_jsonb` (currently discarded unconditionally); add `rate_basis` field to each trace entry ⬜ | Correctness (A10) | WI-08 | **Arch-council required** — extends `component_trace_jsonb` schema contract; downstream: UI renderer + retry snapshot reader |
+| N2 | WI-03: Proration factor fix — `ot_multiplier` + `daily_rate_deduction` to reconstruct full BASIC as rate base (**BLOCKED**) ⬜ | Execution (A4) | WI-03 | **BLOCKED** — awaiting Model A/B decision from client; configurable proration model preferred; re-run arch-council after unblocked |
+
+---
+
+### Track O — Employee Schema & Complex Features (later Phase 2 sprint; arch-council per item)
+
+All items require arch-council pre-clearance before implementation begins. Entry gate: all of Tracks K–N complete.
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| O1 | NEW-GAP4 + NEW-GAP13: Employee payroll-critical fields — `shift_type`, `state_of_tax`, `skill_level` columns; verify against `employee_contract` for existing start-date path before adding; joint arch-council required ⬜ | Onboarding (A2) | NEW-GAP4/13 | Arch-council required — `shift_type` changes OT2 routing; `state_of_tax` changes statutory rule selection |
+| O2 | NEW-GAP12: Grade percentage structure — `total_monthly`, `basic_pct`, `housing_pct`, `transport_pct`, `utility_pct` on `grade` table; percentage-derived salary alongside existing `components_jsonb` absolute amounts ⬜ | Onboarding (A2) | NEW-GAP12 | Arch-council required — changes how `salary_components` dict is populated at run start |
+| O3 | WI-04 Sub-B + NEW-GAP8: Full shift allowance handler — `shift_pct × basic_monthly / expected_days × shift_days_worked`; `shift_days_worked` as named `payroll_input` code ⬜ | Execution (A4) | WI-04b | Blocked on O1 (shift_type); arch-council required for new execution-context concept |
+| O4 | SHIFT-ALLOWANCE-CLIENT3: Extend shift allowance for `basic_daily` rate base; SHIFT2/SHIFT3/SHIFT4 bands ⬜ | Execution (A4) | WI-34 | Blocked on O3 |
+| O5 | NEW-GAP11: LTA anniversary trigger — `AnniversaryService` auto-injects `payroll_input` (category=`paye_only`) for employees where `date_engaged` anniversary falls in pay period; configurable LTA amount ⬜ | Execution (A4) | NEW-GAP11 | Arch-council required — new cross-cutting service; idempotency on retry must be explicit |
+| O6 | NEW-GAP1: Timesheet / Attendance Layer — `timesheet_entry` table; derivation pipeline auto-populates configurable OT/PH inputs at run-claim time (not hardcoded OT1/OT2/OT3 codes) ⬜ | Pay Events (A3) | NEW-GAP1 | Requires **full dedicated PM + arch-council sprint** before implementation begins; blocked on all K–N complete |
+
+---
+
 ### Track UI — UX/UI Design System & Screen Assembly
 
 Three-gate delivery. Skills active throughout: `/ui-designer`, `/ux-designer`.
@@ -413,21 +509,24 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Not Caused by Sprint 7 Track A)
+## Known Test Failures (Pre-existing — Live State as of Sprint 10, 2026-05-01)
 
-Logged 2026-04-13 during Sprint 7 Track A regression run. Both failures exist in the
-working branch before Track A was applied. They are not caused by FIX-1 through FIX-5.
+Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
-| # | Test | File | Root Cause | Fix Needed | Linked Item |
-|---|------|------|------------|------------|-------------|
-| TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Pre-existing change to `payroll.py` migrated `pay_run` from payload-based `actor_id` to `X-Performed-By` header, but the test still sends `actor_id` in the request body | Update test to send `X-Performed-By: finance@company.com` header, or reconcile the endpoint contract | Track I #35 (P2-2) |
-| TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Pre-existing change to `rule_evaluator.py` added strict bounds check: `absent_days > working_days` now raises `ValueError` instead of flooring at zero. Test expects old floor-at-zero behaviour | Update test to assert `ValueError` is raised for `absent_days=30 > working_days=22`, OR document the floor-at-zero case as a separate test | Execution correctness — no roadmap item yet |
+| # | Test | File | Root Cause | Fix Needed | Linked Item | Status |
+|---|------|------|------------|------------|-------------|--------|
+| TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
+| TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Test expects `net_pay=578273.33`; engine produces `590773.33` — diff=₦12,500 = NHF (2.5% × ₦500k basic) not deducted in test fixture workspace | Investigate NHF toggle/key in test fixture setup | F1 / SR9 area | 🔴 Open |
+| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
+| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
+| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
 
 ---
 
 ## Phase 3 — Platform Scale (Future)
 
-Deferred until Phase 2 is complete and a second client is onboarded.
+Deferred until Phase 2 (including Tracks K–O) is complete and a second client is onboarded.
 
 - Employee payslip PDF generation and distribution (P4-1)
 - Snapshot replay endpoint (P4-2)

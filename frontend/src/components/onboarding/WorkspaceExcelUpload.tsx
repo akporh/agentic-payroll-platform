@@ -34,6 +34,14 @@ export interface WorkspaceConfig {
       definition: Record<string, unknown>;
     }[];
   };
+  /** Optional workspace payroll config from 7th sheet. */
+  workspace_payroll_config?: {
+    ph_mode?: string;
+    saturday_ph_rule?: string;
+    sunday_ph_rule?: string;
+    d3_leave_overlap_rule?: string;
+    d4_absence_rule?: string;
+  };
 }
 
 interface Props {
@@ -92,10 +100,11 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salaryDefsData), 'Salary Definitions');
 
   // Payroll Rules
-  // Rule Type must be one of: Unit × Rate | Daily Rate Deduction | Fixed Amount
+  // Rule Type must be one of: Unit × Rate | Daily Rate Deduction | Fixed Amount | OT Multiplier
   //   Unit × Rate         — requires: input_field, rate  (e.g. overtime_days × rate)
   //   Daily Rate Deduction — requires: input_field        (e.g. absent_days deducted from salary)
   //   Fixed Amount         — requires: amount             (e.g. flat bonus, optionally with condition)
+  //   OT Multiplier        — requires: input_field, rate_code (e.g. OT1 hours × basic_hourly × 1.5)
   const rulesData = [
     {
       rule_name:   'OVERTIME_PAY',
@@ -109,6 +118,12 @@ function downloadTemplate() {
       rule_type:   'Daily Rate Deduction',
       input_field: 'absent_days',
     },
+    {
+      rule_name:   'OT1 - Weekday Overtime',
+      rule_type:   'OT Multiplier',
+      input_field: 'ot1_hours',
+      rate_code:   'OT001',
+    },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rulesData), 'Payroll Rules');
 
@@ -119,6 +134,18 @@ function downloadTemplate() {
     { component_code: 'TRANSPORT', proration_strategy: 'calendar_days' },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(componentOverridesData), 'Component Overrides');
+
+  // Workspace Payroll Config (optional 7th sheet — one row only)
+  const wpcData = [
+    {
+      ph_mode:              'AUTOMATIC',
+      saturday_ph_rule:     'PH_TAKES_PRECEDENCE',
+      sunday_ph_rule:       'PH_TAKES_PRECEDENCE',
+      d3_leave_overlap_rule:'LEAVE_ABSORBS_PH',
+      d4_absence_rule:      'ABSENT_IS_DEDUCTIBLE',
+    },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wpcData), 'Workspace Payroll Config');
 
   XLSX.writeFile(wb, 'workspace_config_template.xlsx');
 }
@@ -136,8 +163,9 @@ function normaliseRow(row: Record<string, unknown>): Record<string, unknown> {
 function parseWorkbook(
   workbook: XLSX.WorkBook,
   workspaceId: string,
-): { config: WorkspaceConfig | null; errors: string[] } {
+): { config: WorkspaceConfig | null; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   // ── Validate required sheets ──────────────────────────────────────────────
   const requiredSheets = ['Pay Cycle', 'Grades', 'Designations', 'Salary Definitions', 'Payroll Rules'];
@@ -243,6 +271,7 @@ function parseWorkbook(
     'unit × rate':           'unit_multiplier',
     'daily rate deduction':  'daily_rate_deduction',
     'fixed amount':          'fixed_amount',
+    'ot multiplier':         'ot_multiplier',
   };
   function resolveCalculationMethod(ruleType: string): string {
     return RULE_TYPE_MAP[ruleType.toLowerCase().trim()] ?? ruleType;
@@ -271,6 +300,16 @@ function parseWorkbook(
       };
     });
 
+  // Warn on ot_multiplier rules missing rate_code — rule will fail at runtime
+  payroll_rules.forEach((rule, i) => {
+    const method = rule.definition['calculation_method'];
+    if (method === 'ot_multiplier' && !rule.definition['rate_code']) {
+      warnings.push(
+        `Payroll Rules row ${i + 2} ("${rule.rule_name}"): ot_multiplier rule has no rate_code — rule will fail at runtime.`,
+      );
+    }
+  });
+
   // ── Component Overrides (optional 6th sheet) ──────────────────────────
   const VALID_STRATEGIES = new Set(['work_days', 'calendar_days', 'fixed_30']);
   const component_overrides: { component_code: string; proration_strategy?: string }[] = [];
@@ -297,7 +336,30 @@ function parseWorkbook(
       });
   }
 
-  if (errors.length > 0) return { config: null, errors };
+  // ── Workspace Payroll Config (optional 7th sheet) ────────────────────────
+  let workspace_payroll_config: WorkspaceConfig['workspace_payroll_config'];
+  if (workbook.Sheets['Workspace Payroll Config']) {
+    const wpcRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+      workbook.Sheets['Workspace Payroll Config'],
+      { defval: '' },
+    ).map(normaliseRow);
+    if (wpcRows.length > 0) {
+      const wpc = wpcRows[0];
+      const phMode = String(wpc['ph_mode'] ?? '').trim().toUpperCase();
+      if (phMode && !['AUTOMATIC', 'FILE_BASED'].includes(phMode)) {
+        warnings.push(`Workspace Payroll Config: ph_mode '${phMode}' is not valid. Use AUTOMATIC or FILE_BASED.`);
+      }
+      workspace_payroll_config = {
+        ph_mode:               phMode || undefined,
+        saturday_ph_rule:      String(wpc['saturday_ph_rule'] ?? '').trim() || undefined,
+        sunday_ph_rule:        String(wpc['sunday_ph_rule'] ?? '').trim() || undefined,
+        d3_leave_overlap_rule: String(wpc['d3_leave_overlap_rule'] ?? '').trim() || undefined,
+        d4_absence_rule:       String(wpc['d4_absence_rule'] ?? '').trim() || undefined,
+      };
+    }
+  }
+
+  if (errors.length > 0) return { config: null, errors, warnings };
 
   return {
     config: {
@@ -305,8 +367,10 @@ function parseWorkbook(
       structure: { pay_cycle, grades, designations, component_overrides },
       compensation: { salary_definitions },
       rules: { payroll_rules },
+      workspace_payroll_config,
     },
     errors: [],
+    warnings,
   };
 }
 
@@ -315,6 +379,7 @@ function parseWorkbook(
 export function WorkspaceExcelUpload({ workspaceId, onConfigParsed }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsedConfig, setParsedConfig] = useState<WorkspaceConfig | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
@@ -324,6 +389,7 @@ export function WorkspaceExcelUpload({ workspaceId, onConfigParsed }: Props) {
     if (!file) return;
     setFileName(file.name);
     setParseErrors([]);
+    setParseWarnings([]);
     setParsedConfig(null);
     setJsonOpen(false);
 
@@ -331,11 +397,12 @@ export function WorkspaceExcelUpload({ workspaceId, onConfigParsed }: Props) {
     reader.onload = (ev) => {
       try {
         const workbook = XLSX.read(ev.target?.result, { type: 'array' });
-        const { config, errors } = parseWorkbook(workbook, workspaceId);
+        const { config, errors, warnings } = parseWorkbook(workbook, workspaceId);
         if (errors.length > 0) {
           setParseErrors(errors);
           return;
         }
+        if (warnings.length > 0) setParseWarnings(warnings);
         if (config) {
           setParsedConfig(config);
           onConfigParsed(config);
@@ -367,7 +434,7 @@ export function WorkspaceExcelUpload({ workspaceId, onConfigParsed }: Props) {
           ↓ Download Template
         </Btn>
         <p className="text-xs text-slate-400 mt-1.5">
-          5 required sheets + 1 optional: Pay Cycle · Grades · Designations · Salary Definitions · Payroll Rules · Component Overrides
+          5 required sheets + 2 optional: Pay Cycle · Grades · Designations · Salary Definitions · Payroll Rules · Component Overrides · Workspace Payroll Config
         </p>
       </div>
 
@@ -392,6 +459,13 @@ export function WorkspaceExcelUpload({ workspaceId, onConfigParsed }: Props) {
       {parseErrors.length > 0 && (
         <div className="mb-3">
           <AlertBox type="error" title="Parse Errors" messages={parseErrors} />
+        </div>
+      )}
+
+      {/* Parse warnings (non-blocking) */}
+      {parseWarnings.length > 0 && (
+        <div className="mb-3">
+          <AlertBox type="warning" title="Warnings" messages={parseWarnings} />
         </div>
       )}
 
