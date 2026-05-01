@@ -17,9 +17,9 @@
 | Phase | Onboarding (A1+A2) | Pay Events (A3) | Execution (A4) | Governance (A5) | Disbursement (A6) | Correctness & Audit (A7+A8+A9+A10) |
 |-------|--------------------|-----------------|----------------|-----------------|-------------------|--------------------------------------|
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
-| **Phase 1 — Sprints 1–6** | 3✅ 1⬜ | 2✅ | 8✅ | 6✅ | 3✅ 3⬜ | 6✅ |
-| **Phase 2 — Sprints 7–8** | 9🔜 3⬜ | — | 18🔜 2✅ | 1🔜 | 4🔜 1⬜ | 2🔜 2⬜ |
-| **Phase 2 — Client B Sprint 10+** | 6⬜ (Tracks L+) | — | 10⬜ 1🔮 (Tracks K+M+N) | — | — | 1⬜ (Track N) |
+| **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
+| **Phase 2 — Sprints 7–8** | 10✅ 9🔜 2⬜ | — | 9✅ 9🔜 | 1🔜 | 4✅ | 2🔜 2⬜ |
+| **Phase 2 — Client B Sprint 10+** | 4✅ 2⬜ (Tracks L+) | — | 3✅ 7⬜ 5🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Track S — Security** | — | — | — | — | — | 3🔜 (SEC-S1 Medium, SEC-S2/S3 Low) |
 | **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ (6 amendments applied) Gate 4✅ Gate 5🔜 (nav modernisation + Rate Codes) | — | — | — | — | — |
@@ -127,7 +127,7 @@ Formal sprint work. All Sprint 1–6 items are now closed.
 - Active pay cycle guard — at most one active per workspace ✅ (PC4)
 
 **A2 — Workforce**
-- Define payroll rules — standalone form, not raw JSON textarea ⬜ (P3-1) — still open, moves to Phase 2
+- Define payroll rules — standalone form, not raw JSON textarea ✅ (P3-1)
 
 ### Pay Events (A3)
 
@@ -159,9 +159,9 @@ Formal sprint work. All Sprint 1–6 items are now closed.
 - Submit reconciliation gated to LOCKED/PAID runs ✅ (P0-4)
 - Duplicate reconciliation returns 409, not 500 ✅ (P0-5)
 - Correct a MISMATCH — RESOLVED status and PATCH endpoint ✅ (RC5)
-- Export net pay for bank upload ⬜ (P0-3) — still open, moves to Phase 2
-- Export PAYE summary ⬜ (P1-4) — still open, moves to Phase 2
-- Export full payroll register ⬜ — still open, moves to Phase 2
+- Export net pay for bank upload ✅ (P0-3)
+- Export PAYE remittance schedule ✅ (P1-4)
+- Export full payroll detail ✅
 
 ### Correctness & Audit (A7 + A8 + A9 + A10)
 
@@ -188,7 +188,7 @@ Open items needed to make the platform production-ready for real clients.
 ### Onboarding (A1 + A2)
 
 **A1 — Workspace Setup**
-- Configure pay cycle post-setup — update endpoint 🔜 (WC-1, Track J)
+- Configure pay cycle post-setup — update endpoint ✅ (WC-1, Track J)
 - View applicable statutory rules — read endpoint + UI ⬜ (P3-2)
 - Statutory rule management UI for bureau ⬜ (P3-2)
 - Configure WorkspacePayrollConfig (ph_mode, weekend PH rules, D3/D4 flags, effective_from versioned rows) 🔜 (PH-6) ← arch-council: effective_from required
@@ -201,27 +201,27 @@ Open items needed to make the platform production-ready for real clients.
 - PH-2b: Weekend PH classification config (saturday_ph_rule, sunday_ph_rule) 🔜 (PH-2b)
 
 **A2 — Workforce**
-- Define payroll rules — standalone form 🔜 (WC-9, Track J)
-- Add grade / designation post-onboarding via UI 🔜 (WC-2/WC-4, Track J)
-- Edit grade / designation description via UI 🔜 (WC-3/WC-5, Track J)
-- Add new salary definition via UI 🔜 (WC-6, Track J)
-- Edit salary definition components via UI (amounts, add/remove) 🔜 (WC-7, Track J)
-- Toggle payroll rule active/inactive via UI 🔜 (WC-8, Track J)
-- Edit/toggle statutory component override via UI 🔜 (WC-10/WC-11, Track J)
+- Define payroll rules — standalone form ✅ (WC-9, Track J)
+- Add grade / designation post-onboarding via UI ✅ (WC-2/WC-4, Track J)
+- Edit grade / designation description via UI ✅ (WC-3/WC-5, Track J)
+- Add new salary definition via UI ✅ (WC-6, Track J)
+- Edit salary definition components via UI (amounts, add/remove) ✅ (WC-7, Track J)
+- Toggle payroll rule active/inactive via UI ✅ (WC-8, Track J)
+- Edit/toggle statutory component override via UI ✅ (WC-10/WC-11, Track J)
 - Enforce salary definition effective dates at run time ✅ (P3-5) — already done
-- Onboard ot_multiplier payroll rules via Excel/JSON (rate_code field) 🔜 (PH-8)
+- Onboard ot_multiplier payroll rules via Excel/JSON (rate_code field) ✅ (PH-8/WI-05)
 - Onboard Client 3 shift allowance rules (basic_daily base) 🔜 (PH-12)
 
 ### Execution (A4)
 
 **── Mandatory defect fixes (FIX-1 to FIX-5) — must land before any PH/OT feature ──**
-- FIX-1: Fix cross-period prefetch dead code — payroll.py:383 isinstance guard always False for lists 🔜 (prerequisite for PH_OT cross-period inputs)
-- FIX-2: Align NHF key to employee_rate in retry service + simulate_payroll (route fixed in SR9, 2 callers still wrong) 🔜 (silent financial error on retried runs)
-- FIX-3: Fix health/dev levy extraction key in route + retry service (payroll.py:183–184, retry_service:176–177) 🔜 (P1-2/P1-3) ← arch-council: fix extraction layer not handler
-- FIX-4: tax_bands float → Decimal at extraction (payroll.py:195–202) 🔜 (amplified by OT→PAYE path)
-- Fix rent_relief rate "TBD" in DB seed — Decimal crash if ANNUAL_RENT_PAID present 🔜 (P0-6)
-- Fix _resolve_inputs type mismatch bug (reads dict, receives list) 🔜 (live defect)
-- Add quantity ≥ 0 DB CHECK constraint on payroll_input 🔜 (INP10)
+- FIX-1: Fix cross-period prefetch dead code — isinstance guard for list inputs ✅ (prerequisite for PH_OT cross-period inputs)
+- FIX-2: Align NHF key to employee_rate in retry service + simulate_payroll ✅ (silent financial error on retried runs)
+- FIX-3: Fix health/dev levy extraction key in route + retry service ✅ (P1-2/P1-3)
+- FIX-4: tax_bands float → Decimal at extraction ✅ (amplified by OT→PAYE path)
+- Fix rent_relief rate "TBD" in DB seed ✅ (P0-6)
+- Fix _resolve_inputs type mismatch bug (reads dict, receives list) ✅ (live defect)
+- Add quantity ≥ 0 DB CHECK constraint on payroll_input ✅ (INP10)
 
 **── PH/OT engine (Track B schema first, then Track C execution) ──**
 - absent_days bounds check (absent_days ≤ working_days) ✅ — already done (P2-5)
@@ -232,7 +232,7 @@ Open items needed to make the platform production-ready for real clients.
 - Compute expected_days in execution context (PH-aware, separate from expected_hours) 🔜 (PH-9)
 - ot_multiplier in apply_payroll_rules — Model A: extend signature with expected_hours/expected_days/proration_factor/rate_code_map kwargs 🔜 (PH-8) ← arch-council decision
 - Snapshot expected_days + ph_dates_used in run trace header 🔜 (PH-9)
-- FIX-5: Retry context — add expected_hours/expected_days/ph_dates_used/ph_source from snapshot (must land with Track C) 🔜 (retry determinism)
+- FIX-5: Retry context — expected_hours/expected_days/ph_dates_used/ph_source from snapshot ✅ (retry determinism)
 - PH pre-flight check for AUTOMATIC mode runs 🔜 (PH-11)
 - PH count mismatch and duplicate warnings in execution trace 🔜 (PH-10)
 
@@ -242,10 +242,10 @@ Open items needed to make the platform production-ready for real clients.
 
 ### Disbursement (A6)
 
-- Export net pay for bank upload — wire route + UI download button 🔜 (P0-3)
-- Export PAYE remittance schedule — wire route + UI 🔜 (P1-4)
-- Export pension contribution schedule — wire route + UI 🔜 (P1-5)
-- Export full payroll register — wire route + UI ⬜
+- Export net pay for bank upload — route + UI download button ✅ (P0-3)
+- Export PAYE remittance schedule — route + UI ✅ (P1-4)
+- Export pension contribution schedule — route + UI ✅ (P1-5)
+- Export full payroll detail — route + UI ✅
 
 ### Correctness & Audit (A10)
 
@@ -330,9 +330,9 @@ Reordered after arch-council review (April 2026). Defect fixes gate the feature 
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 32 | Export net pay for bank upload | Disbursement (A6) | P0-3 | |
-| 33 | Export PAYE remittance schedule | Disbursement (A6) | P1-4 | |
-| 34 | Export pension contribution schedule | Disbursement (A6) | P1-5 | |
+| 32 | Export net pay for bank upload | Disbursement (A6) | P0-3 | ✅ Sprint 10 |
+| 33 | Export PAYE remittance schedule | Disbursement (A6) | P1-4 | ✅ Sprint 10 |
+| 34 | Export pension contribution schedule | Disbursement (A6) | P1-5 | ✅ Sprint 10 |
 
 ### Track I — Governance (independent)
 
@@ -396,9 +396,9 @@ Identified during Client B gap audit (2026-04-30). These are pre-approved defect
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| K1 | GAP-2-FIX: Remove double-subtraction of PH days in AUTOMATIC mode (`payroll.py:505`) ⬜ | Execution (A4) | GAP-2 | `period_ctx.working_days` already excludes PHs; second `- len(ph_weekday_dates)` overcounts |
-| K2 | GAP-5-FIX: PAYE CUSTOM annualization → ×12 (`period_context.py:211–216`) ⬜ | Execution (A4) | GAP-5 | Currently `365/period_days` ≈ 13× for Feb 21–Mar 20; use 12 or `pay_cycle.annualization_factor` |
-| K3 | WI-04 Sub-A: `component_source` in `fixed_amount` handler (`rule_evaluator.py:316`) — ₦0 fix for salary-referenced rules ⬜ | Execution (A4) | WI-04a | When `amount=0` and `component_source` present, read from `components` dict; double-count guard required |
+| K1 | GAP-2-FIX: Remove double-subtraction of PH days in AUTOMATIC mode (`payroll.py:505`) ✅ | Execution (A4) | GAP-2 | Sprint 10 (CB-1) |
+| K2 | GAP-5-FIX: PAYE CUSTOM annualization → ×12 (`period_context.py:211–216`) ✅ | Execution (A4) | GAP-5 | Sprint 10 (CB-2) |
+| K3 | WI-04 Sub-A: `component_source` in `fixed_amount` handler (`rule_evaluator.py:316`) — ₦0 fix for salary-referenced rules ✅ | Execution (A4) | WI-04a | Sprint 10 (CB-7) |
 
 ---
 
@@ -408,10 +408,10 @@ Identified during Client B gap audit (2026-04-30). These are pre-approved defect
 |---|------|------|-----|-------|
 | L1 | WI-01: OT multiplier seed correction — guarded `UPDATE rate_code_registry`: OT001→1.5×, OT002→2.0×, OT003→3.25× ⬜ | Onboarding (A1) | WI-01 | Idempotent `WHERE code=X AND multiplier=<old>` guards; no drop/re-insert; workspace shadow rows preserved |
 | L2 | WI-02: `ot_code`→`rate_code` normalisation — defensive read in evaluator + one-time migration + onboarding handler ⬜ | Onboarding (A2) | WI-02 | Prevents hard crash on rules stored with old key; canonical `rate_code` field going forward |
-| L3 | WI-05: Excel `ot_multiplier` rule-type parsing — add `'ot multiplier': 'ot_multiplier'` to `RULE_TYPE_MAP`; write `rate_code` to `rule_definition_json` ⬜ | Onboarding (A2) | WI-05 | Requires L1 (seeds) + L2 (normalisation pattern); rate-code validation against registry |
-| L4 | WI-06/H2: `workspace_payroll_config` onboarding integration — optional 7th Excel sheet; seed `ph_mode=FILE_BASED` default if absent ⬜ | Onboarding (A1) | WI-06 | Requires K1 (GAP-2-FIX) before AUTOMATIC mode is production-safe |
-| L5 | VERIFY-PH-ADDITIVE: grep for PH_ADDITIVE/leave_overlap — remove from d3 dropdown if absent, document + test if present ⬜ | Onboarding (A1) | WI-12 | Verification gate — no dead UI option that silently produces wrong results |
-| L6 | VERIFY-API-COVERAGE: confirm `rate_code_registry` + `public-holidays` GET/POST/DELETE are live ⬜ | Onboarding (A1) | WI-35 | Precondition for RATE-CODES-UI-PAGE (Track G #3) |
+| L3 | WI-05: Excel `ot_multiplier` rule-type parsing — `'ot multiplier': 'ot_multiplier'` in `RULE_TYPE_MAP`; `rate_code` in `rule_definition_json` ✅ | Onboarding (A2) | WI-05 | Sprint 10 (CB-10) |
+| L4 | WI-06/H2: `workspace_payroll_config` onboarding integration — optional 7th Excel sheet; seed `ph_mode=FILE_BASED` default if absent ✅ | Onboarding (A1) | WI-06 | Sprint 10 (CB-11) |
+| L5 | VERIFY-PH-ADDITIVE: PH_ADDITIVE removed from UI; backend graceful fallback to LEAVE_ABSORBS_PH with WARN log ✅ | Onboarding (A1) | WI-12 | Sprint 10 (CB-12) |
+| L6 | VERIFY-API-COVERAGE: `rate_code_registry` + `public-holidays` GET/POST/DELETE confirmed live ✅ | Onboarding (A1) | WI-35 | Sprint 10 |
 
 ---
 
