@@ -288,6 +288,8 @@ function parseWorkbook(
         if (v !== '' && v != null) {
           if (k === 'rule_type') {
             definition['calculation_method'] = resolveCalculationMethod(String(v));
+          } else if (k === 'ot_code' && !definition['rate_code']) {
+            definition['rate_code'] = v;
           } else {
             definition[k] = v;
           }

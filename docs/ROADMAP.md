@@ -409,8 +409,8 @@ Identified during Client B gap audit (2026-04-30). These are pre-approved defect
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| L1 | WI-01: OT multiplier seed correction — guarded `UPDATE rate_code_registry`: OT001→1.5×, OT002→2.0×, OT003→3.25× ⬜ | Onboarding (A1) | WI-01 | Idempotent `WHERE code=X AND multiplier=<old>` guards; no drop/re-insert; workspace shadow rows preserved |
-| L2 | WI-02: `ot_code`→`rate_code` normalisation — defensive read in evaluator + one-time migration + onboarding handler ⬜ | Onboarding (A2) | WI-02 | Prevents hard crash on rules stored with old key; canonical `rate_code` field going forward |
+| L1 | WI-01: OT multiplier seed correction — guarded `UPDATE rate_code_registry`: OT001→1.5×, OT002→2.0×, OT003→3.25× ✅ | Onboarding (A1) | WI-01 | Seeds already correct; no migration needed (confirmed Sprint 12 session) |
+| L2 | WI-02: `ot_code`→`rate_code` normalisation — defensive read in Excel parser + remove dead fallback in WorkspaceConfig.tsx ✅ | Onboarding (A2) | WI-02 | Parser silently maps legacy `ot_code` → `rate_code`; WorkspaceConfig.tsx fallback removed (Sprint 12 session) |
 | L3 | WI-05: Excel `ot_multiplier` rule-type parsing — `'ot multiplier': 'ot_multiplier'` in `RULE_TYPE_MAP`; `rate_code` in `rule_definition_json` ✅ | Onboarding (A2) | WI-05 | Sprint 10 (CB-10) |
 | L4 | WI-06/H2: `workspace_payroll_config` onboarding integration — optional 7th Excel sheet; seed `ph_mode=FILE_BASED` default if absent ✅ | Onboarding (A1) | WI-06 | Sprint 10 (CB-11) |
 | L5 | VERIFY-PH-ADDITIVE: PH_ADDITIVE removed from UI; backend graceful fallback to LEAVE_ABSORBS_PH with WARN log ✅ | Onboarding (A1) | WI-12 | Sprint 10 (CB-12) |

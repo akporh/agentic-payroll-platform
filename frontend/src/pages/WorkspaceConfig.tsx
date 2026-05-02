@@ -1119,7 +1119,7 @@ function RuleFields({
       <>
         <SelectField
           label="Rate Code"
-          value={values.rate_code ?? values.ot_code ?? ''}
+          value={values.rate_code ?? ''}
           onChange={(v) => onChange('rate_code', v)}
           hint="OT rate code from the rate code registry."
         >
