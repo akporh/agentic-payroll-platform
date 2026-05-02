@@ -562,6 +562,8 @@ def run_sequential_payroll(
             "expected_hours":       ctx.get("expected_hours"),
             "ph_dates_used":        ctx.get("ph_dates_used"),
             "ph_source":            ctx.get("ph_source"),
+            "salary_basis":         ctx.get("salary_basis", "salary_definition_absolute"),
+            "shift_type":           ctx.get("shift_type"),
             "result":               None,
         }
     ]

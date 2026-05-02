@@ -26,6 +26,7 @@ from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, lo
 from backend.infra.repositories.workspace_config_repo import get_workspace_payroll_config
 from backend.infra.repositories.public_holiday_repo import get_effective_ph_list
 from backend.infra.repositories.rate_code_repo import list_rate_codes
+from backend.domain.payroll.salary_derivation import derive_salary_components
 
 router = APIRouter()
 
@@ -115,7 +116,8 @@ def run_payroll(
 
     # --- Load Employees ---
     employee_rows = db.execute(text("""
-        SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date
+        SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date,
+               ec.shift_type, ec.state_of_tax, ec.skill_level, ec.grade_id
         FROM employee e
         JOIN employee_contract ec
           ON e.employee_id = ec.employee_id
@@ -132,16 +134,51 @@ def run_payroll(
         "period_start_date": period_start or str(statutory_effective_date.replace(day=1)),
     }).fetchall()
 
+    # Bulk-load grade rows for percentage salary derivation (O2)
+    grade_ids = list({str(row[7]) for row in employee_rows if row[7] is not None})
+    grade_rows: dict[str, dict] = {}
+    if grade_ids:
+        g_rows = db.execute(
+            text("""
+                SELECT grade_id, total_monthly, basic_pct, housing_pct, transport_pct, utility_pct
+                FROM grade
+                WHERE grade_id = ANY(:ids)
+                  AND workspace_id = :wid
+            """),
+            {"ids": grade_ids, "wid": workspace_id},
+        ).fetchall()
+        for g in g_rows:
+            grade_rows[str(g[0])] = {
+                "total_monthly": g[1],
+                "basic_pct":     g[2],
+                "housing_pct":   g[3],
+                "transport_pct": g[4],
+                "utility_pct":   g[5],
+            }
+
     employees = []
     for row in employee_rows:
+        grade_id = str(row[7]) if row[7] is not None else None
+        grade = grade_rows.get(grade_id) if grade_id else None
+        try:
+            salary_components, salary_basis = derive_salary_components(row[1], grade)
+            components_list = [{"code": k, "amount": v} for k, v in salary_components.items()]
+            derivation_error = None
+        except Exception as exc:
+            components_list = []
+            salary_basis = "salary_definition_absolute"
+            derivation_error = f"salary_derivation_failed: {exc}"
         employees.append({
-            "employee_id":     str(row[0]),
-            "components": [
-                {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
-                for k, v in row[1].items()
-            ],
-            "contract_start": row[2].isoformat() if row[2] else None,
-            "contract_end":   row[3].isoformat() if row[3] else None,
+            "employee_id":       str(row[0]),
+            "components":        components_list,
+            "contract_start":    row[2].isoformat() if row[2] else None,
+            "contract_end":      row[3].isoformat() if row[3] else None,
+            # shift_type: NULL is treated as 'DAY' by the ot_multiplier handler gate (O3/D9)
+            "shift_type":        row[4],
+            "state_of_tax":      row[5],
+            "skill_level":       row[6],
+            "salary_basis":      salary_basis,
+            "derivation_error":  derivation_error,
         })
 
     if not employees:

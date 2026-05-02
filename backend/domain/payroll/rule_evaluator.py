@@ -74,6 +74,7 @@ def apply_payroll_rules(
     expected_hours: int | None = None,
     expected_days: int | None = None,
     rate_code_map: dict | None = None,
+    shift_type: str | None = None,
 ) -> tuple[dict, list]:
     """Apply workspace payroll rules to salary components.
 
@@ -386,6 +387,28 @@ def apply_payroll_rules(
 
                 multiplier = Decimal(str(registry_row["multiplier"]))
                 base       = registry_row["base"]  # 'basic_hourly' | 'basic_daily'
+
+                # D9 — shift_type gate: basic_daily codes are shift allowances.
+                # DAY workers (and unset shift_type) are not entitled to shift allowance.
+                if base == "basic_daily" and shift_type in (None, "DAY"):
+                    trace.append({
+                        "rule":              name,
+                        "method":            method,
+                        "status":            "not_applied",
+                        "amount":            "0",
+                        "note":              f"shift_type={shift_type!r} — not a shift worker",
+                        "rate_code":         rate_code,
+                        "multiplier":        str(multiplier),
+                        "base_rate":         None,
+                        "quantity":          str(quantity),
+                        "rule_set_id":       current_rule_set_id,
+                        "rule_effective_from": current_rule_set_effective_from,
+                        "reference_date":    None,
+                        "rate_used":         None,
+                        "resolution_source": "current",
+                        "warning":           None,
+                    })
+                    continue
 
                 basic = components.get("BASIC")
                 if not basic:

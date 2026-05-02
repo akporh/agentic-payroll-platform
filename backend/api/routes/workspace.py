@@ -2,7 +2,7 @@ import json
 import uuid
 from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from backend.infra.db.session import SessionLocal
 from backend.application import onboarding_service
@@ -197,7 +197,10 @@ def list_employees(workspace_id: str):
                     e.status,
                     d.designation_code   AS designation,
                     g.grade_code         AS grade,
-                    ec.start_date        AS contract_start
+                    ec.start_date        AS contract_start,
+                    ec.shift_type,
+                    ec.state_of_tax,
+                    ec.skill_level
                 FROM employee e
                 LEFT JOIN employee_contract ec
                     ON ec.employee_id = e.employee_id
@@ -219,6 +222,9 @@ def list_employees(workspace_id: str):
                 "designation":    row[4],
                 "grade":          row[5],
                 "contract_start": str(row[6]) if row[6] else None,
+                "shift_type":     row[7],
+                "state_of_tax":   row[8],
+                "skill_level":    row[9],
             }
             for row in rows
         ]
@@ -229,6 +235,9 @@ def list_employees(workspace_id: str):
 class EmployeeContractUpdateSchema(BaseModel):
     grade_code: str | None = None
     designation_code: str | None = None
+    shift_type: str | None = None
+    state_of_tax: str | None = Field(default=None, max_length=50)
+    skill_level:  str | None = Field(default=None, max_length=50)
 
 
 @router.patch("/{workspace_id}/employees/contracts")
@@ -313,6 +322,13 @@ def update_employee_contract(
 ):
     db = SessionLocal()
     try:
+        _VALID_SHIFT_TYPES = {"DAY", "2_SHIFT", "4_SHIFT"}
+        if payload.shift_type is not None and payload.shift_type not in _VALID_SHIFT_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"shift_type '{payload.shift_type}' is not valid — allowed values: DAY, 2_SHIFT, 4_SHIFT",
+            )
+
         grade_id = None
         if payload.grade_code:
             row = db.execute(
@@ -341,14 +357,28 @@ def update_employee_contract(
             text("""
                 UPDATE employee_contract ec
                 SET grade_id       = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
-                    designation_id = COALESCE(CAST(:designation_id AS uuid), ec.designation_id)
+                    designation_id = COALESCE(CAST(:designation_id AS uuid), ec.designation_id),
+                    shift_type     = CASE WHEN :shift_type_set THEN :shift_type     ELSE ec.shift_type     END,
+                    state_of_tax   = CASE WHEN :state_set      THEN :state_of_tax   ELSE ec.state_of_tax   END,
+                    skill_level    = CASE WHEN :skill_set       THEN :skill_level    ELSE ec.skill_level    END
                 WHERE ec.employee_id = CAST(:eid AS uuid)
                   AND ec.employee_id IN (
                       SELECT employee_id FROM employee WHERE workspace_id = :wid
                   )
                   AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
             """),
-            {"grade_id": grade_id, "designation_id": designation_id, "eid": employee_id, "wid": workspace_id},
+            {
+                "grade_id":        grade_id,
+                "designation_id":  designation_id,
+                "shift_type":      payload.shift_type,
+                "shift_type_set":  payload.shift_type is not None,
+                "state_of_tax":    payload.state_of_tax,
+                "state_set":       payload.state_of_tax is not None,
+                "skill_level":     payload.skill_level,
+                "skill_set":       payload.skill_level is not None,
+                "eid":             employee_id,
+                "wid":             workspace_id,
+            },
         )
         db.commit()
         return {"status": "updated", "employee_id": employee_id}

@@ -569,6 +569,7 @@ def simulate_payroll(
         working_days=period.working_days,
         calendar_days=period.calendar_days,
         rate_code_map=rate_code_map,
+        shift_type=None,  # default DAY — shift workers must pass shift_type explicitly
     )
 
     # Sync modified amounts back; append any rule-injected components (e.g. OVERTIME)

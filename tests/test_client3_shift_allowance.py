@@ -80,6 +80,7 @@ class TestShift2RuleEvaluator:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="2_SHIFT",
         )
         assert components["SHIFT2"] == Decimal("20000.00")
 
@@ -92,6 +93,7 @@ class TestShift2RuleEvaluator:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="2_SHIFT",
         )
         assert components["SHIFT2"] == Decimal("15000.00")
 
@@ -133,7 +135,11 @@ class TestShift2RuleEvaluator:
             )
 
     def test_missing_expected_days_raises(self):
-        """expected_days=0 with basic_daily base → ValueError."""
+        """expected_days=0 with basic_daily base and a shift worker → ValueError.
+
+        shift_type must be a shift worker (not None/DAY) to reach this check —
+        the D9 gate short-circuits before expected_days validation for DAY/unset workers.
+        """
         with pytest.raises(ValueError, match="expected_days"):
             apply_payroll_rules(
                 salary_components={"BASIC": Decimal("200000")},
@@ -142,6 +148,7 @@ class TestShift2RuleEvaluator:
                 client_meta={},
                 expected_days=0,
                 rate_code_map=RATE_CODE_MAP,
+                shift_type="2_SHIFT",
             )
 
     def test_trace_contains_rate_code_and_multiplier(self):
@@ -153,6 +160,7 @@ class TestShift2RuleEvaluator:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="2_SHIFT",
         )
         entry = trace[0]
         assert entry["rate_code"]  == "SHIFT2"
@@ -174,6 +182,7 @@ class TestShift3RuleEvaluator:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="4_SHIFT",
         )
         assert components["SHIFT3"] == Decimal("30000.00")
 
@@ -190,6 +199,7 @@ class TestShift4RuleEvaluator:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="4_SHIFT",
         )
         assert components["SHIFT4"] == Decimal("50000.00")
 
@@ -210,6 +220,7 @@ class TestAllShiftTiers:
             client_meta={},
             expected_days=20,
             rate_code_map=RATE_CODE_MAP,
+            shift_type="4_SHIFT",
         )
         # SHIFT2: (200,000/20) × 0.10 × 10 = 10,000 × 0.10 × 10 = 10,000
         assert components["SHIFT2"] == Decimal("10000.00")
@@ -248,7 +259,7 @@ BASE_CONTEXT = {
 class TestShiftAllowanceInSequentialExecutor:
     """Verify shift allowances enter GROSS_PAY via the sequential executor."""
 
-    def _run(self, salary, inputs, rules):
+    def _run(self, salary, inputs, rules, shift_type="4_SHIFT"):
         """Run the full executor pipeline for Client 3 configuration."""
         # Rule evaluator pre-computes ot_multiplier → injects into salary_components
         modified_salary, _ = apply_payroll_rules(
@@ -258,6 +269,7 @@ class TestShiftAllowanceInSequentialExecutor:
             client_meta={},
             expected_days=BASE_CONTEXT["expected_days"],
             rate_code_map=BASE_CONTEXT["rate_code_map"],
+            shift_type=shift_type,
         )
         # Build unified component registry (SHIFT2/3/4 added as salary_component at priority 50)
         unified_meta = build_runtime_component_registry(

@@ -532,17 +532,38 @@ async def commit_onboarding(request: Request):
                     f"Employee '{emp_number}': invalid contract_end '{emp_end_str}' (use YYYY-MM-DD)"
                 )
 
+            # O1 — shift_type / state_of_tax / skill_level
+            _shift_type   = emp.get("shift_type") or None
+            _state_of_tax = emp.get("state_of_tax") or None
+            _skill_level  = emp.get("skill_level") or None
+            _VALID_SHIFT_TYPES = {"DAY", "2_SHIFT", "4_SHIFT"}
+            if _shift_type is not None and _shift_type not in _VALID_SHIFT_TYPES:
+                raise Exception(
+                    f"Employee '{emp_number}': shift_type '{_shift_type}' is not valid — "
+                    f"allowed values: DAY, 2_SHIFT, 4_SHIFT"
+                )
+            if _state_of_tax is not None and len(_state_of_tax) > 50:
+                raise Exception(
+                    f"Employee '{emp_number}': state_of_tax exceeds 50 characters"
+                )
+            if _skill_level is not None and len(_skill_level) > 50:
+                raise Exception(
+                    f"Employee '{emp_number}': skill_level exceeds 50 characters"
+                )
+
             db.execute(
                 text("""
                     INSERT INTO employee_contract (
                         contract_id, employee_id, salary_definition_id,
-                        grade_id, designation_id, start_date, end_date
+                        grade_id, designation_id, start_date, end_date,
+                        shift_type, state_of_tax, skill_level
                     )
                     VALUES (
                         :cid, :employee_id, :salary_definition_id,
                         :grade_id, :designation_id,
                         COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
-                        CAST(:end_date AS DATE)
+                        CAST(:end_date AS DATE),
+                        :shift_type, :state_of_tax, :skill_level
                     )
                 """),
                 {
@@ -553,6 +574,9 @@ async def commit_onboarding(request: Request):
                     "designation_id":       designation_id,
                     "start_date":           emp_start_date,
                     "end_date":             emp_end_date,
+                    "shift_type":           _shift_type,
+                    "state_of_tax":         _state_of_tax,
+                    "skill_level":          _skill_level,
                 },
             )
 

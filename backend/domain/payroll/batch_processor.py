@@ -76,20 +76,33 @@ def process_payroll_run(
         inputs         = emp.get("inputs", {})
         contract_start = emp.get("contract_start")
         contract_end   = emp.get("contract_end")
+        shift_type     = emp.get("shift_type")
+        salary_basis   = emp.get("salary_basis", "salary_definition_absolute")
         short_id = emp_id[:8]
 
+        # Merge per-employee fields into a copy of the shared context so the
+        # shift_type gate in rule_evaluator (D9) and salary_basis audit trail
+        # (sequential_executor) receive correct per-employee values.
+        emp_context = {**(context or {}), "shift_type": shift_type, "salary_basis": salary_basis}
+
         tracer.info(f"[bold]Employee {short_id}[/bold]")
-        tracer.info(
-            f"  {len(components)} components: "
-            + "  ".join(f"[cyan]{c['code']}[/cyan]={c['amount']}" for c in components)
-        )
-        if inputs:
-            tracer.info(
-                f"  {len(inputs)} inputs: "
-                + ", ".join(f"[magenta]{c}[/magenta]" for c in inputs)
-            )
 
         try:
+            # Re-raise pre-computed derivation errors inside the per-employee error boundary
+            # so they produce a FAILED result rather than aborting the whole run.
+            if emp.get("derivation_error"):
+                raise ValueError(emp["derivation_error"])
+
+            tracer.info(
+                f"  {len(components)} components: "
+                + "  ".join(f"[cyan]{c['code']}[/cyan]={c['amount']}" for c in components)
+            )
+            if inputs:
+                tracer.info(
+                    f"  {len(inputs)} inputs: "
+                    + ", ".join(f"[magenta]{c}[/magenta]" for c in inputs)
+                )
+
             result = execute_single_employee_payroll(
                 payroll_run_id=payroll_run_id,
                 employee_id=emp_id,
@@ -101,7 +114,7 @@ def process_payroll_run(
                 performed_by=performed_by,
                 inputs=inputs,
                 component_metadata=component_metadata,
-                context=context,
+                context=emp_context,
                 contract_start=contract_start,
                 contract_end=contract_end,
                 tracer=tracer,

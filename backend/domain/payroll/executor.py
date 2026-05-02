@@ -207,6 +207,7 @@ def _run_sequential(
     expected_hours = full_context.get("expected_hours")
     expected_days  = full_context.get("expected_days")
     rate_code_map  = full_context.get("rate_code_map") or {}
+    shift_type     = full_context.get("shift_type")
 
     # --- Mid-period hire / termination proration ---
     _contract_start = date.fromisoformat(contract_start) if contract_start else None
@@ -248,6 +249,7 @@ def _run_sequential(
             expected_hours=expected_hours,
             expected_days=expected_days,
             rate_code_map=rate_code_map,
+            shift_type=shift_type,
         )
 
     # Build unified component registry: platform metadata + rule-injected components.

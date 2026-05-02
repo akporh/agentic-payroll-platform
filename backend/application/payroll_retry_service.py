@@ -69,10 +69,13 @@ from backend.application.execution_tracer import ExecutionTracer
 from backend.domain.payroll.audit_events import build_transition_audit, build_transition_event
 from backend.domain.payroll.executor import execute_single_employee_payroll
 from backend.domain.payroll.period_context import build_period_context
+from backend.domain.payroll.salary_derivation import derive_salary_components
 from backend.domain.payroll.status import PayrollRunStatus
 from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
+from backend.infra.repositories.payroll_input_repo import load_inputs_for_run
+from backend.infra.repositories.rate_code_repo import list_rate_codes
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +344,10 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     ph_dates_used   = original_snapshot.get("ph_dates_used", [])
     ph_source       = original_snapshot.get("ph_source", "FILE_BASED")
 
+    # rate_code_map must match what the original run route loaded so that
+    # ot_multiplier and shift-allowance rules resolve correctly on retry.
+    rate_code_map = {row["code"]: row for row in list_rate_codes(workspace_id)}
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -360,6 +367,7 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "expected_days":                    expected_days,
         "ph_dates_used":                    ph_dates_used,
         "ph_source":                        ph_source,
+        "rate_code_map":                    rate_code_map,
     }
 
     return {
@@ -471,10 +479,15 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
     # 1. Build the same shared execution context the original /payroll/run route built.
     shared_ctx = _build_shared_context(db, workspace_id, payroll_run_id)
 
+    # Load inputs that were claimed in the original run so retry reproduces
+    # the same input state (OT hours, shift days, absence days, etc.).
+    inputs_by_employee = load_inputs_for_run(payroll_run_id)
+
     # 2. Load ALL active employees for the workspace with current salary data
     emp_rows = db.execute(
         text("""
-            SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date
+            SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date,
+                   ec.shift_type, ec.grade_id
             FROM   employee e
             JOIN   employee_contract ec ON e.employee_id = ec.employee_id
             JOIN   salary_definition sd ON ec.salary_definition_id = sd.salary_definition_id
@@ -488,6 +501,28 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
     if not emp_rows:
         raise ValueError("No active employees found for FULL_RUN retry")
 
+    # Bulk-load grade pct data for all employees that have a grade assigned.
+    grade_ids = list({str(r[5]) for r in emp_rows if r[5] is not None})
+    grade_rows: dict[str, dict] = {}
+    if grade_ids:
+        g_rows = db.execute(
+            text("""
+                SELECT grade_id, total_monthly, basic_pct, housing_pct,
+                       transport_pct, utility_pct
+                FROM   grade
+                WHERE  grade_id = ANY(:ids)
+            """),
+            {"ids": grade_ids},
+        ).fetchall()
+        for g in g_rows:
+            grade_rows[str(g[0])] = {
+                "total_monthly":  g[1],
+                "basic_pct":      g[2],
+                "housing_pct":    g[3],
+                "transport_pct":  g[4],
+                "utility_pct":    g[5],
+            }
+
     # 3. Delete ALL existing results (both SUCCESS and FAILED)
     db.execute(
         text("DELETE FROM payroll_result WHERE payroll_run_id = :run_id"),
@@ -499,13 +534,17 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
     still_failed  = 0
 
     for emp in emp_rows:
-        employee_id = str(emp[0])
-        components  = [
-            {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
-            for k, v in emp[1].items()
+        employee_id    = str(emp[0])
+        shift_type     = emp[4]
+        grade          = grade_rows.get(str(emp[5])) if emp[5] is not None else None
+        salary_components_derived, salary_basis = derive_salary_components(emp[1], grade)
+        components     = [
+            {"code": k, "amount": v}
+            for k, v in salary_components_derived.items()
         ]
         contract_start = emp[2].isoformat() if emp[2] else None
         contract_end   = emp[3].isoformat() if emp[3] else None
+        emp_context    = {**shared_ctx["context"], "shift_type": shift_type, "salary_basis": salary_basis}
 
         try:
             calc_result = execute_single_employee_payroll(
@@ -518,10 +557,11 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
                 payroll_rule_ids       = shared_ctx["payroll_rule_ids"],
                 performed_by           = "admin@internal",
                 component_metadata     = shared_ctx["component_metadata"],
-                context                = shared_ctx["context"],
+                context                = emp_context,
                 contract_start         = contract_start,
                 contract_end           = contract_end,
                 rules_context_snapshot = shared_ctx["rules_context_snapshot"],
+                inputs                 = inputs_by_employee.get(employee_id, {}),
                 tracer                 = tracer,
             )
             calc_error = None
@@ -722,6 +762,10 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
         # -------------------------------------------------------------------
         shared_ctx = _build_shared_context(db, workspace_id, payroll_run_id)
 
+        # Load inputs claimed by the original run so retry reproduces the
+        # same input state (OT hours, shift days, absence days, etc.).
+        inputs_by_employee = load_inputs_for_run(payroll_run_id)
+
         # -------------------------------------------------------------------
         # Step 4 — Process each FAILED employee.
         #
@@ -746,7 +790,8 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             # here automatically.
             emp_row = db.execute(
                 text("""
-                    SELECT sd.components_jsonb, ec.start_date, ec.end_date
+                    SELECT sd.components_jsonb, ec.start_date, ec.end_date,
+                           ec.shift_type, ec.grade_id
                     FROM   employee e
                     JOIN   employee_contract ec
                            ON e.employee_id = ec.employee_id
@@ -767,12 +812,28 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                 calc_result   = None
                 calc_error    = "Employee has no active contract"
             else:
-                components = [
-                    {"code": k, "amount": v["amount"] if isinstance(v, dict) else v}
-                    for k, v in emp_row[0].items()
-                ]
+                _shift_type = emp_row[3]
+                _grade_id   = str(emp_row[4]) if emp_row[4] is not None else None
+                _grade      = None
+                if _grade_id:
+                    g = db.execute(
+                        text("""
+                            SELECT grade_id, total_monthly, basic_pct, housing_pct,
+                                   transport_pct, utility_pct
+                            FROM   grade WHERE grade_id = :gid
+                        """),
+                        {"gid": _grade_id},
+                    ).fetchone()
+                    if g:
+                        _grade = {
+                            "total_monthly": g[1], "basic_pct": g[2],
+                            "housing_pct": g[3], "transport_pct": g[4], "utility_pct": g[5],
+                        }
+                _sal_components, _salary_basis = derive_salary_components(emp_row[0], _grade)
+                components = [{"code": k, "amount": v} for k, v in _sal_components.items()]
                 contract_start = emp_row[1].isoformat() if emp_row[1] else None
                 contract_end   = emp_row[2].isoformat() if emp_row[2] else None
+                emp_context    = {**shared_ctx["context"], "shift_type": _shift_type, "salary_basis": _salary_basis}
                 try:
                     calc_result = execute_single_employee_payroll(
                         payroll_run_id          = payroll_run_id,
@@ -784,10 +845,11 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                         payroll_rule_ids        = shared_ctx["payroll_rule_ids"],
                         performed_by            = "admin@internal",
                         component_metadata      = shared_ctx["component_metadata"],
-                        context                 = shared_ctx["context"],
+                        context                 = emp_context,
                         contract_start          = contract_start,
                         contract_end            = contract_end,
                         rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
+                        inputs                  = inputs_by_employee.get(employee_id, {}),
                         tracer                  = tracer,
                     )
                     calc_error = None

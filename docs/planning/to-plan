@@ -1,0 +1,13 @@
+These are items I included in the architecture and user stories to enhance robustness and mitigate future risks, based on best practices for financial systems and the previous architectural discussions:
+
+*   **`rules_context_snapshot` in `PAYROLL_RUN`:** This critical architectural decision, introduced for compliance locking, is explicitly reflected in the `Prepare Payroll Period` backbone and its associated user story. It ensures that rules are locked at the start of a run, preventing mid-month changes from affecting in-progress calculations.
+*   **JSON Schema Validation Framework (Technical Enabler):** This was a key mitigation strategy for the "JSON Chaos" risk. It's included as a technical story to ensure all JSONB data conforms to predefined schemas, maintaining data integrity and agentic-readiness.
+*   **PII Encryption for Employee Data (Technical Enabler):** The `EMPLOYEE.personal_details_encrypted` field is explicitly designed for encryption at rest, addressing a crucial security and compliance requirement for sensitive PII, even if not explicitly requested in the prompt.
+*   **EventStore Append-Only Mechanism (Technical Enabler):** While the prompt mentioned audit logging, the explicit implementation of an append-only `EventStore` as a technical enabler ensures a robust, immutable historical record for future AI and deep audit, going beyond basic audit logs.
+*   **State Machine for `PAYROLL_RUN` Lifecycle (Technical Enabler):** This ensures strict process integrity and prevents out-of-order operations, which is vital for a financial system.
+
+- **Automated Anomaly Resolution & Self-Healing Payroll:** These are advanced agentic capabilities and are **Deferred: Phase 4**.
+
+- **Multi-Client Workflows:** All operational aspects of managing multiple clients are **Deferred: Phase 2**.
+
+- **Auto-Filing to LIRS/FIRS:** All external API integrations for automated filing are **Deferred: Phase 3** or later.

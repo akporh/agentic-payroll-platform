@@ -18,11 +18,11 @@
 |-------|--------------------|-----------------|----------------|-----------------|-------------------|--------------------------------------|
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
 | **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
-| **Phase 2 — Sprints 7–8** | 10✅ 9🔜 2⬜ | — | 9✅ 9🔜 | 1🔜 | 4✅ | 2🔜 2⬜ |
+| **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
 | **Phase 2 — Client B Sprint 10+** | 4✅ 2⬜ (Tracks L+) | — | 3✅ 7⬜ 5🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Track S — Security** | — | — | — | — | — | 3🔜 (SEC-S1 Medium, SEC-S2/S3 Low) |
 | **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
-| **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ (6 amendments applied) Gate 4✅ Gate 5🔜 (nav modernisation + Rate Codes) | — | — | — | — | — |
+| **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
 ---
@@ -191,14 +191,14 @@ Open items needed to make the platform production-ready for real clients.
 - Configure pay cycle post-setup — update endpoint ✅ (WC-1, Track J)
 - View applicable statutory rules — read endpoint + UI ⬜ (P3-2)
 - Statutory rule management UI for bureau ⬜ (P3-2)
-- Configure WorkspacePayrollConfig (ph_mode, weekend PH rules, D3/D4 flags, effective_from versioned rows) 🔜 (PH-6) ← arch-council: effective_from required
-- Seed rate_code_registry with platform OT codes (OT001–OT007) — no is_pensionable column 🔜 (PH-7) ← arch-council: pension via component_metadata not registry
-- Rate code registry — read endpoint + UI view 🔜 (PH-7)
-- Seed component_metadata row for PH_OT with is_pensionable=true 🔜 (PH-7/OQ1)
-- PH-1: National public holiday calendar (NationalPublicHoliday table, seeded for NGA) 🔜 (PH-1)
-- PH-1: Workspace-specific PH additions (WorkspacePublicHoliday table) 🔜 (PH-1)
-- PH-1: PH snapshot at run approval (source-tagged, immutable) 🔜 (PH-1)
-- PH-2b: Weekend PH classification config (saturday_ph_rule, sunday_ph_rule) 🔜 (PH-2b)
+- Configure WorkspacePayrollConfig (ph_mode, weekend PH rules, D3/D4 flags, effective_from versioned rows) ✅ (PH-6) ← arch-council: effective_from required
+- Seed rate_code_registry with platform OT codes (OT001–OT007) — no is_pensionable column ✅ (PH-7) ← arch-council: pension via component_metadata not registry
+- Rate code registry — read endpoint + UI view ✅ (PH-7)
+- Seed component_metadata row for PH_OT with is_pensionable=true ⚠️ (PH-7/OQ1) — row seeded; is_pensionable flag intentionally deferred until PH_OT handler ships atomically
+- PH-1: National public holiday calendar (NationalPublicHoliday table, seeded for NGA) ✅ (PH-1)
+- PH-1: Workspace-specific PH additions (WorkspacePublicHoliday table) ✅ (PH-1)
+- PH-1: PH snapshot at run approval (source-tagged, immutable) ✅ (PH-1)
+- PH-2b: Weekend PH classification config (saturday_ph_rule, sunday_ph_rule) ✅ (PH-2b)
 
 **A2 — Workforce**
 - Define payroll rules — standalone form ✅ (WC-9, Track J)
@@ -225,20 +225,20 @@ Open items needed to make the platform production-ready for real clients.
 
 **── PH/OT engine (Track B schema first, then Track C execution) ──**
 - absent_days bounds check (absent_days ≤ working_days) ✅ — already done (P2-5)
-- PH-2: expected_hours computed from PH-adjusted working days 🔜 (PH-2)
-- PH-3: OT3 calculation at 3.25× basic_hourly for PH hours worked 🔜 (PH-3)
-- PH-4: OT3 flows into GROSS_PAY and PAYE base 🔜 (PH-4)
-- PH-5: Manual OT3 hour adjustment with floor validation 🔜 (PH-5)
-- Compute expected_days in execution context (PH-aware, separate from expected_hours) 🔜 (PH-9)
-- ot_multiplier in apply_payroll_rules — Model A: extend signature with expected_hours/expected_days/proration_factor/rate_code_map kwargs 🔜 (PH-8) ← arch-council decision
-- Snapshot expected_days + ph_dates_used in run trace header 🔜 (PH-9)
+- PH-2: expected_hours computed from PH-adjusted working days ✅ (PH-2)
+- PH-3: OT3 calculation at 3.25× basic_hourly for PH hours worked ✅ (PH-3) — classify_day defined; ot_multiplier handler reads hours from inputs; note: classify_day has no call site yet (dead code)
+- PH-4: OT3 flows into GROSS_PAY and PAYE base ✅ (PH-4)
+- PH-5: Manual OT3 hour adjustment with floor validation ✅ (PH-5)
+- Compute expected_days in execution context (PH-aware, separate from expected_hours) ✅ (PH-9)
+- ot_multiplier in apply_payroll_rules — Model A: extend signature with expected_hours/expected_days/proration_factor/rate_code_map kwargs ✅ (PH-8) ← arch-council decision
+- Snapshot expected_days + ph_dates_used in run trace header ✅ (PH-9)
 - FIX-5: Retry context — expected_hours/expected_days/ph_dates_used/ph_source from snapshot ✅ (retry determinism)
-- PH pre-flight check for AUTOMATIC mode runs 🔜 (PH-11)
-- PH count mismatch and duplicate warnings in execution trace 🔜 (PH-10)
+- PH pre-flight check for AUTOMATIC mode runs ✅ (PH-11)
+- PH count mismatch and duplicate warnings in execution trace ✅ (PH-10)
 
 ### Governance (A5)
 
-- Real user identity in performed_by — frontend sends X-Performed-By header 🔜 (P2-2)
+- Real user identity in performed_by — frontend sends X-Performed-By header ⚠️ (P2-2) — backend reads header on approve/lock/retry routes; frontend does not send it yet (defaults to "admin@internal")
 
 ### Disbursement (A6)
 
@@ -251,8 +251,8 @@ Open items needed to make the platform production-ready for real clients.
 
 - Expose snapshot content with structured UI renderer ⬜
 - Replay a run using frozen snapshot ⬜ (P4-2) — may move to Phase 3
-- Extend run trace header: expected_days, ph_dates_used, ph_source 🔜 (PH-9)
-- build_runtime_component_registry: include ot_multiplier-computed components in GROSS_PAY chain 🔜 (PH-8)
+- Extend run trace header: expected_days, ph_dates_used, ph_source ✅ (PH-9)
+- build_runtime_component_registry: include ot_multiplier-computed components in GROSS_PAY chain ✅ (PH-8)
 
 ---
 
@@ -276,31 +276,31 @@ Reordered after arch-council review (April 2026). Defect fixes gate the feature 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
 | 7 | Add quantity ≥ 0 DB CHECK constraint on payroll_input | Execution (A4) | INP10 | Prerequisite for PH-5 |
-| 8 | PH-6: WorkspacePayrollConfig + effective_from + versioned-row select | Onboarding (A1) | PH-6 | Prerequisite for PH-2, PH-3, PH-8, PH-9 |
-| 9 | PH-7: rate_code_registry (no is_pensionable) + platform seeds | Onboarding (A1) | PH-7 | Prerequisite for PH-8, PH-12 |
-| 10 | PH-7: Seed component_metadata row for PH_OT (is_pensionable=true) | Onboarding (A1) | PH-7/OQ1 | Arch-council: pension via component_metadata |
-| 11 | PH-1: NationalPublicHoliday + WorkspacePublicHoliday + NGA 2026 seed | Onboarding (A1) | PH-1 | Prerequisite for PH-2, PH-9, PH-10, PH-11 |
-| 12 | PH-2b: Weekend PH classification config (saturday/sunday_ph_rule) | Onboarding (A1) | PH-2b | Prerequisite for PH-3 |
+| 8 | PH-6: WorkspacePayrollConfig + effective_from + versioned-row select ✅ | Onboarding (A1) | PH-6 | Prerequisite for PH-2, PH-3, PH-8, PH-9 |
+| 9 | PH-7: rate_code_registry (no is_pensionable) + platform seeds ✅ | Onboarding (A1) | PH-7 | Prerequisite for PH-8, PH-12 |
+| 10 | PH-7: Seed component_metadata row for PH_OT (is_pensionable=true) ⚠️ | Onboarding (A1) | PH-7/OQ1 | Row seeded; is_pensionable flag deferred until PH_OT handler ships atomically |
+| 11 | PH-1: NationalPublicHoliday + WorkspacePublicHoliday + NGA 2026 seed ✅ | Onboarding (A1) | PH-1 | Prerequisite for PH-2, PH-9, PH-10, PH-11 |
+| 12 | PH-2b: Weekend PH classification config (saturday/sunday_ph_rule) ✅ | Onboarding (A1) | PH-2b | Prerequisite for PH-3 |
 
 ### Track C — Execution Engine (after all of Track B)
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 13 | PH-2: expected_hours in context (PH-adjusted working days) | Execution (A4) | PH-2 | |
-| 14 | PH-9: expected_days in context + ph_dates_used snapshot | Execution (A4) | PH-9 | |
-| 15 | PH-8: ot_multiplier — Model A: extend apply_payroll_rules signature | Execution (A4) | PH-8 | **Model A confirmed by arch-council** |
-| 16 | PH-8: build_runtime_component_registry includes ot_multiplier | Correctness (A10) | PH-8 | Atomic with #15 |
-| 17 | FIX-5: Retry context — add OT/PH keys from snapshot (same release as #13–16) | Execution (A4) | FIX-5 | **Must ship with Track C** |
-| 18 | PH-3: OT3 calculation (classify_day + PH_OT handler) | Execution (A4) | PH-3 | |
-| 19 | PH-4: OT3 → GROSS_PAY + PAYE | Execution (A4) | PH-4 | Tax compliance |
-| 20 | PH-5: Manual OT3 adjustment with floor validation | Execution (A4) | PH-5 | |
+| 13 | PH-2: expected_hours in context (PH-adjusted working days) ✅ | Execution (A4) | PH-2 | |
+| 14 | PH-9: expected_days in context + ph_dates_used snapshot ✅ | Execution (A4) | PH-9 | |
+| 15 | PH-8: ot_multiplier — Model A: extend apply_payroll_rules signature ✅ | Execution (A4) | PH-8 | **Model A confirmed by arch-council** |
+| 16 | PH-8: build_runtime_component_registry includes ot_multiplier ✅ | Correctness (A10) | PH-8 | Atomic with #15 |
+| 17 | FIX-5: Retry context — add OT/PH keys from snapshot (same release as #13–16) ✅ | Execution (A4) | FIX-5 | **Must ship with Track C** |
+| 18 | PH-3: OT3 calculation (classify_day + PH_OT handler) ✅ | Execution (A4) | PH-3 | classify_day defined; no call site yet |
+| 19 | PH-4: OT3 → GROSS_PAY + PAYE ✅ | Execution (A4) | PH-4 | Tax compliance |
+| 20 | PH-5: Manual OT3 adjustment with floor validation ✅ | Execution (A4) | PH-5 | |
 
 ### Track D — Warnings & Pre-flight (after Track B)
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 21 | PH-10: PH count mismatch + duplicate warnings in trace | Execution (A4) | PH-10 | |
-| 22 | PH-11: PH pre-flight check (AUTOMATIC mode, empty calendar) | Execution (A4) | PH-11 | |
+| 21 | PH-10: PH count mismatch + duplicate warnings in trace ✅ | Execution (A4) | PH-10 | |
+| 22 | PH-11: PH pre-flight check (AUTOMATIC mode, empty calendar) ✅ | Execution (A4) | PH-11 | |
 
 ### Track E — Client 3 Onboarding (after Track C)
 
@@ -312,19 +312,19 @@ Reordered after arch-council review (April 2026). Defect fixes gate the feature 
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 24 | WorkspacePayrollConfig GET + PUT | Onboarding (A1) | PH-6 | |
-| 25 | rate_code_registry GET + POST + DELETE | Onboarding (A1) | PH-7 | |
-| 26 | public-holidays GET + POST + DELETE | Onboarding (A1) | PH-1 | |
+| 24 | WorkspacePayrollConfig GET + PUT ✅ | Onboarding (A1) | PH-6 | |
+| 25 | rate_code_registry GET + POST + DELETE ✅ | Onboarding (A1) | PH-7 | |
+| 26 | public-holidays GET + POST + DELETE ✅ | Onboarding (A1) | PH-1 | |
 
 ### Track G — Frontend (after Track F)
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 27 | WorkspaceSetup: Payroll Behaviour section (PH-6) | Onboarding (A1) | PH-6 | |
-| 28 | WorkspaceSetup: Rate Code Registry section (PH-7) | Onboarding (A1) | PH-7 | |
-| 29 | Public Holidays page (new page + sidebar nav) | Onboarding (A1) | PH-1 | |
-| 30 | PayrollResults: PH warning banner (PH-10) | Execution (A4) | PH-10 | |
-| 31 | Execution Timeline: warn state amber rendering (PH-10) | Execution (A4) | PH-10 | |
+| 27 | WorkspaceSetup: Payroll Behaviour section (PH-6) ✅ | Onboarding (A1) | PH-6 | |
+| 28 | WorkspaceSetup: Rate Code Registry section (PH-7) ✅ | Onboarding (A1) | PH-7 | |
+| 29 | Public Holidays page (new page + sidebar nav) ✅ | Onboarding (A1) | PH-1 | |
+| 30 | PayrollResults: PH warning banner (PH-10) ✅ | Execution (A4) | PH-10 | |
+| 31 | Execution Timeline: warn state amber rendering (PH-10) ✅ | Execution (A4) | PH-10 | |
 
 ### Track H — Exports (independent, run parallel with C+)
 
@@ -338,7 +338,7 @@ Reordered after arch-council review (April 2026). Defect fixes gate the feature 
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| 35 | Real user identity in performed_by (X-Performed-By header) | Governance (A5) | P2-2 | |
+| 35 | Real user identity in performed_by (X-Performed-By header) ⚠️ | Governance (A5) | P2-2 | Backend reads header; frontend doesn't send it yet |
 
 ### Track J — Post-Onboarding Config Management (independent, parallel with H+)
 
@@ -465,16 +465,16 @@ Three-gate delivery. Skills active throughout: `/ui-designer`, `/ux-designer`.
 | **Gate 2** | Design System — `frontend/src/design-system/` — `tokens.css` (Tailwind v4 `@theme` + `:root`) + 45 React components across 7 files | ✅ | Completed April 2026 |
 | **Gate 3** | Adaeze's payroll operator journey — 6 screens migrated to design system (PayrollInputs, BulkUpload, PayrollRuns, RunPayroll, PayrollResults with 4-tab DD-2, Reconciliation redirect) + 6 amendments applied (Lock button bug, Inbox link, error hint, poll-failure banner, date guard, 409 copy) | ✅ | Completed April 2026 |
 | **Gate 4** | Bureau / workspace setup journey — 8 pages migrated (BureauDashboard + NewClient SlideOver, WorkspaceDashboard, WorkspaceSetup shell, Employees, WorkspaceConfig, PublicHolidays, JsonOnboarding deleted, router cleaned) | ✅ | Completed April 2026 |
-| **Gate 5** | Navigation modernisation + workspace context + Rate Codes page | 🔜 | Sprint 8 |
-| **Gate 6** | Post-Onboarding Config Management — WorkspaceConfig.tsx interactive overhaul (WC-1→WC-11, Track J) | 🔜 | Sprint 8 parallel |
+| **Gate 5** | Navigation modernisation + workspace context + Rate Codes page | ✅ | Completed (TopBar+Sidebar in MainLayout, Breadcrumb across pages, RateCodes.tsx wired in router) |
+| **Gate 6** | Post-Onboarding Config Management — WorkspaceConfig.tsx interactive overhaul (WC-1→WC-11, Track J) | ✅ | Completed (all SlideOvers: AddGrade, EditGrade, AddDesignation, EditDesignation, EditSalaryDef, EditPayrollRule, EditPayrollConfig, AddRateCode) |
 
 **Gate 5 — Sprint 8 scope**
 
 | Story | What | Status |
 |-------|------|--------|
-| **UI-NAV-1** | Wire `TopBar` + `WorkspaceSidebar` (design system NAV-1/NAV-2) into `MainLayout` — replaces legacy `Sidebar.tsx`. Workspace name + status visible in sidebar header. TopBar workspace picker for quick switching. Collapse toggle. | 🔜 |
-| **UI-NAV-2** | Breadcrumb (NAV-3) on all 8 workspace pages via `ContentHeader` `back` prop — `Bureau Dashboard / [Client Name] / [Section]`. Powered by `WorkspaceContext` React context in `MainLayout`. | 🔜 |
-| **UI-NAV-3** | Rate Code Registry page (`/workspaces/:id/rate-codes`) — Platform codes read-only, workspace codes CRUD. Exposes OT/PH/Shift multipliers (PH-7 UI). Backend API complete (Track F ✅). | 🔜 |
+| **UI-NAV-1** | Wire `TopBar` + `WorkspaceSidebar` (design system NAV-1/NAV-2) into `MainLayout` — replaces legacy `Sidebar.tsx`. Workspace name + status visible in sidebar header. TopBar workspace picker for quick switching. Collapse toggle. | ✅ |
+| **UI-NAV-2** | Breadcrumb (NAV-3) on all 8 workspace pages via `ContentHeader` `back` prop — `Bureau Dashboard / [Client Name] / [Section]`. Powered by `WorkspaceContext` React context in `MainLayout`. | ✅ |
+| **UI-NAV-3** | Rate Code Registry page (`/workspaces/:id/rate-codes`) — Platform codes read-only, workspace codes CRUD. Exposes OT/PH/Shift multipliers (PH-7 UI). Backend API complete (Track F ✅). | ✅ |
 
 PM story for UI-NAV-3:
 ```
