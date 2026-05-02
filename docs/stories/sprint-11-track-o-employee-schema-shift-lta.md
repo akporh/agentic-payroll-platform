@@ -17,14 +17,14 @@
 
 ## Story Index
 
-| Story | Summary | Priority | Effort | Track | Gate |
-|-------|---------|----------|--------|-------|------|
-| O1 | Employee payroll-critical fields — shift_type, state_of_tax, skill_level (+ date_engaged pre-check) | P1 | M | O | Arch-council (joint O1) |
-| O2 | Grade percentage salary structure — total_monthly + pct fields | P1 | M | O | Arch-council (standalone O2) |
-| O3 | Full shift allowance handler — shift_pct × basic / expected_days × shift_days_worked | P1 | M | O | After O1; arch-council (standalone O3) |
-| O4 | Client 3 shift allowance — SHIFT2/SHIFT3/SHIFT4 with basic_daily rate base | P2 | S | O / Track E | After O3 |
-| O5 | LTA anniversary trigger — auto-inject paye_only input at anniversary date | P2 | L | O | After O1 + M2; arch-council (standalone O5) |
-| O6 | Timesheet / Attendance Layer | — | — | O | **BLOCKED — dedicated sprint required** |
+| Story | Summary | Priority | Effort | Track | Status |
+|-------|---------|----------|--------|-------|--------|
+| O1 | Employee payroll-critical fields — shift_type, state_of_tax, skill_level (+ date_engaged pre-check) | P1 | M | O | ✅ Sprint 11 |
+| O2 | Grade percentage salary structure — total_monthly + pct fields | P1 | M | O | ✅ Sprint 11 |
+| O3 | D9 shift gate — ot_multiplier basic_daily returns ₦0 for DAY/NULL shift_type; full SHIFT_ALLOWANCE handler deferred | P1 | M | O | ✅ (gate) / ⬜ (handler) Sprint 12 |
+| O4 | Client 3 shift allowance — SHIFT2/SHIFT3/SHIFT4 with basic_daily rate base | P2 | S | O / Track E | ⬜ Deferred — needs Client 3 workspace ID |
+| O5 | LTA anniversary trigger — auto-inject paye_only input at anniversary date | P2 | L | O | ⬜ Deferred Sprint 12 — blocked on M2 |
+| O6 | Timesheet / Attendance Layer | — | — | O | ⬜ BLOCKED — dedicated sprint required |
 
 ---
 
@@ -332,15 +332,15 @@ O1 + O2 + O3 + O4 + O5 ──► O6 (entry gate + own dedicated sprint)
 
 ## Definition of Done (Sprint 11)
 
-- [ ] Arch-council sign-off documented for O1, O2, O3 (post-O1), O5
-- [ ] Pre-investigation answers documented before O1 arch-council (date_engaged, state_of_tax location, shift_type table placement, skill_level mapping)
-- [ ] O1: Migration applied; shift_type, state_of_tax, skill_level columns live; classify_day reads shift_type from context; onboarding parser updated
-- [ ] O2: Migration applied; pct columns on grade; derivation service selects model correctly; component_trace includes salary_basis field
-- [ ] O3: Shift allowance handler implemented; shift_type routing correct; SHIFT_DAYS_WORKED input consumed; floor validation enforced; component_metadata seeded
-- [ ] O4: SHIFT2/SHIFT3/SHIFT4 rate codes seeded; basic_daily rate base mode implemented in handler; Client B path unaffected
-- [ ] O5: Anniversary check at run prep; auto-injection idempotent; retry reads snapshot not re-triggering; LTA in component_trace
-- [ ] O6: Not started
-- [ ] `/tester` verification: numeric assertions for O2 (pct-derived BASIC matches total_monthly × basic_pct), O3 (shift allowance = expected formula), O5 (LTA injected once for anniversary employee; not re-injected on retry)
-- [ ] `/security` review: new `shift_type` PATCH endpoint; `LTA_AMOUNT` auto-injection idempotency guard
-- [ ] `/auditor` review: O2 salary derivation path change (BASIC is downstream of every statutory deduction); O5 auto-injection audit trail
+- [x] Arch-council sign-off documented for O1, O2, O3 — binding decisions D5/D6/D7/D9/D10 recorded; O5 deferred (blocked on M2)
+- [x] Pre-investigation answers documented before O1 arch-council (date_engaged = employee_contract.start_date confirmed; state_of_tax not in personal_details_encrypted; shift_type placed on employee_contract; skill_level free-text VARCHAR)
+- [x] O1: Migration `f1e2d3c4b5a6` applied; shift_type/state_of_tax/skill_level on employee_contract; shift_type threaded per employee in batch_processor.py; onboarding parser + length guards added; GET /employees + PATCH /contract wired
+- [x] O2: Migration `a2b3c4d5e6f7` applied; total_monthly + pct columns on grade; salary_derivation.py pure function with D5/D6/D7 (grade pct wins when total_monthly non-null; round-half-up + largest-component residual); component_trace includes salary_basis field
+- [x] O3 (D9 gate — partial): shift_type routing implemented in rule_evaluator.py (ot_multiplier with basic_daily base returns ₦0 for shift_type in (None, 'DAY'); 2_SHIFT/4_SHIFT pass through). Full SHIFT_ALLOWANCE handler (SHIFT_DAYS_WORKED input, floor validation, component_metadata seeding) deferred to Sprint 12.
+- [ ] O4: Deferred — needs stable Client 3 workspace identifier before rate code seeding migration can run
+- [ ] O5: Deferred to Sprint 12 — blocked on M2 (PAYE-only additions path must land first; D10)
+- [x] O6: Confirmed not started — blocked; dedicated PM + arch-council sprint required before any implementation
+- [x] `/tester` verification: numeric assertions run for O2 pct derivation and O3 D9 shift gate routing (test_client3_shift_allowance.py updated with shift_type kwarg)
+- [x] `/security` review: SEC-S4 resolved (grade query hardened with workspace_id filter); SEC-S5 resolved (shift_type/state_of_tax/skill_level onboarding endpoint: enum allowlist + VARCHAR length guards)
+- [x] `/auditor` review: AUD-4 resolved (salary_basis + shift_type added as named fields in _period_context trace header in sequential_executor.py)
 - [ ] `/retro` run at sprint close

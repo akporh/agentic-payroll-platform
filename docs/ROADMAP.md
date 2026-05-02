@@ -19,7 +19,7 @@
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
 | **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
 | **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
-| **Phase 2 — Client B Sprint 10+** | 4✅ 2⬜ (Tracks L+) | — | 3✅ 7⬜ 5🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
+| **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 6⬜ 5🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Track S — Security** | — | — | — | — | — | 3🔜 (SEC-S1 Medium, SEC-S2/S3 Low) |
 | **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
@@ -371,6 +371,8 @@ Findings are logged here as they are identified by `/security` reviews. Full nar
 | S1 | Replace raw `_wpc_err!s` exception string in `warnings` response with a generic message; log internally | Medium | `backend/api/routes/onboarding.py:589` | SEC-S1 | Sprint 10 | 🔜 |
 | S2 | Add application-level allowlist validation for `workspace_payroll_config` enum fields before DB upsert | Low | `backend/api/routes/onboarding.py:575–586` | SEC-S2 | Sprint 10 | 🔜 |
 | S3 | Move `import logging` to module level in `payroll.py`; replace inline `_logging.getLogger` call | Low | `backend/api/routes/payroll.py:498` | SEC-S3 | Sprint 10 | 🔜 |
+| S4 | Grade query in `/run-payroll` route hardened with `workspace_id` filter to prevent cross-workspace grade leakage ✅ | Low | `backend/api/routes/payroll.py` | SEC-S4 | Sprint 11 | ✅ |
+| S5 | `shift_type`, `state_of_tax`, `skill_level` onboarding endpoint: enum allowlist validation + VARCHAR length guards added ✅ | Low | `backend/api/routes/onboarding.py` | SEC-S5 | Sprint 11 | ✅ |
 
 > **Policy:** Security findings are batched into the next sprint unless severity is Critical or High, in which case they block sprint closure. Full review narratives: `docs/security/`.
 
@@ -385,6 +387,7 @@ Observations are logged here as they are identified by `/auditor` reviews. Full 
 | Q1 | Add `"component_source"` field to `fixed_amount` trace entry when fallback fires — derivation path must be auditable | Observation | `backend/domain/payroll/rule_evaluator.py:327–338` | AUD-1 | Sprint 10 | 🔜 |
 | Q2 | Store `period_type` on `payroll_run` row; pass to `build_period_context` on retry — CUSTOM runs must reproduce with correct annualization | Observation | `backend/application/payroll_retry_service.py:147–151` (migration required) | AUD-2 | Sprint 10 | 🔜 |
 | Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
+| Q4 | `salary_basis` + `shift_type` added as named fields in `_period_context` trace header in `sequential_executor.py` — per-employee context that gates calculations is now auditable ✅ | Resolved | `backend/domain/payroll/sequential_executor.py` | AUD-4 | Sprint 11 | ✅ |
 
 > **Policy:** Observations are batched into the next available sprint. Any Observation rated "must fix before UAT/external audit" is escalated to Finding status and blocks the relevant sign-off gate. Full review narratives: `docs/audit/`.
 
@@ -446,11 +449,11 @@ All items require arch-council pre-clearance before implementation begins. Entry
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| O1 | NEW-GAP4 + NEW-GAP13: Employee payroll-critical fields — `shift_type`, `state_of_tax`, `skill_level` columns; verify against `employee_contract` for existing start-date path before adding; joint arch-council required ⬜ | Onboarding (A2) | NEW-GAP4/13 | Arch-council required — `shift_type` changes OT2 routing; `state_of_tax` changes statutory rule selection |
-| O2 | NEW-GAP12: Grade percentage structure — `total_monthly`, `basic_pct`, `housing_pct`, `transport_pct`, `utility_pct` on `grade` table; percentage-derived salary alongside existing `components_jsonb` absolute amounts ⬜ | Onboarding (A2) | NEW-GAP12 | Arch-council required — changes how `salary_components` dict is populated at run start |
-| O3 | WI-04 Sub-B + NEW-GAP8: Full shift allowance handler — `shift_pct × basic_monthly / expected_days × shift_days_worked`; `shift_days_worked` as named `payroll_input` code ⬜ | Execution (A4) | WI-04b | Blocked on O1 (shift_type); arch-council required for new execution-context concept |
-| O4 | SHIFT-ALLOWANCE-CLIENT3: Extend shift allowance for `basic_daily` rate base; SHIFT2/SHIFT3/SHIFT4 bands ⬜ | Execution (A4) | WI-34 | Blocked on O3 |
-| O5 | NEW-GAP11: LTA anniversary trigger — `AnniversaryService` auto-injects `payroll_input` (category=`paye_only`) for employees where `date_engaged` anniversary falls in pay period; configurable LTA amount ⬜ | Execution (A4) | NEW-GAP11 | Arch-council required — new cross-cutting service; idempotency on retry must be explicit |
+| O1 | NEW-GAP4 + NEW-GAP13: Employee payroll-critical fields — `shift_type`, `state_of_tax`, `skill_level` columns; migration `f1e2d3c4b5a6`; API GET/PATCH wired; onboarding validation + length guards ✅ | Onboarding (A2) | NEW-GAP4/13 | Sprint 11 |
+| O2 | NEW-GAP12: Grade percentage structure — `total_monthly`, `basic_pct`, `housing_pct`, `transport_pct`, `utility_pct` on `grade` table; migration `a2b3c4d5e6f7`; `salary_derivation.py` pure function; grade pct wins when `total_monthly` non-null (D6); round-half-up + residual (D7) ✅ | Onboarding (A2) | NEW-GAP12 | Sprint 11 |
+| O3 | WI-04 Sub-B + NEW-GAP8: Shift gate in `rule_evaluator.py` — D9 decision: `basic_daily ot_multiplier` returns ₦0 for `shift_type` in (None, "DAY"); `shift_type` threaded per employee in `batch_processor.py` ✅ | Execution (A4) | WI-04b | Sprint 11 |
+| O4 | SHIFT-ALLOWANCE-CLIENT3: Extend shift allowance for `basic_daily` rate base; SHIFT2/SHIFT3/SHIFT4 rate code seeding migration ⬜ | Execution (A4) | WI-34 | Deferred — needs stable Client 3 workspace identifier before seeding migration can run |
+| O5 | NEW-GAP11: LTA anniversary trigger — `AnniversaryService` auto-injects `payroll_input` (category=`paye_only`) for employees where `date_engaged` anniversary falls in pay period; configurable LTA amount ⬜ | Execution (A4) | NEW-GAP11 | Deferred to Sprint 12 (D10); blocked on M2 (PAYE-only additions path must land first) |
 | O6 | NEW-GAP1: Timesheet / Attendance Layer — `timesheet_entry` table; derivation pipeline auto-populates configurable OT/PH inputs at run-claim time (not hardcoded OT1/OT2/OT3 codes) ⬜ | Pay Events (A3) | NEW-GAP1 | Requires **full dedicated PM + arch-council sprint** before implementation begins; blocked on all K–N complete |
 
 ---
