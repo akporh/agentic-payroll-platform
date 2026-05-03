@@ -348,7 +348,7 @@ def _handle_taxable_income(
     code: str, meta_json: dict,
     results: dict, salary_components: dict, ctx: dict,
 ) -> dict[str, Decimal]:
-    """Taxable income = GROSS_PAY minus all pre-PAYE deductions.
+    """Taxable income = GROSS_PAY + PAYE_ONLY_ADDITIONS minus all pre-PAYE deductions.
 
     The set of deduction components is configurable via meta_json so that
     new pre-PAYE reliefs can be added through DB config alone:
@@ -356,13 +356,18 @@ def _handle_taxable_income(
           "deduct_components": ["PENSION_EMPLOYEE", "RENT_RELIEF", "MY_NEW_RELIEF"]
       }
     Default: ["PENSION_EMPLOYEE", "RENT_RELIEF"]
+
+    PAYE_ONLY_ADDITIONS is a statutory aggregate (M2) — hardcoded as a positive
+    term because it is never operator-configurable (unlike deduct_components).
     """
     deduct_components = meta_json.get(
         "deduct_components", ["PENSION_EMPLOYEE", "RENT_RELIEF"]
     )
-    value = results.get("GROSS_PAY", Decimal("0")) - sum(
-        (results.get(d, Decimal("0")) for d in deduct_components),
-        Decimal("0"),
+    paye_only_additions = results.get("PAYE_ONLY_ADDITIONS", Decimal("0"))
+    value = (
+        results.get("GROSS_PAY", Decimal("0"))
+        + paye_only_additions
+        - sum((results.get(d, Decimal("0")) for d in deduct_components), Decimal("0"))
     )
     return {code: value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}
 
@@ -432,12 +437,19 @@ def _handle_net_formula(
     results: dict, salary_components: dict, ctx: dict,
 ) -> dict[str, Decimal]:
     component_map = ctx["_component_map"]
+    # Earnings sweep includes 'non_taxable' class (M1): these allowances are paid
+    # to the employee but excluded from GROSS_PAY so they never attracted PAYE.
+    total_earnings = sum(
+        (v for k, v in results.items()
+         if component_map.get(k, {}).get("component_class") in ("earning", "non_taxable")),
+        Decimal("0"),
+    )
     total_deductions = sum(
         (v for k, v in results.items()
          if component_map.get(k, {}).get("component_class") == "statutory_deduction"),
         Decimal("0"),
     )
-    return {code: (results.get("GROSS_PAY", Decimal("0")) - total_deductions).quantize(
+    return {code: (total_earnings - total_deductions).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )}
 
@@ -451,6 +463,33 @@ def _handle_pension_employer(
     # results["PENSION_EMPLOYER"].  This handler simply confirms that value
     # so the component appears in the trace with a standard entry.
     return {code: results.get(code, Decimal("0"))}
+
+
+def _handle_sum_paye_only_inputs(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """Aggregate all paye_only inputs into PAYE_ONLY_ADDITIONS (M2).
+
+    Reads employee_inputs event dicts and sums any whose input_category
+    (aliased as 'category' in the event dict by the repository) equals
+    'PAYE_ONLY'.  These amounts increase TAXABLE_INCOME for PAYE purposes
+    without entering GROSS_PAY or NET_PAY.
+
+    Execution priority 95 — runs before TAXABLE_INCOME at priority 300.
+    """
+    employee_inputs = ctx.get("employee_inputs") or {}
+    total = Decimal("0")
+    for events in employee_inputs.values():
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            if isinstance(event, dict) and event.get("category") == "PAYE_ONLY":
+                qty = event.get("quantity") or event.get("amount") or 0
+                amount = Decimal(str(qty))
+                if amount > Decimal("0"):
+                    total += amount
+    return {code: total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +508,7 @@ register_handler("health_insurance_flat",     _handle_health_insurance_flat)
 register_handler("development_levy_flat",     _handle_development_levy_flat)
 register_handler("life_insurance_rule",       _handle_life_insurance_rule)
 register_handler("net_formula",               _handle_net_formula)
+register_handler("sum_paye_only_inputs",      _handle_sum_paye_only_inputs)
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +566,20 @@ def run_sequential_payroll(
     )
 
     component_map = {m["component_code"]: m for m in active_meta}
+
+    # Apply workspace-level component_class overrides (M1 — D-M1-4).
+    # client_component_metadata.overrides_json may carry a 'component_class' key
+    # that overrides the platform-level class for a specific workspace component.
+    # This allows a workspace to mark (e.g.) TRANSPORT as 'non_taxable' without
+    # a platform schema change.
+    client_meta = context.get("client_meta") or {}
+    for comp_code, comp_meta in client_meta.items():
+        override_class = comp_meta.get("component_class")
+        if override_class and comp_code in component_map:
+            component_map[comp_code] = {
+                **component_map[comp_code],
+                "component_class": override_class,
+            }
 
     # ------------------------------------------------------------------ #
     # 2. Build execution context.                                         #
@@ -603,9 +657,10 @@ def run_sequential_payroll(
         results.update(output)
 
         trace_entry: dict = {
-            "component": code,
-            "method":    method,
-            "result":    str(results.get(code)),
+            "component":       code,
+            "method":          method,
+            "component_class": meta.get("component_class"),
+            "result":          str(results.get(code)),
         }
         # Annotate period-sensitive entries so the trace is self-contained.
         if method in _PERIOD_SENSITIVE_METHODS:

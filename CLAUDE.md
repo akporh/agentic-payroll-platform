@@ -51,6 +51,9 @@ Domain code must never import infrastructure. Routes must never contain business
 | `payroll_run.status = 'APPROVED'` | immutable — no employee results can be modified |
 | `statutory_rule (country_code, effective_from)` | UNIQUE — no duplicate effective dates |
 | `pay_cycle (workspace_id) WHERE is_active` | at most one active cycle per workspace |
+| `component_class = 'non_taxable'` (Sprint 12 M1) | Excluded from GROSS_PAY and gross_components_jsonb; included in NET_PAY. Must NOT have `is_pensionable = True` in client_component_metadata. Cannot be injected via payroll rules (no NON_TAXABLE rule_type exists). gross_components_jsonb excludes non_taxable by design — correct legal treatment. |
+| `component_class = 'paye_addition'` (Sprint 12 M2) | Used exclusively by PAYE_ONLY_ADDITIONS at priority 95. Not swept by sum_earnings, net_formula, or statutory_deduction aggregation. Only `_handle_taxable_income` reads it. |
+| `payroll_input.input_category` | Allowed values: EARNING, DEDUCTION, STANDARD, PAYE_ONLY (all uppercase). PAYE_ONLY inputs enter TAXABLE_INCOME only — never GROSS_PAY or NET_PAY. Must use standard link_inputs_to_run claiming path so retry reproduces the same TAXABLE_INCOME. |
 
 ---
 
