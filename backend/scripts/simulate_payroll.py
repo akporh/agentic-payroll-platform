@@ -681,6 +681,9 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
             client_meta=client_meta,
             working_days=period_ctx.working_days,
             calendar_days=period_ctx.calendar_days,
+            # employee_context=None: eligibility gates (e.g. is_union_member) are
+            # suppressed in simulation — all employees treated as eligible.
+            employee_context=None,
         )
 
     context = {

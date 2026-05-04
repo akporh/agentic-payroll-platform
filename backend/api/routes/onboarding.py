@@ -7,13 +7,15 @@ happen in the domain layer.
 
 Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
 """
+import logging
 from datetime import date as _date
 from uuid import uuid4
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import text
 from psycopg2.extras import Json
 from backend.infra.db.session import SessionLocal
-from fastapi import APIRouter, Request
+
+logger = logging.getLogger(__name__)
 
 from backend.domain.onboarding.loader import emit_onboarding_sql
 from backend.domain.onboarding.workspace_state_machine import transition_workspace
@@ -28,6 +30,20 @@ from backend.application import onboarding_service
 from backend.infra.repositories.workspace_config_repo import upsert_workspace_payroll_config
 
 router = APIRouter()
+
+# S2 — Enum allowlists for workspace_payroll_config fields (must match DB check constraints)
+_WPC_PH_MODE_VALUES            = frozenset({"AUTOMATIC", "FILE_BASED"})
+_WPC_PH_RULE_VALUES            = frozenset({"PH_TAKES_PRECEDENCE", "DAY_OF_WEEK_TAKES_PRECEDENCE"})
+_WPC_D3_LEAVE_OVERLAP_VALUES   = frozenset({"LEAVE_ABSORBS_PH", "PH_ADDITIVE"})
+_WPC_D4_ABSENCE_RULE_VALUES    = frozenset({"ABSENT_IS_DEDUCTIBLE", "PH_EXCUSES_ABSENCE"})
+
+_WPC_ENUM_FIELDS = [
+    ("ph_mode",              _WPC_PH_MODE_VALUES),
+    ("saturday_ph_rule",     _WPC_PH_RULE_VALUES),
+    ("sunday_ph_rule",       _WPC_PH_RULE_VALUES),
+    ("d3_leave_overlap_rule", _WPC_D3_LEAVE_OVERLAP_VALUES),
+    ("d4_absence_rule",      _WPC_D4_ABSENCE_RULE_VALUES),
+]
 
 
 @router.post("/onboarding/upload")
@@ -532,10 +548,11 @@ async def commit_onboarding(request: Request):
                     f"Employee '{emp_number}': invalid contract_end '{emp_end_str}' (use YYYY-MM-DD)"
                 )
 
-            # O1 — shift_type / state_of_tax / skill_level
-            _shift_type   = emp.get("shift_type") or None
-            _state_of_tax = emp.get("state_of_tax") or None
-            _skill_level  = emp.get("skill_level") or None
+            # O1 — shift_type / state_of_tax / skill_level / is_union_member
+            _shift_type      = emp.get("shift_type") or None
+            _state_of_tax    = emp.get("state_of_tax") or None
+            _skill_level     = emp.get("skill_level") or None
+            _is_union_member = bool(emp.get("is_union_member", False))
             _VALID_SHIFT_TYPES = {"DAY", "2_SHIFT", "4_SHIFT"}
             if _shift_type is not None and _shift_type not in _VALID_SHIFT_TYPES:
                 raise Exception(
@@ -556,14 +573,14 @@ async def commit_onboarding(request: Request):
                     INSERT INTO employee_contract (
                         contract_id, employee_id, salary_definition_id,
                         grade_id, designation_id, start_date, end_date,
-                        shift_type, state_of_tax, skill_level
+                        shift_type, state_of_tax, skill_level, is_union_member
                     )
                     VALUES (
                         :cid, :employee_id, :salary_definition_id,
                         :grade_id, :designation_id,
                         COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
                         CAST(:end_date AS DATE),
-                        :shift_type, :state_of_tax, :skill_level
+                        :shift_type, :state_of_tax, :skill_level, :is_union_member
                     )
                 """),
                 {
@@ -577,6 +594,7 @@ async def commit_onboarding(request: Request):
                     "shift_type":           _shift_type,
                     "state_of_tax":         _state_of_tax,
                     "skill_level":          _skill_level,
+                    "is_union_member":      _is_union_member,
                 },
             )
 
@@ -597,6 +615,21 @@ async def commit_onboarding(request: Request):
 
         # Seed workspace_payroll_config — best-effort; failure here does not rollback employee data.
         _wpc = payload.get("workspace_payroll_config") or {}
+
+        # S2 — Validate enum fields before hitting the DB
+        _wpc_validation_errors: list[str] = []
+        for _field, _allowed in _WPC_ENUM_FIELDS:
+            _val = _wpc.get(_field)
+            if _val is not None and _val not in _allowed:
+                _wpc_validation_errors.append(
+                    f"'{_field}' must be one of {sorted(_allowed)}, got {_val!r}"
+                )
+        if _wpc_validation_errors:
+            raise HTTPException(
+                status_code=422,
+                detail={"errors": _wpc_validation_errors},
+            )
+
         try:
             upsert_workspace_payroll_config(
                 workspace_id=workspace_id,
@@ -610,7 +643,15 @@ async def commit_onboarding(request: Request):
                 updated_by=None,
             )
         except Exception as _wpc_err:
-            warnings.append(f"workspace_payroll_config seed failed: {_wpc_err!s}")
+            # S1 — Log the full exception server-side; return a generic message to the caller.
+            logger.error(
+                "workspace_payroll_config seed failed for workspace %s: %s",
+                workspace_id, _wpc_err, exc_info=True,
+            )
+            warnings.append(
+                "Workspace payroll configuration could not be applied. "
+                "Check the submitted values and try again."
+            )
 
         # ----------------------------
         # AUTO-ADVANCE STATE MACHINE

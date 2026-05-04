@@ -111,6 +111,7 @@ def persist_payroll_run_execution(
                 payroll_output=output,
                 error_message=r.get("error"),
                 component_trace=component_trace,
+                employee_context=r.get("employee_context"),
             )
 
     # 3️⃣ Insert audit logs

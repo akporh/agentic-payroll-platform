@@ -32,6 +32,27 @@ def _sanitize_json(payload: dict | None) -> dict:
     return json.loads(json.dumps(payload, default=_default))
 
 
+def get_employee_context_from_result(db, payroll_run_id: str, employee_id: str) -> dict:
+    """Read per_employee_context_json from an existing payroll_result row.
+
+    Used by retry paths (D4/D5) to recover frozen employee eligibility flags
+    (e.g. is_union_member) before the result row is deleted and re-inserted.
+    Returns {} for rows that predate the migration or have NULL context.
+    """
+    row = db.execute(
+        text("""
+            SELECT per_employee_context_json
+            FROM payroll_result
+            WHERE payroll_run_id = :run_id
+              AND employee_id    = :eid
+        """),
+        {"run_id": payroll_run_id, "eid": employee_id},
+    ).fetchone()
+    if row is None:
+        return {}
+    return row[0] or {}
+
+
 def save_payroll_result(
     payroll_run_id: str,
     employee_id: str,
@@ -39,6 +60,7 @@ def save_payroll_result(
     payroll_output: dict | None,
     error_message: str | None,
     component_trace: list | None = None,
+    employee_context: dict | None = None,
 ):
     """
     Persist a single payroll result.
@@ -88,7 +110,8 @@ def save_payroll_result(
             calculations_snapshot_json,
             component_trace_jsonb,
             status,
-            error_message
+            error_message,
+            per_employee_context_json
         )
         VALUES (
             gen_random_uuid(),
@@ -100,7 +123,8 @@ def save_payroll_result(
             :snapshot,
             :trace,
             :status,
-            :error_message
+            :error_message,
+            :per_employee_context_json
         )
         """),
         {
@@ -113,6 +137,9 @@ def save_payroll_result(
             "trace": Json(trace_value) if trace_value is not None else None,
             "status": status,
             "error_message": error_message,
+            "per_employee_context_json": (
+                Json(_sanitize_json(employee_context)) if employee_context else None
+            ),
         }
     )
 

@@ -238,6 +238,7 @@ class EmployeeContractUpdateSchema(BaseModel):
     shift_type: str | None = None
     state_of_tax: str | None = Field(default=None, max_length=50)
     skill_level:  str | None = Field(default=None, max_length=50)
+    is_union_member: bool | None = None
 
 
 @router.patch("/{workspace_id}/employees/contracts")
@@ -356,11 +357,12 @@ def update_employee_contract(
         db.execute(
             text("""
                 UPDATE employee_contract ec
-                SET grade_id       = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
-                    designation_id = COALESCE(CAST(:designation_id AS uuid), ec.designation_id),
-                    shift_type     = CASE WHEN :shift_type_set THEN :shift_type     ELSE ec.shift_type     END,
-                    state_of_tax   = CASE WHEN :state_set      THEN :state_of_tax   ELSE ec.state_of_tax   END,
-                    skill_level    = CASE WHEN :skill_set       THEN :skill_level    ELSE ec.skill_level    END
+                SET grade_id        = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
+                    designation_id  = COALESCE(CAST(:designation_id AS uuid), ec.designation_id),
+                    shift_type      = CASE WHEN :shift_type_set    THEN :shift_type      ELSE ec.shift_type      END,
+                    state_of_tax    = CASE WHEN :state_set         THEN :state_of_tax    ELSE ec.state_of_tax    END,
+                    skill_level     = CASE WHEN :skill_set         THEN :skill_level     ELSE ec.skill_level     END,
+                    is_union_member = CASE WHEN :union_member_set  THEN :is_union_member ELSE ec.is_union_member  END
                 WHERE ec.employee_id = CAST(:eid AS uuid)
                   AND ec.employee_id IN (
                       SELECT employee_id FROM employee WHERE workspace_id = :wid
@@ -368,16 +370,18 @@ def update_employee_contract(
                   AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
             """),
             {
-                "grade_id":        grade_id,
-                "designation_id":  designation_id,
-                "shift_type":      payload.shift_type,
-                "shift_type_set":  payload.shift_type is not None,
-                "state_of_tax":    payload.state_of_tax,
-                "state_set":       payload.state_of_tax is not None,
-                "skill_level":     payload.skill_level,
-                "skill_set":       payload.skill_level is not None,
-                "eid":             employee_id,
-                "wid":             workspace_id,
+                "grade_id":          grade_id,
+                "designation_id":    designation_id,
+                "shift_type":        payload.shift_type,
+                "shift_type_set":    payload.shift_type is not None,
+                "state_of_tax":      payload.state_of_tax,
+                "state_set":         payload.state_of_tax is not None,
+                "skill_level":       payload.skill_level,
+                "skill_set":         payload.skill_level is not None,
+                "is_union_member":   payload.is_union_member,
+                "union_member_set":  payload.is_union_member is not None,
+                "eid":               employee_id,
+                "wid":               workspace_id,
             },
         )
         db.commit()

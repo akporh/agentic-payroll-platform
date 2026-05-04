@@ -7,9 +7,12 @@ Exposes endpoints for triggering payroll runs.
 import calendar
 import csv as _csv
 import io
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
@@ -184,6 +187,22 @@ def run_payroll(
     if not employees:
         db.close()
         raise HTTPException(status_code=400, detail="No active employees found")
+
+    # ── Bulk-load is_union_member for all employees (M3 — percentage_of_sum eligibility) ─
+    _emp_ids = [emp["employee_id"] for emp in employees]
+    _union_rows = db.execute(
+        text("""
+            SELECT e.employee_id, ec.is_union_member
+            FROM employee e
+            JOIN employee_contract ec ON e.employee_id = ec.employee_id
+            WHERE e.employee_id = ANY(CAST(:ids AS uuid[]))
+              AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+        """),
+        {"ids": _emp_ids},
+    ).fetchall()
+    _union_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _union_rows}
+    for emp in employees:
+        emp["employee_context"] = {"is_union_member": _union_map.get(emp["employee_id"], False)}
 
     # ── A1-A2: Statutory rule — temporal selection using statutory_effective_date ─
     # SELECT the rule whose effective_from is <= statutory_effective_date,
@@ -532,8 +551,7 @@ def run_payroll(
     workspace_payroll_config = get_workspace_payroll_config(workspace_id)
     # PH_ADDITIVE has no engine implementation — treat as LEAVE_ABSORBS_PH.
     if workspace_payroll_config.get("d3_leave_overlap_rule") == "PH_ADDITIVE":
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
+        logger.warning(
             "workspace %s has d3_leave_overlap_rule=PH_ADDITIVE which is not implemented — "
             "falling back to LEAVE_ABSORBS_PH",
             workspace_id,
@@ -655,6 +673,28 @@ def run_payroll(
                     "Verify this is not a data entry error.",
                 ))
 
+    # ── M5: ITF threshold — platform-enforced (≥5 active employees AND annual payroll ≥₦50M) ─
+    _itf_emp_count = db.execute(
+        text("SELECT COUNT(*) FROM employee WHERE workspace_id = :wid AND status = 'ACTIVE'"),
+        {"wid": workspace_id},
+    ).scalar() or 0
+
+    _itf_annual_payroll = db.execute(
+        text("""
+            SELECT COALESCE(SUM(total_net_pay), 0)
+            FROM payroll_run
+            WHERE workspace_id = :wid
+              AND EXTRACT(YEAR FROM period_end) = EXTRACT(YEAR FROM CAST(:period_end AS date))
+              AND status = 'APPROVED'
+        """),
+        {"wid": workspace_id, "period_end": period_end or str(statutory_effective_date)},
+    ).scalar() or Decimal("0")
+
+    itf_threshold_met = (
+        _itf_emp_count >= 5
+        and Decimal(str(_itf_annual_payroll)) >= Decimal("50000000")
+    )
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -679,6 +719,8 @@ def run_payroll(
         "ph_source":                        ph_source,
         "workspace_ph_config":              workspace_payroll_config,
         "rate_code_map":                    rate_code_map,
+        # ── M5: ITF threshold (platform-enforced) ────────────────────────────
+        "itf_threshold_met":               itf_threshold_met,
     }
 
     try:

@@ -75,6 +75,7 @@ from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
 from backend.infra.repositories.payroll_input_repo import load_inputs_for_run
+from backend.infra.repositories.payroll_result_repo import get_employee_context_from_result
 from backend.infra.repositories.rate_code_repo import list_rate_codes
 
 
@@ -389,6 +390,7 @@ def _insert_result(
     status: str,
     payroll_output: dict | None,
     error_message: str | None,
+    employee_context: dict | None = None,
 ) -> None:
     """Insert a single payroll_result row."""
 
@@ -419,7 +421,8 @@ def _insert_result(
                 calculations_snapshot_json,
                 component_trace_jsonb,
                 status,
-                error_message
+                error_message,
+                per_employee_context_json
             )
             VALUES (
                 gen_random_uuid(),
@@ -431,7 +434,8 @@ def _insert_result(
                 :snapshot,
                 :trace,
                 :status,
-                :error
+                :error,
+                :per_employee_context_json
             )
         """),
         {
@@ -444,6 +448,9 @@ def _insert_result(
             "trace":      Json(trace_out) if trace_out is not None else None,
             "status":     status,
             "error":      error_message,
+            "per_employee_context_json": (
+                Json(_sanitize(employee_context)) if employee_context else None
+            ),
         },
     )
 
@@ -523,7 +530,22 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
                 "utility_pct":    g[5],
             }
 
-    # 3. Delete ALL existing results (both SUCCESS and FAILED)
+    # 3. D5: Read all per_employee_context_json BEFORE the bulk DELETE destroys them.
+    # Rows that predate the migration have NULL — they yield {} so eligibility gates
+    # are suppressed for those employees on retry (acceptable fallback).
+    _ctx_rows = db.execute(
+        text("""
+            SELECT employee_id, per_employee_context_json
+            FROM   payroll_result
+            WHERE  payroll_run_id = :run_id
+        """),
+        {"run_id": payroll_run_id},
+    ).fetchall()
+    employee_ctx_map: dict[str, dict] = {
+        str(r[0]): (r[1] or {}) for r in _ctx_rows
+    }
+
+    # Delete ALL existing results (both SUCCESS and FAILED)
     db.execute(
         text("DELETE FROM payroll_result WHERE payroll_run_id = :run_id"),
         {"run_id": payroll_run_id},
@@ -545,6 +567,7 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
         contract_start = emp[2].isoformat() if emp[2] else None
         contract_end   = emp[3].isoformat() if emp[3] else None
         emp_context    = {**shared_ctx["context"], "shift_type": shift_type, "salary_basis": salary_basis}
+        frozen_ctx     = employee_ctx_map.get(employee_id, {})
 
         try:
             calc_result = execute_single_employee_payroll(
@@ -562,6 +585,7 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
                 contract_end           = contract_end,
                 rules_context_snapshot = shared_ctx["rules_context_snapshot"],
                 inputs                 = inputs_by_employee.get(employee_id, {}),
+                employee_context       = frozen_ctx or None,
                 tracer                 = tracer,
             )
             calc_error = None
@@ -572,21 +596,23 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
         if calc_error is None:
             _insert_result(
                 db,
-                payroll_run_id = payroll_run_id,
-                employee_id    = employee_id,
-                status         = "SUCCESS",
-                payroll_output = calc_result,
-                error_message  = None,
+                payroll_run_id   = payroll_run_id,
+                employee_id      = employee_id,
+                status           = "SUCCESS",
+                payroll_output   = calc_result,
+                error_message    = None,
+                employee_context = frozen_ctx or None,
             )
             success_count += 1
         else:
             _insert_result(
                 db,
-                payroll_run_id = payroll_run_id,
-                employee_id    = employee_id,
-                status         = "FAILED",
-                payroll_output = None,
-                error_message  = calc_error,
+                payroll_run_id   = payroll_run_id,
+                employee_id      = employee_id,
+                status           = "FAILED",
+                payroll_output   = None,
+                error_message    = calc_error,
+                employee_context = frozen_ctx or None,
             )
             still_failed += 1
 
@@ -807,6 +833,12 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             # ----------------------------------------------------------------
             # a) Attempt calculation — pure, no DB side-effects.
             # ----------------------------------------------------------------
+
+            # D4: read frozen employee context BEFORE deleting the FAILED row.
+            # Preserves eligibility flags (e.g. is_union_member) from original run.
+            # Rows predating the migration yield {} — eligibility gates suppressed.
+            frozen_ctx = get_employee_context_from_result(db, payroll_run_id, employee_id)
+
             if emp_row is None:
                 # No active contract — the calculation cannot proceed.
                 calc_result   = None
@@ -834,6 +866,7 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                 contract_start = emp_row[1].isoformat() if emp_row[1] else None
                 contract_end   = emp_row[2].isoformat() if emp_row[2] else None
                 emp_context    = {**shared_ctx["context"], "shift_type": _shift_type, "salary_basis": _salary_basis}
+
                 try:
                     calc_result = execute_single_employee_payroll(
                         payroll_run_id          = payroll_run_id,
@@ -850,6 +883,7 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                         contract_end            = contract_end,
                         rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
                         inputs                  = inputs_by_employee.get(employee_id, {}),
+                        employee_context        = frozen_ctx or None,
                         tracer                  = tracer,
                     )
                     calc_error = None
@@ -869,21 +903,23 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             if calc_error is None:
                 _insert_result(
                     db,
-                    payroll_run_id = payroll_run_id,
-                    employee_id    = employee_id,
-                    status         = "SUCCESS",
-                    payroll_output = calc_result,
-                    error_message  = None,
+                    payroll_run_id   = payroll_run_id,
+                    employee_id      = employee_id,
+                    status           = "SUCCESS",
+                    payroll_output   = calc_result,
+                    error_message    = None,
+                    employee_context = frozen_ctx or None,
                 )
                 success_count += 1
             else:
                 _insert_result(
                     db,
-                    payroll_run_id = payroll_run_id,
-                    employee_id    = employee_id,
-                    status         = "FAILED",
-                    payroll_output = None,
-                    error_message  = calc_error,
+                    payroll_run_id   = payroll_run_id,
+                    employee_id      = employee_id,
+                    status           = "FAILED",
+                    payroll_output   = None,
+                    error_message    = calc_error,
+                    employee_context = frozen_ctx or None,
                 )
                 still_failed += 1
 

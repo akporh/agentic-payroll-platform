@@ -21,6 +21,9 @@ Execution order for Nigeria (NG):
  420  HEALTH_INSURANCE_EMPLOYEE health_insurance_flat
  430  DEVELOPMENT_LEVY       development_levy_flat
  440  LIFE_INSURANCE         life_insurance_rule
+ 450  CHECK_OFF_DUES         salary_component     (value injected by rule_evaluator percentage_of_sum)
+ 460  NSITF_EMPLOYER_COST    nsitf_employer       (employer cost, excluded from NET_PAY)
+ 470  ITF_EMPLOYER_COST      itf_employer         (employer cost, excluded from NET_PAY)
  500  NET_PAY                net_formula
 
 Adding a new statutory component (e.g. NSITF):
@@ -34,8 +37,11 @@ Adding a new statutory component (e.g. NSITF):
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from backend.domain.payroll.period_context import PeriodContext, build_period_context
 from backend.domain.rules.nhf import calculate_nhf
@@ -422,14 +428,103 @@ def _handle_development_levy_flat(
     return {code: amount}
 
 
+def _store_trace_extra(ctx: dict, code: str, extras: dict) -> None:
+    """Write supplemental trace fields for a component into ctx['_trace_extras'].
+
+    The main execution loop reads these after each handler call and merges
+    them into the standard trace entry for that component (e.g. 'source' for
+    LIFE_INSURANCE, 'rate'/'base_*' for NSITF/ITF).
+    """
+    ctx.setdefault("_trace_extras", {})[code] = extras
+
+
 def _handle_life_insurance_rule(
     code: str, meta_json: dict,
     results: dict, salary_components: dict, ctx: dict,
 ) -> dict[str, Decimal]:
+    """Life insurance deduction — flat_amount (M4) or legacy rate × GROSS_PAY fallback.
+
+    Workspace override path (Client B and future workspaces):
+      client_component_metadata.overrides_json = {"flat_amount": 2000}
+      → merged into client_meta[code] by the payroll route.
+
+    Fallback path (all other workspaces):
+      rate × GROSS_PAY — logs DEPRECATION warning until workspace migrates.
+    """
+    client_override = (ctx.get("client_meta") or {}).get(code, {})
+    if "flat_amount" in client_override:
+        amount = Decimal(str(client_override["flat_amount"]))
+        _store_trace_extra(ctx, code, {"source": "flat_amount"})
+        return {code: amount}
     rate = Decimal(str(ctx.get("life_insurance_employer_rate", "0")))
+    logger.warning(
+        "LIFE_INSURANCE component '%s' using deprecated rate×GROSS_PAY fallback; "
+        "set flat_amount in client_component_metadata overrides_json to migrate",
+        code,
+    )
+    _store_trace_extra(ctx, code, {"source": "rate_fallback"})
     return {code: (results.get("GROSS_PAY", Decimal("0")) * rate).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )}
+
+
+def _handle_nsitf_employer(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """NSITF employer contribution — 1% of (BASIC + HOUSING + TRANSPORT).
+
+    component_class = 'employer_cost' — excluded from NET_PAY by net_formula handler.
+    Rate read from component_metadata.metadata_json, not hardcoded.
+    Workspace opt-in via client_component_metadata.is_active.
+    """
+    rate = Decimal(str(meta_json.get("rate", "0.01")))
+    base_basic     = results.get("BASIC",     Decimal("0"))
+    base_housing   = results.get("HOUSING",   Decimal("0"))
+    base_transport = results.get("TRANSPORT", Decimal("0"))
+    base = base_basic + base_housing + base_transport
+    amount = (rate * base).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    _store_trace_extra(ctx, code, {
+        "rate":           str(rate),
+        "base_BASIC":     str(base_basic),
+        "base_HOUSING":   str(base_housing),
+        "base_TRANSPORT": str(base_transport),
+    })
+    return {code: amount}
+
+
+def _handle_itf_employer(
+    code: str, meta_json: dict,
+    results: dict, salary_components: dict, ctx: dict,
+) -> dict[str, Decimal]:
+    """ITF employer contribution — 1% of (BASIC + HOUSING + TRANSPORT).
+
+    Platform-enforced threshold: workspace must have ≥5 active employees AND
+    annual payroll YTD ≥ ₦50M. Threshold evaluated in the payroll route and
+    passed in ctx['itf_threshold_met']. Returns ₦0 when threshold is not met.
+
+    component_class = 'employer_cost' — excluded from NET_PAY by net_formula handler.
+    Rate read from component_metadata.metadata_json, not hardcoded.
+    """
+    if not ctx.get("itf_threshold_met", False):
+        _store_trace_extra(ctx, code, {
+            "source":             "threshold_not_met",
+            "itf_threshold_met":  False,
+        })
+        return {code: Decimal("0")}
+    rate = Decimal(str(meta_json.get("rate", "0.01")))
+    base_basic     = results.get("BASIC",     Decimal("0"))
+    base_housing   = results.get("HOUSING",   Decimal("0"))
+    base_transport = results.get("TRANSPORT", Decimal("0"))
+    base = base_basic + base_housing + base_transport
+    amount = (rate * base).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    _store_trace_extra(ctx, code, {
+        "rate":           str(rate),
+        "base_BASIC":     str(base_basic),
+        "base_HOUSING":   str(base_housing),
+        "base_TRANSPORT": str(base_transport),
+    })
+    return {code: amount}
 
 
 def _handle_net_formula(
@@ -507,6 +602,8 @@ register_handler("nhf_rule",                  _handle_nhf_rule)
 register_handler("health_insurance_flat",     _handle_health_insurance_flat)
 register_handler("development_levy_flat",     _handle_development_levy_flat)
 register_handler("life_insurance_rule",       _handle_life_insurance_rule)
+register_handler("nsitf_employer",            _handle_nsitf_employer)
+register_handler("itf_employer",              _handle_itf_employer)
 register_handler("net_formula",               _handle_net_formula)
 register_handler("sum_paye_only_inputs",      _handle_sum_paye_only_inputs)
 
@@ -666,7 +763,18 @@ def run_sequential_payroll(
         if method in _PERIOD_SENSITIVE_METHODS:
             trace_entry["annualization_factor"] = str(_period.annualization_factor)
             trace_entry["period_fraction"]      = str(_period.period_fraction)
+        # Merge any handler-supplied trace extras (e.g. 'source' for LIFE_INSURANCE,
+        # 'rate'/'base_*' for NSITF/ITF employer handlers).
+        _extras = ctx.get("_trace_extras", {}).get(code)
+        if _extras:
+            trace_entry.update(_extras)
         execution_trace.append(trace_entry)
+
+    # Append percentage_of_sum rule traces (applied + not_applied eligibility decisions)
+    # from the rule evaluator. These include compliance-critical not_applied entries
+    # (C1) and must be in component_trace_jsonb for union audit purposes.
+    supplemental = ctx.get("_supplemental_traces") or []
+    execution_trace.extend(supplemental)
 
     return {
         "results": results,

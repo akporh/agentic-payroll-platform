@@ -77,7 +77,8 @@ def process_payroll_run(
         contract_start = emp.get("contract_start")
         contract_end   = emp.get("contract_end")
         shift_type     = emp.get("shift_type")
-        salary_basis   = emp.get("salary_basis", "salary_definition_absolute")
+        salary_basis      = emp.get("salary_basis", "salary_definition_absolute")
+        employee_context  = emp.get("employee_context") or None
         short_id = emp_id[:8]
 
         # Merge per-employee fields into a copy of the shared context so the
@@ -117,6 +118,7 @@ def process_payroll_run(
                 context=emp_context,
                 contract_start=contract_start,
                 contract_end=contract_end,
+                employee_context=employee_context,
                 tracer=tracer,
             )
 
@@ -139,10 +141,11 @@ def process_payroll_run(
             )
 
             results.append({
-                "employee_id": emp_id,
-                "status": "SUCCESS",
-                "output": result,
-                "error": None,
+                "employee_id":      emp_id,
+                "status":           "SUCCESS",
+                "output":           result,
+                "error":            None,
+                "employee_context": employee_context,
             })
 
             success_count += 1
@@ -155,10 +158,11 @@ def process_payroll_run(
                 raise
 
             results.append({
-                "employee_id": emp_id,
-                "status": "FAILED",
-                "output": None,
-                "error": str(e),
+                "employee_id":      emp_id,
+                "status":           "FAILED",
+                "output":           None,
+                "error":            str(e),
+                "employee_context": employee_context,
             })
 
             failure_count += 1

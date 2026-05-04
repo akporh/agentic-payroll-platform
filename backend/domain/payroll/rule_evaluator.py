@@ -31,7 +31,21 @@ the original implementation.  Scalar inputs (legacy callers / tests) are
 normalised to a single-event list by _to_events().
 """
 
+import logging
 from decimal import Decimal, ROUND_HALF_UP
+
+logger = logging.getLogger(__name__)
+
+# All recognised calculation_method values in payroll_rule.rule_definition_json.
+# D3: Python-level validation mirrors the DB CHECK constraint added in migration
+# 2b3c4d5e6f7a. Keep in sync with the constraint when adding new methods.
+VALID_CALCULATION_METHODS = frozenset({
+    "unit_multiplier",
+    "daily_rate_deduction",
+    "fixed_amount",
+    "ot_multiplier",
+    "percentage_of_sum",
+})
 
 
 def _to_events(raw) -> list[dict]:
@@ -75,6 +89,7 @@ def apply_payroll_rules(
     expected_days: int | None = None,
     rate_code_map: dict | None = None,
     shift_type: str | None = None,
+    employee_context: dict | None = None,
 ) -> tuple[dict, list]:
     """Apply workspace payroll rules to salary components.
 
@@ -475,6 +490,96 @@ def apply_payroll_rules(
                     "resolution_source": "current",
                     "warning":           None,
                 })
+
+        # ── percentage_of_sum (Sprint 13 M3) ─────────────────────────────────
+        elif method == "percentage_of_sum":
+            rate_val = current_defn.get("rate")
+            if rate_val is None:
+                raise ValueError(
+                    f"percentage_of_sum rule '{name}': 'rate' missing from rule_definition_json"
+                )
+            base_component_names: list = current_defn.get("base_components") or []
+            eligibility_field: str | None = current_defn.get("eligibility_field")
+
+            if not base_component_names:
+                logger.warning(
+                    "percentage_of_sum rule '%s': base_components is empty — returning 0",
+                    name,
+                )
+                trace.append({
+                    "rule":                 name,
+                    "method":               method,
+                    "status":               "not_applied",
+                    "amount":               "0",
+                    "note":                 "base_components list is empty — misconfiguration",
+                    "rule_set_id":          current_rule_set_id,
+                    "rule_effective_from":  current_rule_set_effective_from,
+                    "reference_date":       None,
+                    "rate_used":            None,
+                    "resolution_source":    "current",
+                    "warning":              "base_components is empty",
+                })
+                continue
+
+            # Eligibility gate — C1: not_applied trace entry is mandatory for auditability.
+            if eligibility_field is not None:
+                ctx_val = (employee_context or {}).get(eligibility_field)
+                if not ctx_val:
+                    trace.append({
+                        "rule":                 name,
+                        "method":               method,
+                        "status":               "not_applied",
+                        "amount":               "0",
+                        "note":                 (
+                            f"eligibility_field '{eligibility_field}' "
+                            f"resolved to {ctx_val!r} — rule did not fire"
+                        ),
+                        "eligibility_field":    eligibility_field,
+                        "eligibility_value":    str(ctx_val),
+                        "rule_set_id":          current_rule_set_id,
+                        "rule_effective_from":  current_rule_set_effective_from,
+                        "reference_date":       None,
+                        "rate_used":            None,
+                        "resolution_source":    "current",
+                        "warning":              None,
+                    })
+                    continue
+
+            # Resolve base_components against PRE-RULES salary_components snapshot (D2).
+            # salary_components is the original dict passed into apply_payroll_rules —
+            # components (the working copy) may already have rule-injected values.
+            rate = Decimal(str(rate_val))
+            resolved = {
+                c: salary_components.get(c, Decimal("0"))
+                for c in base_component_names
+            }
+            base_total = sum(resolved.values(), Decimal("0"))
+            amount = (rate * base_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+            components[name] = amount
+
+            trace_entry: dict = {
+                "rule":                  name,
+                "method":                method,
+                "status":                "applied",
+                "amount":                str(amount),
+                "note":                  (
+                    f"rate {rate} × base_total {base_total} = {amount}"
+                ),
+                "rate":                  str(rate),
+                "base_components":       base_component_names,
+                "resolved_base_values":  {k: str(v) for k, v in resolved.items()},
+                "base_total":            str(base_total),
+                "rule_set_id":           current_rule_set_id,
+                "rule_effective_from":   current_rule_set_effective_from,
+                "reference_date":        None,
+                "rate_used":             str(rate),
+                "resolution_source":     "current",
+                "warning":               None,
+            }
+            if eligibility_field is not None:
+                trace_entry["eligibility_field"] = eligibility_field
+            trace.append(trace_entry)
 
         else:
             _resolved_defn, _res_meta = _resolve_rule(

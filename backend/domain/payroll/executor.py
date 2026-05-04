@@ -66,6 +66,7 @@ def execute_single_employee_payroll(
     contract_start: str | None = None,
     contract_end:   str | None = None,
     rules_context_snapshot: dict | None = None,
+    employee_context: dict | None = None,
     tracer=None,
 ) -> dict:
     """Execute a full payroll calculation for a single employee.
@@ -111,6 +112,7 @@ def execute_single_employee_payroll(
             components, component_metadata, context, tax_bands, inputs,
             contract_start=contract_start,
             contract_end=contract_end,
+            employee_context=employee_context,
             tracer=tracer,
         )
     else:
@@ -155,6 +157,7 @@ def _run_sequential(
     inputs: dict | None = None,
     contract_start: str | None = None,
     contract_end:   str | None = None,
+    employee_context: dict | None = None,
     tracer=None,
 ) -> dict:
     """Run the sequential executor and reshape output into the payroll_result shape."""
@@ -250,7 +253,14 @@ def _run_sequential(
             expected_days=expected_days,
             rate_code_map=rate_code_map,
             shift_type=shift_type,
+            employee_context=employee_context,
         )
+        # Merge percentage_of_sum traces (including not_applied eligibility decisions)
+        # into component_trace_jsonb via the sequential executor's supplemental trace
+        # mechanism. Other _rule_trace entries remain discarded (tracked as N1).
+        _pct_sum_traces = [t for t in _rule_trace if t.get("method") == "percentage_of_sum"]
+        if _pct_sum_traces:
+            full_context["_supplemental_traces"] = _pct_sum_traces
 
     # Build unified component registry: platform metadata + rule-injected components.
     # Rule-injected components (unit_multiplier / fixed_amount) get execution_priority=50
