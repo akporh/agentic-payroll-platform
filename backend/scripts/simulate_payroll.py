@@ -32,7 +32,10 @@ from backend.domain.payroll.sequential_executor import (  # noqa: E402
     run_sequential_payroll,
 )
 from backend.domain.payroll.rule_evaluator import apply_payroll_rules  # noqa: E402
-from backend.domain.payroll.period_context import build_period_context  # noqa: E402
+from backend.domain.payroll.period_context import (  # noqa: E402
+    build_period_context,
+    compute_hire_termination_factor,
+)
 
 console = Console(highlight=False, width=120)
 I = "     "  # indent
@@ -93,7 +96,7 @@ def _load_workspace(db, workspace_id):
 
 def _load_contract_details(db, employee_id):
     row = db.execute(text("""
-        SELECT d.designation_code, g.grade_code, ec.start_date
+        SELECT d.designation_code, g.grade_code, ec.start_date, ec.end_date
         FROM   employee_contract ec
         LEFT JOIN designation d ON d.designation_id = ec.designation_id
         LEFT JOIN grade       g ON g.grade_id       = ec.grade_id
@@ -186,11 +189,11 @@ def _load_component_metadata(db, country_code):
 
 def _load_client_overrides(db, workspace_id):
     rows = db.execute(text("""
-        SELECT component_code, overrides_json
+        SELECT component_code, overrides_json, proration_strategy
         FROM   client_component_metadata
         WHERE  workspace_id = :wid
     """), {"wid": workspace_id}).fetchall()
-    return {r[0]: r[1] for r in rows}
+    return {r[0]: r[1] for r in rows}, {r[0]: r[2] for r in rows if r[2] is not None}
 
 
 def _load_payroll_rules(db, workspace_id):
@@ -466,6 +469,30 @@ def _print_payroll_rules(payroll_rules, employee_inputs, currency):
     console.print()
 
 
+def _print_proration_section(proration_trace, contract, period_ctx):
+    if not proration_trace:
+        return
+    console.rule("[bold cyan]HIRE / TERMINATION PRORATION[/bold cyan]", style="cyan")
+    console.print()
+    contract_start = contract.get("start_date")
+    contract_end   = contract.get("end_date")
+    console.print(
+        f"{I}Contract window : {contract_start} → {contract_end or 'open-ended'}"
+        f"  |  Period : {period_ctx.period_start} → {period_ctx.period_end}"
+    )
+    console.print()
+    for entry in proration_trace:
+        factor = Decimal(entry["factor"])
+        tag    = "  [dim][rule-injected][/dim]" if entry["rule_injected"] else ""
+        status = (
+            f"[bold yellow]factor {factor:.6f}[/bold yellow]"
+            if factor < Decimal("1")
+            else "[dim]factor 1.000000 (full period)[/dim]"
+        )
+        console.print(f"{I}  {entry['component']:<35}  strategy={entry['strategy']:<14}  {status}{tag}")
+    console.print()
+
+
 def _print_paye_section(results, tax_bands, sr, currency):
     console.rule("[bold yellow]TAX CALCULATION (PAYE)[/bold yellow]", style="yellow")
     console.print()
@@ -619,7 +646,7 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
         rules_jsonb = sr.get("rules_jsonb") or {}
         tax_bands        = _load_tax_bands(db, str(sr["statutory_rule_id"]))
         all_platform_meta = _load_component_metadata(db, country_code)
-        client_overrides  = _load_client_overrides(db, workspace_id)
+        client_overrides, ws_proration_col = _load_client_overrides(db, workspace_id)
         payroll_rules     = _load_payroll_rules(db, workspace_id)
         # Build period context here so _load_payroll_inputs can scope by date.
         # build_period_context needs no DB connection — safe to call inside the session.
@@ -670,9 +697,22 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
             else:
                 client_meta[code][key] = val
 
+    # Reconcile dedicated proration_strategy column into calculations_behaviour.
+    for code, strategy in ws_proration_col.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        cb = client_meta[code].get("calculations_behaviour")
+        if isinstance(cb, dict):
+            cb["proration_strategy"] = strategy
+        else:
+            client_meta[code]["calculations_behaviour"] = {"proration_strategy": strategy}
+
+    # Capture original salary-definition component codes before rules inject more.
+    original_component_codes = set(salary_components.keys())
+
     # Apply workspace payroll rules to salary_components before the engine.
-    # employee_inputs is {code: [events]} — each event carries its own reference_date.
-    # (mirrors the production _run_sequential path in executor.py)
+    # daily_rate_deduction must receive the full-month salary as its rate base,
+    # so hire proration is applied AFTER this block (mirrors executor.py).
     if payroll_rules:
         salary_components, _rule_trace = apply_payroll_rules(
             salary_components=salary_components,
@@ -685,6 +725,56 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
             # suppressed in simulation — all employees treated as eligible.
             employee_context=None,
         )
+
+    # Per-component hire/termination proration — mirrors executor.py::_run_sequential.
+    # Only runs when the contract starts or ends within the period.
+    _contract_start = contract.get("start_date")
+    _contract_end   = contract.get("end_date")
+    _cs = _contract_start if (
+        _contract_start and _contract_start > period_ctx.period_start
+    ) else None
+    _ce = _contract_end if (
+        _contract_end and _contract_end < period_ctx.period_end
+    ) else None
+
+    proration_trace: list[dict] = []
+    if _cs or _ce:
+        from datetime import date as _date
+        for code in list(salary_components.keys()):
+            is_rule_injected = code not in original_component_codes
+            if is_rule_injected:
+                rule_def = next(
+                    (
+                        r.get("rule_definition_json") or {}
+                        for r in payroll_rules
+                        if r.get("rule_name") == code
+                        or (r.get("rule_definition_json") or {}).get("output_code") == code
+                    ),
+                    {},
+                )
+                if not rule_def.get("prorate_on_hire", False):
+                    continue
+                strategy = "work_days"
+            else:
+                strategy = (
+                    client_meta.get(code, {})
+                    .get("calculations_behaviour", {})
+                    .get("proration_strategy", "work_days")
+                )
+
+            factor = compute_hire_termination_factor(
+                period_ctx, _cs, _ce, strategy
+            )
+            proration_trace.append({
+                "component": code,
+                "strategy":  strategy,
+                "factor":    str(factor),
+                "rule_injected": is_rule_injected,
+            })
+            if factor < Decimal("1"):
+                salary_components[code] = (salary_components[code] * factor).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
 
     context = {
         "tax_bands":                        tax_bands,
@@ -721,6 +811,7 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
     _print_component_resolution(all_platform_meta, client_overrides, salary_components, results, currency)
     _print_pension_section(results, salary_components, meta_map, pension_employee_rate, pension_employer_rate, sr, currency)
     _print_payroll_rules(payroll_rules, employee_inputs, currency)
+    _print_proration_section(proration_trace, contract, period_ctx)
     _print_paye_section(results, tax_bands, sr, currency)
     _print_summary(salary_components, results, client_overrides, pension_employee_rate, pension_employer_rate, currency)
 

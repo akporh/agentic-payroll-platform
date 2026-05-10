@@ -145,7 +145,7 @@ def run_payroll(
             text("""
                 SELECT grade_id, total_monthly, basic_pct, housing_pct, transport_pct, utility_pct
                 FROM grade
-                WHERE grade_id = ANY(:ids)
+                WHERE grade_id::text = ANY(:ids)
                   AND workspace_id = :wid
             """),
             {"ids": grade_ids, "wid": workspace_id},
@@ -398,13 +398,18 @@ def run_payroll(
     ]
 
     # --- Load workspace component overrides (is_active suppression + flat-amount overrides) ---
+    # proration_strategy is fetched as a dedicated column because the PATCH endpoint writes
+    # it there rather than into overrides_json.calculations_behaviour.  Both storage
+    # locations are reconciled during client_meta construction below.
     override_rows = db.execute(text("""
-        SELECT component_code, overrides_json
+        SELECT component_code, overrides_json, proration_strategy
         FROM client_component_metadata
         WHERE workspace_id = :wid
     """), {"wid": workspace_id}).fetchall()
 
     client_overrides = {r[0]: r[1] for r in override_rows}
+    # Map of component_code → proration_strategy from the dedicated column (may be None)
+    ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
 
     # Remove components the workspace has disabled
     disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
@@ -439,6 +444,19 @@ def run_payroll(
                 client_meta[code][key] = {**client_meta[code][key], **val}
             else:
                 client_meta[code][key] = val
+
+    # Reconcile the dedicated proration_strategy column with calculations_behaviour.
+    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+    # engine reads client_meta[code]["calculations_behaviour"]["proration_strategy"].
+    # If the column has a value it takes precedence over whatever is in overrides_json.
+    for code, strategy in ws_proration_col.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        cb = client_meta[code].get("calculations_behaviour")
+        if isinstance(cb, dict):
+            cb["proration_strategy"] = strategy
+        else:
+            client_meta[code]["calculations_behaviour"] = {"proration_strategy": strategy}
 
     db.close()
 

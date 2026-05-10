@@ -212,28 +212,17 @@ def _run_sequential(
     rate_code_map  = full_context.get("rate_code_map") or {}
     shift_type     = full_context.get("shift_type")
 
-    # --- Mid-period hire / termination proration ---
     _contract_start = date.fromisoformat(contract_start) if contract_start else None
     _contract_end   = date.fromisoformat(contract_end)   if contract_end   else None
 
-    proration_factor = compute_hire_termination_factor(_period, _contract_start, _contract_end)
+    # Capture original component codes before rules inject additional components.
+    # Hire proration applies only to salary-definition components; rule-injected
+    # components (OT, allowances) are handled separately after the rules block.
+    original_component_codes = set(salary_components.keys())
 
-    if proration_factor < Decimal("1"):
-        _tracer.info(
-            f"  [dim]proration[/dim]  contract {contract_start} → {contract_end}  "
-            f"factor=[bold yellow]{proration_factor}[/bold yellow]  "
-            f"(active {_period.working_days - int(_period.working_days * (1 - proration_factor))}/"
-            f"{_period.working_days} working days)"
-        )
-        salary_components = {
-            code: (amount * proration_factor).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            for code, amount in salary_components.items()
-        }
-
-    # Apply workspace payroll rules (absences, overtime, etc.) before the
-    # sequential component chain runs.  No-ops when payroll_rules is empty.
+    # Apply workspace payroll rules (absences, overtime, etc.) before hire proration.
+    # daily_rate_deduction inside apply_payroll_rules must receive the full-month
+    # salary as its rate base — applying hire proration first would corrupt that base.
     if payroll_rules:
         _tracer.info(f"  [dim]rules[/dim]  applying {len(payroll_rules)} workspace payroll rules")
         salary_components, _rule_trace = apply_payroll_rules(
@@ -261,6 +250,70 @@ def _run_sequential(
         _pct_sum_traces = [t for t in _rule_trace if t.get("method") == "percentage_of_sum"]
         if _pct_sum_traces:
             full_context["_supplemental_traces"] = _pct_sum_traces
+
+    # --- Mid-period hire / termination proration ---
+    # Applied after apply_payroll_rules so daily_rate_deduction uses the correct
+    # full-month base. Each component uses its own proration_strategy from client_meta.
+    if _contract_start or _contract_end:
+        proration_entries: list[dict] = []
+        hire_proration_applied = False
+
+        for code in list(salary_components.keys()):
+            is_rule_injected = code not in original_component_codes
+
+            if is_rule_injected:
+                # Rule-injected components (OT, allowances): only prorate if the
+                # rule definition explicitly opts in via prorate_on_hire: true.
+                rule_def = next(
+                    (
+                        r.get("rule_definition_json") or {}
+                        for r in payroll_rules
+                        if r.get("rule_name") == code or r.get("rule_definition_json", {}).get("output_code") == code
+                    ),
+                    {},
+                )
+                if not rule_def.get("prorate_on_hire", False):
+                    continue
+                strategy = "work_days"
+            else:
+                strategy = (
+                    client_meta.get(code, {})
+                    .get("calculations_behaviour", {})
+                    .get("proration_strategy", "work_days")
+                )
+
+            factor = compute_hire_termination_factor(
+                _period, _contract_start, _contract_end, strategy
+            )
+
+            proration_entries.append({
+                "component":     code,
+                "strategy":      strategy,
+                "active_from":   str(_contract_start or _period.period_start),
+                "active_to":     str(_contract_end   or _period.period_end),
+                "factor":        str(factor),
+                "rule_injected": is_rule_injected,
+            })
+
+            if factor < Decimal("1"):
+                salary_components[code] = (salary_components[code] * factor).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                hire_proration_applied = True
+
+        if proration_entries:
+            prorated = [e for e in proration_entries if Decimal(e["factor"]) < Decimal("1")]
+            if prorated:
+                _tracer.info(
+                    f"  [dim]hire proration[/dim]  contract {contract_start} → {contract_end}  "
+                    + "  ".join(
+                        f"{e['component']}={e['factor']}({e['strategy']})" for e in prorated
+                    )
+                )
+            supplemental = full_context.get("_supplemental_traces") or []
+            supplemental.extend(proration_entries)
+            full_context["_supplemental_traces"] = supplemental
+            full_context["_hire_proration_applied"] = hire_proration_applied
 
     # Build unified component registry: platform metadata + rule-injected components.
     # Rule-injected components (unit_multiplier / fixed_amount) get execution_priority=50

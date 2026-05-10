@@ -94,6 +94,7 @@ def compute_hire_termination_factor(
     period: PeriodContext,
     contract_start: date | None,
     contract_end:   date | None,
+    strategy: str = "work_days",
 ) -> Decimal:
     """Return the fraction of the period the employee was active, as a Decimal in [0, 1].
 
@@ -108,9 +109,17 @@ def compute_hire_termination_factor(
         period:         The current PeriodContext.
         contract_start: Employee contract start date (None = pre-dates the period).
         contract_end:   Employee contract end date (None = open-ended).
+        strategy:       Divisor strategy — "work_days" (default), "calendar_days",
+                        or "fixed_30".  Mirrors the proration_strategy values used
+                        by daily_rate_deduction rules so hire and absence proration
+                        are governed by the same per-component setting.
+                        - work_days:     working_days_active / period.working_days
+                        - calendar_days: calendar_days_active / period.calendar_days
+                        - fixed_30:      (30 − missed_calendar_days) / 30
+                          where missed = days before hire + days after termination
 
     Returns:
-        Decimal proration factor, rounded to 6 decimal places.
+        Decimal proration factor in [0, 1], rounded to 6 decimal places.
     """
     active_from = max(period.period_start, contract_start) if contract_start else period.period_start
     active_to   = min(period.period_end,   contract_end)   if contract_end   else period.period_end
@@ -121,12 +130,29 @@ def compute_hire_termination_factor(
     if active_from == period.period_start and active_to == period.period_end:
         return Decimal("1")
 
-    days_active = _count_working_days(active_from, active_to)
-    if period.working_days == 0:
-        return Decimal("1")
+    if strategy == "calendar_days":
+        days_active = (active_to - active_from).days + 1
+        divisor = period.calendar_days
+        if divisor == 0:
+            return Decimal("1")
+    elif strategy == "fixed_30":
+        # Treat the month as exactly 30 days (days 1–30). Day 31 of a 31-day
+        # month is phantom and is never counted as either active or missed.
+        # Termination date is inclusive (last day worked is paid).
+        from_position = (active_from - period.period_start).days + 1  # 1-indexed
+        to_position   = (active_to   - period.period_start).days + 1
+        days_active   = max(0, min(30, to_position) - from_position + 1)
+        divisor = 30
+    else:
+        # work_days — original behaviour
+        days_active = _count_working_days(active_from, active_to)
+        divisor = period.working_days
+        if divisor == 0:
+            return Decimal("1")
 
-    return (Decimal(str(days_active)) / Decimal(str(period.working_days))).quantize(
-        Decimal("0.000001")
+    return min(
+        Decimal("1"),
+        (Decimal(str(days_active)) / Decimal(str(divisor))).quantize(Decimal("0.000001")),
     )
 
 

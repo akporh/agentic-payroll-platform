@@ -19,8 +19,10 @@
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
 | **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
 | **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
-| **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 6⬜ 5🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
-| **Track S — Security** | — | — | — | — | — | 3🔜 (SEC-S1 Medium, SEC-S2/S3 Low) |
+| **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
+| **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
+| **Sprint 14** | — | — | 1🔜 (hire proration N2-partial) | — | — | 1🔜 (trace entries) |
+| **Track S — Security** | — | — | — | — | — | 3✅ (SEC-S1/S2/S3 shipped Sprint 13) |
 | **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
@@ -368,9 +370,9 @@ Findings are logged here as they are identified by `/security` reviews. Full nar
 
 | # | Item | Severity | File | Ref | Sprint Found | Status |
 |---|------|----------|------|-----|--------------|--------|
-| S1 | Replace raw `_wpc_err!s` exception string in `warnings` response with a generic message; log internally | Medium | `backend/api/routes/onboarding.py:589` | SEC-S1 | Sprint 10 | 🔜 |
-| S2 | Add application-level allowlist validation for `workspace_payroll_config` enum fields before DB upsert | Low | `backend/api/routes/onboarding.py:575–586` | SEC-S2 | Sprint 10 | 🔜 |
-| S3 | Move `import logging` to module level in `payroll.py`; replace inline `_logging.getLogger` call | Low | `backend/api/routes/payroll.py:498` | SEC-S3 | Sprint 10 | 🔜 |
+| S1 | Replace raw `_wpc_err!s` exception string in `warnings` response with a generic message; log internally | Medium | `backend/api/routes/onboarding.py:589` | SEC-S1 | Sprint 13 | ✅ |
+| S2 | Add application-level allowlist validation for `workspace_payroll_config` enum fields before DB upsert | Low | `backend/api/routes/onboarding.py:575–586` | SEC-S2 | Sprint 13 | ✅ |
+| S3 | Move `import logging` to module level in `payroll.py`; replace inline `_logging.getLogger` call | Low | `backend/api/routes/payroll.py:498` | SEC-S3 | Sprint 13 | ✅ |
 | S4 | Grade query in `/run-payroll` route hardened with `workspace_id` filter to prevent cross-workspace grade leakage ✅ | Low | `backend/api/routes/payroll.py` | SEC-S4 | Sprint 11 | ✅ |
 | S5 | `shift_type`, `state_of_tax`, `skill_level` onboarding endpoint: enum allowlist validation + VARCHAR length guards added ✅ | Low | `backend/api/routes/onboarding.py` | SEC-S5 | Sprint 11 | ✅ |
 
@@ -424,11 +426,11 @@ Run a **single arch-council session covering NEW-GAP14 + NEW-GAP15 together** be
 
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
-| M1 | NEW-GAP14: Non-taxable component class — `component_class='non_taxable'`; exclude from `_handle_sum_earnings` (GROSS_PAY); include in net-pay total but not TAXABLE_INCOME ⬜ | Execution (A4) | NEW-GAP14 | **Arch-council required** — changes GROSS_PAY + TAXABLE_INCOME aggregation contract; coordinate with M2 |
-| M2 | NEW-GAP15: PAYE-only additions path — `payroll_input.input_category VARCHAR(20) DEFAULT 'standard'`; executor aggregates `paye_only` rows into TAXABLE_INCOME only ⬜ | Execution (A4) | NEW-GAP15 | **Arch-council required (joint with M1)** — new additive term in TAXABLE_INCOME; cross-cutting to retry service + trace schema |
-| M3 | NEW-GAP6: Check-off dues handler — `2% × (BASIC + HOUSING + TRANSPORT)`, `component_class='statutory_deduction'`; seed `component_metadata` row ⬜ | Execution (A4) | NEW-GAP6 | Requires M1 class map; follows established handler pattern |
-| M4 | GAP-10-FIX: Life insurance flat ₦2,000 — change `rate × GROSS_PAY` to flat-amount pattern; seed `employer_amount=2000` in `rules_jsonb` ⬜ | Execution (A4) | GAP-10 | Parked — backward-compat fallback to rate-based for other clients |
-| M5 | NEW-GAP7: NSITF/ITF employer cost handlers — `1% × (BASIC + HOUSING + TRANSPORT)` each; `component_class='employer_cost'`; no employee net-pay deduction ⬜ | Execution (A4) | NEW-GAP7 | Parked — requires M1 `employer_cost` class map extension |
+| M1 | NEW-GAP14: Non-taxable component class — `component_class='non_taxable'`; exclude from `_handle_sum_earnings` (GROSS_PAY); include in net-pay total but not TAXABLE_INCOME ✅ | Execution (A4) | NEW-GAP14 | Sprint 12 — arch-council reviewed; migrations applied |
+| M2 | NEW-GAP15: PAYE-only additions path — `payroll_input.input_category VARCHAR(20) DEFAULT 'standard'`; executor aggregates `paye_only` rows into TAXABLE_INCOME only ✅ | Execution (A4) | NEW-GAP15 | Sprint 12 — arch-council reviewed; migrations applied |
+| M3 | NEW-GAP6: Check-off dues handler — `2% × (BASIC + HOUSING + TRANSPORT)`, `component_class='statutory_deduction'`; seed `component_metadata` row ✅ | Execution (A4) | NEW-GAP6 | Sprint 13 — `percentage_of_sum` calculation method; is_union_member eligibility gate |
+| M4 | GAP-10-FIX: Life insurance flat ₦2,000 — change `rate × GROSS_PAY` to flat-amount pattern; seed `employer_amount=2000` in `rules_jsonb` ✅ | Execution (A4) | GAP-10 | Sprint 13 — flat-amount handler with DEPRECATION fallback for rate-based clients |
+| M5 | NEW-GAP7: NSITF/ITF employer cost handlers — `1% × (BASIC + HOUSING + TRANSPORT)` each; `component_class='employer_cost'`; no employee net-pay deduction ✅ | Execution (A4) | NEW-GAP7 | Sprint 13 — ITF threshold gate (≥5 employees AND ≥₦50M annual payroll) |
 
 ---
 
@@ -439,7 +441,7 @@ WI-08 must land before WI-03 can be safely implemented. WI-03 remains blocked un
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
 | N1 | WI-08: Merge `_rule_trace` from `apply_payroll_rules()` into `component_trace_jsonb` (currently discarded unconditionally); add `rate_basis` field to each trace entry ⬜ | Correctness (A10) | WI-08 | **Arch-council required** — extends `component_trace_jsonb` schema contract; downstream: UI renderer + retry snapshot reader |
-| N2 | WI-03: Proration factor fix — `ot_multiplier` + `daily_rate_deduction` to reconstruct full BASIC as rate base (**BLOCKED**) ⬜ | Execution (A4) | WI-03 | **BLOCKED** — awaiting Model A/B decision from client; configurable proration model preferred; re-run arch-council after unblocked |
+| N2 | WI-03: Proration factor fix — `ot_multiplier` + `daily_rate_deduction` to reconstruct full BASIC as rate base (**PARTIALLY ADDRESSED**) 🔜 | Execution (A4) | WI-03 | Ordering fix (hire proration moved after `apply_payroll_rules`) lands in Sprint 14 — resolves `daily_rate_deduction` rate-base issue. `ot_multiplier` rate-base reconstruction is separate story if still needed. |
 
 ---
 
@@ -512,7 +514,39 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint 10, 2026-05-01)
+## Sprint 14 — Workspace-Configurable Hire Proration
+
+**Sprint goal:** Make mid-period hire and termination proration respect the per-component `proration_strategy` already configured by each workspace (`work_days`, `calendar_days`, `fixed_30`). Fix the sequencing bug that causes hire proration to corrupt the rate base for absence deductions. Introduce structured per-component proration entries in `component_trace_jsonb`. Fix the WorkspaceConfig UI overwrite bug that silently resets `proration_strategy` on save.
+
+**Arch-council:** ✅ APPROVED WITH CONDITIONS — session 2026-05-05. All conditions resolved.
+
+**Story file:** `docs/stories/sprint-14-hire-proration-configurable.md`
+
+**Roadmap refs:** Track N (N2 partial), Track UI (WorkspaceConfig bug)
+
+---
+
+### Story Index
+
+| Story | Summary | Priority | Effort | Gate |
+|-------|---------|----------|--------|------|
+| P1 | Workspace-configurable hire proration — strategy-aware `compute_hire_termination_factor`, ordering fix, per-component loop, trace entries | P1 | M | Arch-council ✅ |
+| P2 | WorkspaceConfig second edit-form `proration_strategy` default overwrite fix | P2 | XS | None |
+
+---
+
+### Explicitly Out of Scope (Sprint 14)
+
+| Item | Ref | Reason |
+|------|-----|--------|
+| N1 — Merge `_rule_trace` into `component_trace_jsonb` | N1 | Separate arch-council gate |
+| `ot_multiplier` rate-base reconstruction | N2 remainder | Self-prorating via input quantity; separate story if needed |
+| Retroactive re-calculation of existing runs | — | Runs are immutable once persisted |
+| Workspace-level global `proration_strategy` default | — | Per-component is correct granularity; global default is a future enhancement |
+
+---
+
+## Known Test Failures (Pre-existing — Live State as of Sprint 14, 2026-05-10)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 

@@ -772,9 +772,9 @@ function EditSalaryDefSlideOver({
 // ── Edit Component Override SlideOver ─────────────────────────────────────────
 
 const PRORATION_OPTIONS = [
-  { value: 'FULL_MONTH', label: 'Full Month' },
-  { value: 'CALENDAR_DAYS', label: 'Calendar Days' },
-  { value: 'WORKING_DAYS', label: 'Working Days' },
+  { value: 'work_days',     label: 'Working Days' },
+  { value: 'calendar_days', label: 'Calendar Days' },
+  { value: 'fixed_30',      label: 'Fixed 30-Day Month' },
 ];
 
 function EditComponentOverrideSlideOver({
@@ -791,7 +791,7 @@ function EditComponentOverrideSlideOver({
   onSaved: () => void;
 }) {
   const [isActive, setIsActive] = useState(true);
-  const [prorationStrategy, setProrationStrategy] = useState('FULL_MONTH');
+  const [prorationStrategy, setProrationStrategy] = useState('work_days');
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -799,7 +799,7 @@ function EditComponentOverrideSlideOver({
   useEffect(() => {
     if (open && co) {
       setIsActive(co.is_active);
-      setProrationStrategy(co.proration_strategy ?? 'FULL_MONTH');
+      setProrationStrategy(co.proration_strategy ?? 'work_days');
       setRateValues(
         Object.fromEntries(
           Object.entries(co.overrides_json ?? {}).map(([k, v]) => [k, String(v)])
@@ -901,11 +901,13 @@ function EditComponentOverrideSlideOver({
 function AddComponentOverrideSlideOver({
   open,
   workspaceId,
+  existingOverrides,
   onClose,
   onSaved,
 }: {
   open: boolean;
   workspaceId: string;
+  existingOverrides: ComponentOverride[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -913,23 +915,38 @@ function AddComponentOverrideSlideOver({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [componentCode, setComponentCode] = useState('');
   const [isActive, setIsActive] = useState(true);
-  const [prorationStrategy, setProrationStrategy] = useState('FULL_MONTH');
+  const [prorationStrategy, setProrationStrategy] = useState('work_days');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-populate from existing override whenever the selected component changes.
+  function applyExistingOverride(code: string) {
+    const existing = existingOverrides.find((o) => o.component_name === code);
+    if (existing) {
+      setIsActive(existing.is_active ?? true);
+      setProrationStrategy(existing.proration_strategy ?? 'work_days');
+    } else {
+      setIsActive(true);
+      setProrationStrategy('work_days');
+    }
+  }
 
   useEffect(() => {
     if (open) {
       setError(null);
       setLoadError(null);
-      setIsActive(true);
-      setProrationStrategy('FULL_MONTH');
       workspaceApi.getPlatformComponents(workspaceId)
         .then((comps) => {
           setPlatformComponents(comps);
-          if (comps.length > 0) setComponentCode(comps[0].component_code);
+          if (comps.length > 0) {
+            const firstCode = comps[0].component_code;
+            setComponentCode(firstCode);
+            applyExistingOverride(firstCode);
+          }
         })
         .catch(() => setLoadError('Could not load components. Close and try again.'));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workspaceId]);
 
   async function handleSave() {
@@ -970,7 +987,7 @@ function AddComponentOverrideSlideOver({
         <SelectField
           label="Component"
           value={componentCode}
-          onChange={setComponentCode}
+          onChange={(v) => { setComponentCode(v); applyExistingOverride(v); }}
         >
           {platformComponents.map((c) => (
             <option key={c.component_code} value={c.component_code}>{c.label} ({c.component_code})</option>
@@ -2721,6 +2738,7 @@ export function WorkspaceConfig() {
       <AddComponentOverrideSlideOver
         open={addOverrideOpen}
         workspaceId={workspaceId}
+        existingOverrides={config?.component_overrides ?? []}
         onClose={() => setAddOverrideOpen(false)}
         onSaved={loadConfig}
       />

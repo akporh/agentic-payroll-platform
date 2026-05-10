@@ -250,11 +250,12 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
 
     # ── Workspace component overrides (disable + flat-amount + proration) ─────
     override_rows = db.execute(
-        text("SELECT component_code, overrides_json FROM client_component_metadata WHERE workspace_id = :wid"),
+        text("SELECT component_code, overrides_json, proration_strategy FROM client_component_metadata WHERE workspace_id = :wid"),
         {"wid": workspace_id},
     ).fetchall()
 
     client_overrides = {r[0]: r[1] for r in override_rows}
+    ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
 
     disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
     if disabled_codes:
@@ -279,6 +280,18 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
                 client_meta[code][key] = {**client_meta[code][key], **val}
             else:
                 client_meta[code][key] = val
+
+    # Reconcile the dedicated proration_strategy column into calculations_behaviour.
+    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+    # engine reads client_meta[code]["calculations_behaviour"]["proration_strategy"].
+    for code, strategy in ws_proration_col.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        cb = client_meta[code].get("calculations_behaviour")
+        if isinstance(cb, dict):
+            cb["proration_strategy"] = strategy
+        else:
+            client_meta[code]["calculations_behaviour"] = {"proration_strategy": strategy}
 
     # ── Payroll rules ─────────────────────────────────────────────────────────
     # When the run has a rule_set_id (v2 temporal runs) load items from
