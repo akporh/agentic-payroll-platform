@@ -21,7 +21,7 @@
 | **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
 | **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
-| **Sprint 14** | — | — | 1🔜 (hire proration N2-partial) | — | — | 1🔜 (trace entries) |
+| **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
 | **Track S — Security** | — | — | — | — | — | 3✅ (SEC-S1/S2/S3 shipped Sprint 13) |
 | **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
@@ -530,8 +530,8 @@ navigating through the setup wizard.
 
 | Story | Summary | Priority | Effort | Gate |
 |-------|---------|----------|--------|------|
-| P1 | Workspace-configurable hire proration — strategy-aware `compute_hire_termination_factor`, ordering fix, per-component loop, trace entries | P1 | M | Arch-council ✅ |
-| P2 | WorkspaceConfig second edit-form `proration_strategy` default overwrite fix | P2 | XS | None |
+| P1 ✅ | Workspace-configurable hire proration — strategy-aware `compute_hire_termination_factor`, ordering fix, per-component loop, trace entries | P1 | M | Arch-council ✅ |
+| P2 ✅ | WorkspaceConfig second edit-form `proration_strategy` default overwrite fix | P2 | XS | None |
 
 ---
 
