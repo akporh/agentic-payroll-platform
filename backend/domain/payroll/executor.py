@@ -254,7 +254,11 @@ def _run_sequential(
     # --- Mid-period hire / termination proration ---
     # Applied after apply_payroll_rules so daily_rate_deduction uses the correct
     # full-month base. Each component uses its own proration_strategy from client_meta.
-    if _contract_start or _contract_end:
+    # Skipped for TIMESHEET employees — the derivation service is the sole proration
+    # mechanism; executor proration would double-count the factor (AC-5).
+    if full_context.get("timesheet_source"):
+        full_context["_hire_proration_applied"] = False
+    elif _contract_start or _contract_end:
         proration_entries: list[dict] = []
         hire_proration_applied = False
 

@@ -1470,3 +1470,105 @@ def export_full_detail(workspace_id: str, run_id: str):
         )
 
     return _streaming_csv(buf.getvalue(), f"full_detail_{run_id[:8]}.csv")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Timesheet endpoints (TM-2, TM-3, TM-5, TM-6)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from fastapi import UploadFile, File
+from backend.application import timesheet_derivation_service
+from backend.infra.repositories import workspace_config_repo as _ws_cfg_repo
+from backend.infra.repositories import timesheet_repo as _ts_repo
+
+
+def _require_timesheet_enabled(workspace_id: str) -> None:
+    cfg = _ws_cfg_repo.get_workspace_payroll_config(workspace_id)
+    if not cfg.get("timesheet_enabled"):
+        raise HTTPException(status_code=400, detail="Timesheet is not enabled for this workspace.")
+
+
+@router.post("/workspaces/{workspace_id}/timesheet/upload")
+async def upload_timesheet(
+    workspace_id: str,
+    period_start: str,
+    period_end: str,
+    file: UploadFile = File(...),
+):
+    """Upload a timesheet Excel file for a pay period. TM-2."""
+    _require_timesheet_enabled(workspace_id)
+    file_bytes = await file.read()
+    ps = date.fromisoformat(period_start)
+    pe = date.fromisoformat(period_end)
+    result = timesheet_derivation_service.upload_timesheet(workspace_id, ps, pe, file_bytes)
+    return result
+
+
+@router.post("/workspaces/{workspace_id}/timesheet/derive")
+def derive_timesheet(workspace_id: str, payload: dict):
+    """Trigger derivation for all PENDING/FAILED timesheet entries. TM-3."""
+    _require_timesheet_enabled(workspace_id)
+    period_start = date.fromisoformat(payload["period_start"])
+    period_end   = date.fromisoformat(payload["period_end"])
+    return timesheet_derivation_service.trigger_derivation(workspace_id, period_start, period_end)
+
+
+@router.post("/workspaces/{workspace_id}/timesheet/approve")
+def approve_timesheet_period(workspace_id: str, payload: dict):
+    """Approve a timesheet period — writes payroll_input rows atomically. TM-5."""
+    _require_timesheet_enabled(workspace_id)
+    period_start = date.fromisoformat(payload["period_start"])
+    period_end   = date.fromisoformat(payload["period_end"])
+    result = timesheet_derivation_service.approve_period(workspace_id, period_start, period_end)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/workspaces/{workspace_id}/timesheet/status")
+def get_timesheet_status(workspace_id: str, period_start: str):
+    """Return derivation status for all employees for a period. TM-6."""
+    _require_timesheet_enabled(workspace_id)
+    ps = date.fromisoformat(period_start)
+    entries = _ts_repo.get_entries_for_period(workspace_id, ps)
+    return {"entries": entries}
+
+
+@router.get("/workspaces/{workspace_id}/timesheet/audit/{employee_id}")
+def get_timesheet_audit(workspace_id: str, employee_id: str, period_start: str):
+    """Return full derivation audit trail for one employee. TM-6."""
+    _require_timesheet_enabled(workspace_id)
+    ps = date.fromisoformat(period_start)
+    from backend.infra.db.session import SessionLocal
+    from sqlalchemy import text as _text
+    entry = _ts_repo.get_entry_with_grid(workspace_id, employee_id, ps)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No timesheet entry found for this employee and period.")
+    db = SessionLocal()
+    try:
+        pi_rows = db.execute(
+            _text("""
+                SELECT input_code, input_category, quantity, source, reference_date
+                FROM payroll_input
+                WHERE workspace_id = :wid AND employee_id = :emp_id
+                  AND source IN ('TIMESHEET', 'MANUAL_OT')
+                ORDER BY source, input_code
+            """),
+            {"wid": workspace_id, "emp_id": employee_id},
+        ).fetchall()
+    finally:
+        db.close()
+
+    return {
+        "timesheet_entry":     entry,
+        "payroll_input_rows":  [
+            {
+                "input_code":     r[0],
+                "input_category": r[1],
+                "quantity":       float(r[2]) if r[2] is not None else None,
+                "source":         r[3],
+                "reference_date": str(r[4]) if r[4] else None,
+            }
+            for r in pi_rows
+        ],
+    }

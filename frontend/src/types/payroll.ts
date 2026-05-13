@@ -107,6 +107,41 @@ export interface WorkspacePayrollConfig {
   sunday_ph_rule: 'PH_TAKES_PRECEDENCE' | 'DAY_OF_WEEK_TAKES_PRECEDENCE';
   d3_leave_overlap_rule: 'LEAVE_ABSORBS_PH';
   d4_absence_rule: 'ABSENT_IS_DEDUCTIBLE' | 'PH_EXCUSES_ABSENCE';
+  timesheet_enabled?: boolean;
+  attendance_template_version?: string | null;
+}
+
+export type DerivationStatus = 'PENDING' | 'DERIVED' | 'APPROVED' | 'FAILED';
+
+export interface TimesheetEntry {
+  timesheet_entry_id: string;
+  workspace_id: string;
+  employee_id: string;
+  employee_name: string;
+  employee_number: string;
+  period_start: string;
+  period_end: string;
+  derivation_status: DerivationStatus;
+  derivation_error: string | null;
+  derivation_summary_jsonb: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttendanceCodeConfig {
+  attendance_code_config_id?: string;
+  workspace_id?: string;
+  client_code: string;
+  description: string | null;
+  category: 'WORK' | 'LEAVE' | 'OT' | 'SHIFT';
+  is_active: boolean;
+  has_policy?: boolean;
+  counts_as_paid?: boolean;
+  counts_towards_ot_threshold?: boolean;
+  hours_equivalent?: number | null;
+  unit_fraction?: number | null;
+  eligible_for_shift_allowance?: boolean;
+  eligible_for_ot?: boolean;
 }
 
 export interface RateCode {

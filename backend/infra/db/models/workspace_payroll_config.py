@@ -16,5 +16,6 @@ class WorkspacePayrollConfig(Base):
     sunday_ph_rule        = Column(String(50),  nullable=False, default="PH_TAKES_PRECEDENCE")
     d3_leave_overlap_rule = Column(String(50),  nullable=False, default="LEAVE_ABSORBS_PH")
     d4_absence_rule       = Column(String(50),  nullable=False, default="ABSENT_IS_DEDUCTIBLE")
+    timesheet_enabled     = Column(Boolean,     nullable=False, server_default="false")
     updated_at            = Column(TIMESTAMPTZ, nullable=False)
     updated_by            = Column(UUID(as_uuid=True))

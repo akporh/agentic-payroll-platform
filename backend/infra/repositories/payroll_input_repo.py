@@ -92,7 +92,7 @@ def load_inputs_for_run(payroll_run_id: str) -> dict:
     try:
         rows = db.execute(
             text("""
-                SELECT employee_id, input_code, input_category, quantity, reference_date
+                SELECT employee_id, input_code, input_category, quantity, reference_date, source
                 FROM payroll_input
                 WHERE payroll_run_id = :run_id
                 ORDER BY employee_id, input_code
@@ -112,6 +112,7 @@ def load_inputs_for_run(payroll_run_id: str) -> dict:
                 "quantity":       float(row[3]) if row[3] is not None else None,
                 "category":       row[2],
                 "reference_date": row[4],
+                "source":         row[5] or "MANUAL",
             })
         return inputs_by_employee
     finally:
@@ -275,3 +276,80 @@ def delete_input(workspace_id: str, payroll_input_id: str) -> bool:
         return result.rowcount > 0
     finally:
         db.close()
+
+
+def delete_unclaimed_timesheet_inputs(
+    workspace_id: str,
+    employee_id: str,
+    period_start: date,
+    period_end: date,
+) -> int:
+    """Delete unclaimed TIMESHEET-source rows for an employee/period before re-derivation.
+
+    MANUAL_OT and INPUT_FILE rows for the same employee/period are untouched.
+    Returns number of rows deleted.
+    """
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("""
+                DELETE FROM payroll_input
+                WHERE workspace_id    = :wid
+                  AND employee_id     = :emp_id
+                  AND source          = 'TIMESHEET'
+                  AND payroll_run_id  IS NULL
+                  AND (
+                        reference_date IS NULL
+                     OR (reference_date >= :ps AND reference_date <= :pe)
+                  )
+            """),
+            {"wid": workspace_id, "emp_id": employee_id, "ps": period_start, "pe": period_end},
+        )
+        db.commit()
+        return result.rowcount
+    finally:
+        db.close()
+
+
+def batch_create_timesheet_inputs(
+    workspace_id: str,
+    rows: list[dict],
+    db=None,
+) -> None:
+    """Batch-insert TIMESHEET-source payroll_input rows inside the caller's transaction.
+
+    Each dict in rows must have: employee_id, input_code, input_category, quantity,
+    reference_date (may be None), rate_code (optional — stored as input_code if provided).
+
+    If db is provided the caller owns the transaction and this function does NOT commit.
+    If db is None a new session is opened and committed here.
+    """
+    own_session = db is None
+    if own_session:
+        db = SessionLocal()
+    try:
+        for row in rows:
+            db.execute(
+                text("""
+                    INSERT INTO payroll_input (
+                        payroll_input_id, workspace_id, employee_id,
+                        input_code, input_category, quantity, source, reference_date
+                    ) VALUES (
+                        gen_random_uuid(), :wid, :emp_id,
+                        :code, :category, :qty, 'TIMESHEET', :reference_date
+                    )
+                """),
+                {
+                    "wid":            workspace_id,
+                    "emp_id":         row["employee_id"],
+                    "code":           row["input_code"],
+                    "category":       row["input_category"],
+                    "qty":            row["quantity"],
+                    "reference_date": row.get("reference_date"),
+                },
+            )
+        if own_session:
+            db.commit()
+    finally:
+        if own_session:
+            db.close()

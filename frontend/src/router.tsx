@@ -12,6 +12,8 @@ import { PayrollInputsBulkUpload } from './pages/PayrollInputsBulkUpload';
 import { WorkspaceConfig } from './pages/WorkspaceConfig';
 import { PublicHolidays } from './pages/PublicHolidays';
 import { RateCodes } from './pages/RateCodes';
+import { AttendanceConfiguration } from './pages/AttendanceConfiguration';
+import { TimesheetUpload } from './pages/TimesheetUpload';
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +29,8 @@ export const router = createBrowserRouter([
           { path: 'setup', element: <WorkspaceSetup /> },
           { path: 'public-holidays', element: <PublicHolidays /> },
           { path: 'rate-codes', element: <RateCodes /> },
+          { path: 'attendance-configuration', element: <AttendanceConfiguration /> },
+          { path: 'timesheet', element: <TimesheetUpload /> },
           { path: 'employees', element: <Employees /> },
           {
             path: 'payroll',

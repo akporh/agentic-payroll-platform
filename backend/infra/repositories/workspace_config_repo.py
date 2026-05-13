@@ -18,6 +18,7 @@ _DEFAULTS = {
     "sunday_ph_rule":        "PH_TAKES_PRECEDENCE",
     "d3_leave_overlap_rule": "LEAVE_ABSORBS_PH",
     "d4_absence_rule":       "ABSENT_IS_DEDUCTIBLE",
+    "timesheet_enabled":     False,
 }
 
 
@@ -36,6 +37,7 @@ def get_workspace_payroll_config(workspace_id: str) -> dict:
                     ph_mode, ph_rate_code,
                     saturday_ph_rule, sunday_ph_rule,
                     d3_leave_overlap_rule, d4_absence_rule,
+                    timesheet_enabled,
                     updated_at, updated_by
                 FROM workspace_payroll_config
                 WHERE workspace_id  = :wid
@@ -59,8 +61,9 @@ def get_workspace_payroll_config(workspace_id: str) -> dict:
             "sunday_ph_rule":        row[6],
             "d3_leave_overlap_rule": row[7],
             "d4_absence_rule":       row[8],
-            "updated_at":            row[9].isoformat() if row[9] else None,
-            "updated_by":            str(row[10]) if row[10] else None,
+            "timesheet_enabled":     bool(row[9]) if row[9] is not None else False,
+            "updated_at":            row[10].isoformat() if row[10] else None,
+            "updated_by":            str(row[11]) if row[11] else None,
         }
     finally:
         db.close()
@@ -76,6 +79,7 @@ def upsert_workspace_payroll_config(
     sunday_ph_rule: str | None = None,
     d3_leave_overlap_rule: str | None = None,
     d4_absence_rule: str | None = None,
+    timesheet_enabled: bool | None = None,
     updated_by: str | None = None,
 ) -> dict:
     """Insert a new versioned config row, or update the row for an existing
@@ -95,6 +99,7 @@ def upsert_workspace_payroll_config(
                     ph_mode, ph_rate_code,
                     saturday_ph_rule, sunday_ph_rule,
                     d3_leave_overlap_rule, d4_absence_rule,
+                    timesheet_enabled,
                     updated_at, updated_by
                 )
                 VALUES (
@@ -105,6 +110,7 @@ def upsert_workspace_payroll_config(
                     COALESCE(:sunday_ph_rule,         'PH_TAKES_PRECEDENCE'),
                     COALESCE(:d3_leave_overlap_rule,  'LEAVE_ABSORBS_PH'),
                     COALESCE(:d4_absence_rule,        'ABSENT_IS_DEDUCTIBLE'),
+                    COALESCE(:timesheet_enabled,      FALSE),
                     now(),
                     :updated_by
                 )
@@ -116,6 +122,7 @@ def upsert_workspace_payroll_config(
                     sunday_ph_rule        = COALESCE(:sunday_ph_rule,       EXCLUDED.sunday_ph_rule),
                     d3_leave_overlap_rule = COALESCE(:d3_leave_overlap_rule,EXCLUDED.d3_leave_overlap_rule),
                     d4_absence_rule       = COALESCE(:d4_absence_rule,      EXCLUDED.d4_absence_rule),
+                    timesheet_enabled     = COALESCE(:timesheet_enabled,    EXCLUDED.timesheet_enabled),
                     updated_at            = now(),
                     updated_by            = :updated_by
             """),
@@ -128,6 +135,7 @@ def upsert_workspace_payroll_config(
                 "sunday_ph_rule":        sunday_ph_rule,
                 "d3_leave_overlap_rule": d3_leave_overlap_rule,
                 "d4_absence_rule":       d4_absence_rule,
+                "timesheet_enabled":     timesheet_enabled,
                 "updated_by":            updated_by,
             },
         )

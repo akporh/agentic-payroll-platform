@@ -28,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import text
 
 from backend.infra.db.session import SessionLocal
+from backend.infra.repositories import workspace_config_repo, timesheet_repo
 
 
 def validate_payroll_run_ready(run_id: str) -> dict:
@@ -106,6 +107,23 @@ def validate_payroll_run_ready(run_id: str) -> dict:
                 f"Payroll run already has {result_count} result(s); "
                 "cannot execute a run that already has results"
             )
+
+        # -------------------------------------------------------------------
+        # 4.5 (C2) Timesheet completeness gate.
+        # For timesheet-enabled workspaces, all employees must have
+        # derivation_status = APPROVED before the run can be submitted.
+        # -------------------------------------------------------------------
+        if period_start is not None:
+            ws_config = workspace_config_repo.get_workspace_payroll_config(workspace_id)
+            if ws_config.get("timesheet_enabled"):
+                non_approved = timesheet_repo.get_non_approved_employees(workspace_id, period_start)
+                if non_approved:
+                    sample = non_approved[:5]
+                    suffix = f" and {len(non_approved) - 5} more" if len(non_approved) > 5 else ""
+                    errors.append(
+                        f"Timesheet derivation not approved for {len(non_approved)} employee(s): "
+                        + ", ".join(sample) + suffix
+                    )
 
         # -------------------------------------------------------------------
         # 5–8. Employee, salary definition, and component checks.

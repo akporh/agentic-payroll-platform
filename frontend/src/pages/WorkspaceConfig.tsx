@@ -1777,6 +1777,7 @@ function EditPayrollConfigSlideOver({
   const [sunRule, setSunRule] = useState('PH_TAKES_PRECEDENCE');
   const [d3Rule, setD3Rule] = useState('LEAVE_ABSORBS_PH');
   const [d4Rule, setD4Rule] = useState('ABSENT_IS_DEDUCTIBLE');
+  const [timesheetEnabled, setTimesheetEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1788,6 +1789,7 @@ function EditPayrollConfigSlideOver({
       setSunRule(current.sunday_ph_rule);
       setD3Rule(current.d3_leave_overlap_rule ?? 'LEAVE_ABSORBS_PH');
       setD4Rule(current.d4_absence_rule ?? 'ABSENT_IS_DEDUCTIBLE');
+      setTimesheetEnabled(current.timesheet_enabled ?? false);
       setError(null);
     }
   }, [open, current]);
@@ -1803,6 +1805,7 @@ function EditPayrollConfigSlideOver({
         sunday_ph_rule: sunRule as WorkspacePayrollConfig['sunday_ph_rule'],
         d3_leave_overlap_rule: d3Rule as WorkspacePayrollConfig['d3_leave_overlap_rule'],
         d4_absence_rule: d4Rule as WorkspacePayrollConfig['d4_absence_rule'],
+        timesheet_enabled: timesheetEnabled,
         effective_from: new Date().toISOString().slice(0, 10),
       });
       onSaved();
@@ -1862,6 +1865,14 @@ function EditPayrollConfigSlideOver({
           <option value="ABSENT_IS_DEDUCTIBLE">Absent is deductible</option>
           <option value="PH_EXCUSES_ABSENCE">PH excuses absence</option>
         </SelectField>
+        <div className="pt-2 border-t border-gray-100">
+          <Toggle
+            label="Timesheet Mode"
+            checked={timesheetEnabled}
+            onChange={setTimesheetEnabled}
+            hint="When enabled, payroll inputs are derived from daily attendance grids. Enabling seeds the workspace with the standard attendance code set."
+          />
+        </div>
       </div>
     </SlideOver>
   );
@@ -2475,6 +2486,28 @@ export function WorkspaceConfig() {
                       <Dt label="Leave Overlap" value={phConfig.d3_leave_overlap_rule?.replace(/_/g, ' ') ?? '—'} />
                       <Dt label="Absence Rule" value={phConfig.d4_absence_rule?.replace(/_/g, ' ') ?? '—'} />
                     </dl>
+                    <dl className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                      <div>
+                        <dt className="text-gray-500 text-xs font-medium mb-1">Timesheet Mode</dt>
+                        <dd><StatusBadge status={phConfig.timesheet_enabled ? 'ENABLED' : 'DISABLED'} size="sm" /></dd>
+                      </div>
+                      {phConfig.timesheet_enabled && (
+                        <div>
+                          <dt className="text-gray-500 text-xs font-medium mb-1">Attendance Template</dt>
+                          <dd className="text-sm">{phConfig.attendance_template_version ?? '—'}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    {phConfig.timesheet_enabled && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <Link
+                          to={`/workspaces/${workspaceId}/attendance-configuration`}
+                          className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          Manage attendance codes →
+                        </Link>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-gray-400">No payroll behaviour configured. Defaults apply.</p>

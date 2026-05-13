@@ -1303,11 +1303,23 @@ class PayrollConfigUpsertSchema(BaseModel):
     sunday_ph_rule: str | None = None
     d3_leave_overlap_rule: str | None = None
     d4_absence_rule: str | None = None
+    timesheet_enabled: bool | None = None
 
 
 @router.put("/workspaces/{workspace_id}/payroll-config")
 def put_payroll_config(workspace_id: str, payload: PayrollConfigUpsertSchema):
-    """Insert or update a versioned payroll config row for a workspace."""
+    """Insert or update a versioned payroll config row for a workspace.
+
+    When timesheet_enabled transitions to True and no attendance codes exist yet,
+    seeds the workspace from the platform v1 template automatically.
+    """
+    from backend.infra.repositories import attendance_config_repo as _att_repo
+
+    if payload.timesheet_enabled is True:
+        existing_codes = _att_repo.get_all_code_client_codes(workspace_id)
+        if not existing_codes:
+            _att_repo.seed_from_platform_templates(workspace_id)
+
     return upsert_workspace_payroll_config(
         workspace_id,
         payload.effective_from,
@@ -1317,6 +1329,7 @@ def put_payroll_config(workspace_id: str, payload: PayrollConfigUpsertSchema):
         sunday_ph_rule=payload.sunday_ph_rule,
         d3_leave_overlap_rule=payload.d3_leave_overlap_rule,
         d4_absence_rule=payload.d4_absence_rule,
+        timesheet_enabled=payload.timesheet_enabled,
     )
 
 
@@ -1432,3 +1445,177 @@ def remove_public_holiday(workspace_id: str, holiday_id: str):
         )
 
     return {"status": "ok", "holiday_id": holiday_id}
+
+
+# ---------------------------------------------------------------------------
+# TM-7 — Attendance Code & Policy Configuration
+# ---------------------------------------------------------------------------
+
+from backend.infra.repositories import attendance_config_repo as _att_cfg_repo
+
+
+def _require_attendance_enabled(workspace_id: str) -> None:
+    cfg = get_workspace_payroll_config(workspace_id)
+    if not cfg.get("timesheet_enabled"):
+        raise HTTPException(
+            status_code=400,
+            detail="Timesheet is not enabled for this workspace.",
+        )
+
+
+@router.get("/workspaces/{workspace_id}/attendance-codes")
+def list_attendance_codes(workspace_id: str):
+    """Return all attendance codes for the workspace, joined with their policy rows."""
+    _require_attendance_enabled(workspace_id)
+    return _att_cfg_repo.get_attendance_codes(workspace_id)
+
+
+class AttendanceCodeCreateSchema(BaseModel):
+    client_code: str
+    description: str | None = None
+    category: str
+    is_active: bool = True
+    counts_as_paid: bool = True
+    counts_towards_ot_threshold: bool = True
+    hours_equivalent: Decimal | None = None
+    unit_fraction: Decimal | None = None
+    eligible_for_shift_allowance: bool = False
+    eligible_for_ot: bool = False
+
+
+@router.post("/workspaces/{workspace_id}/attendance-codes", status_code=201)
+def create_attendance_code(workspace_id: str, payload: AttendanceCodeCreateSchema):
+    """Create an attendance code and its policy row atomically.
+
+    Both semantic (code) and pay interpretation (policy) fields are required.
+    Returns 400 for invalid policy combinations.
+    """
+    _require_attendance_enabled(workspace_id)
+
+    valid_categories = {"WORK", "LEAVE", "OT", "SHIFT"}
+    if payload.category not in valid_categories:
+        raise HTTPException(
+            status_code=400,
+            detail=f"category must be one of {sorted(valid_categories)}.",
+        )
+    if not payload.counts_as_paid and payload.counts_towards_ot_threshold:
+        raise HTTPException(
+            status_code=400,
+            detail="counts_towards_ot_threshold cannot be True when counts_as_paid is False.",
+        )
+    if payload.hours_equivalent is not None and payload.unit_fraction is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="hours_equivalent and unit_fraction are mutually exclusive.",
+        )
+
+    try:
+        code_row = _att_cfg_repo.upsert_attendance_code(
+            workspace_id,
+            payload.client_code.upper(),
+            description=payload.description,
+            category=payload.category,
+            is_active=payload.is_active,
+        )
+        policy_row = _att_cfg_repo.upsert_attendance_policy(
+            workspace_id,
+            payload.client_code.upper(),
+            counts_as_paid=payload.counts_as_paid,
+            counts_towards_ot_threshold=payload.counts_towards_ot_threshold,
+            hours_equivalent=payload.hours_equivalent,
+            unit_fraction=payload.unit_fraction,
+            eligible_for_shift_allowance=payload.eligible_for_shift_allowance,
+            eligible_for_ot=payload.eligible_for_ot,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {**code_row, **policy_row}
+
+
+class AttendanceCodePatchSchema(BaseModel):
+    description: str | None = None
+    is_active: bool | None = None
+
+
+@router.patch("/workspaces/{workspace_id}/attendance-codes/{client_code}")
+def patch_attendance_code(workspace_id: str, client_code: str, payload: dict):
+    """Update description or is_active for an attendance code.
+
+    Category is immutable after creation — returns 400 if included in the payload.
+    """
+    _require_attendance_enabled(workspace_id)
+
+    if "category" in payload:
+        raise HTTPException(
+            status_code=400,
+            detail="attendance code category is immutable after creation.",
+        )
+
+    allowed = {"description", "is_active"}
+    unknown = set(payload.keys()) - allowed
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown fields: {sorted(unknown)}. Allowed: {sorted(allowed)}.",
+        )
+
+    try:
+        updated = _att_cfg_repo.upsert_attendance_code(
+            workspace_id,
+            client_code.upper(),
+            **{k: v for k, v in payload.items() if k in allowed},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return updated
+
+
+class AttendancePolicyPatchSchema(BaseModel):
+    counts_as_paid: bool | None = None
+    counts_towards_ot_threshold: bool | None = None
+    hours_equivalent: Decimal | None = None
+    unit_fraction: Decimal | None = None
+    eligible_for_shift_allowance: bool | None = None
+    eligible_for_ot: bool | None = None
+
+
+@router.patch("/workspaces/{workspace_id}/attendance-policies/{client_code}")
+def patch_attendance_policy(workspace_id: str, client_code: str, payload: AttendancePolicyPatchSchema):
+    """Update pay interpretation fields for an attendance policy.
+
+    Returns 400 for invalid combinations (e.g. counts_as_paid=false + counts_towards_ot_threshold=true).
+    """
+    _require_attendance_enabled(workspace_id)
+
+    update_fields = payload.model_dump(exclude_none=True)
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+
+    # Validate constraint combinations using the merged state
+    existing = _att_cfg_repo.get_attendance_policies_for_derivation(workspace_id)
+    existing_policy = existing.get(client_code.upper(), {})
+    merged = {**existing_policy, **update_fields}
+
+    if not merged.get("counts_as_paid", True) and merged.get("counts_towards_ot_threshold", False):
+        raise HTTPException(
+            status_code=400,
+            detail="counts_towards_ot_threshold cannot be True when counts_as_paid is False.",
+        )
+    if merged.get("hours_equivalent") is not None and merged.get("unit_fraction") is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="hours_equivalent and unit_fraction are mutually exclusive.",
+        )
+
+    try:
+        updated = _att_cfg_repo.upsert_attendance_policy(
+            workspace_id,
+            client_code.upper(),
+            **update_fields,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return updated

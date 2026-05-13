@@ -86,6 +86,23 @@ def process_payroll_run(
         # (sequential_executor) receive correct per-employee values.
         emp_context = {**(context or {}), "shift_type": shift_type, "salary_basis": salary_basis}
 
+        # C1: Per-employee expected_hours based on shift_type (fixes hardcoded 8h/day).
+        _hours_per_day_map = {"DAY": 8, "S.DAY": 8, "2_SHIFT": 8, "4_SHIFT": 12}
+        _hours_per_day = _hours_per_day_map.get(shift_type or "DAY", 8)
+        _expected_days = emp_context.get("expected_days") or 0
+        emp_context["expected_hours"] = _expected_days * _hours_per_day
+
+        # Timesheet-source flag: suppress executor hire-date proration when inputs
+        # originate from the derivation service (proration already applied there).
+        _all_inputs = emp.get("inputs") or {}
+        _is_timesheet = any(
+            inp.get("source") == "TIMESHEET"
+            for inp_list in _all_inputs.values()
+            for inp in (inp_list if isinstance(inp_list, list) else [inp_list])
+            if isinstance(inp, dict)
+        )
+        emp_context["timesheet_source"] = _is_timesheet
+
         tracer.info(f"[bold]Employee {short_id}[/bold]")
 
         try:

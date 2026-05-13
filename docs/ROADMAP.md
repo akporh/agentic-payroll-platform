@@ -456,7 +456,7 @@ All items require arch-council pre-clearance before implementation begins. Entry
 | O3 | WI-04 Sub-B + NEW-GAP8: Shift gate in `rule_evaluator.py` — D9 decision: `basic_daily ot_multiplier` returns ₦0 for `shift_type` in (None, "DAY"); `shift_type` threaded per employee in `batch_processor.py` ✅ | Execution (A4) | WI-04b | Sprint 11 |
 | O4 | SHIFT-ALLOWANCE-CLIENT3: Extend shift allowance for `basic_daily` rate base; SHIFT2/SHIFT3/SHIFT4 rate code seeding migration ⬜ | Execution (A4) | WI-34 | Deferred — needs stable Client 3 workspace identifier before seeding migration can run |
 | O5 | NEW-GAP11: LTA anniversary trigger — `AnniversaryService` auto-injects `payroll_input` (category=`paye_only`) for employees where `date_engaged` anniversary falls in pay period; configurable LTA amount ⬜ | Execution (A4) | NEW-GAP11 | Deferred to Sprint 12 (D10); blocked on M2 (PAYE-only additions path must land first) |
-| O6 | NEW-GAP1: Timesheet / Attendance Layer — `timesheet_entry` table; derivation pipeline auto-populates configurable OT/PH inputs at run-claim time (not hardcoded OT1/OT2/OT3 codes) ⬜ | Pay Events (A3) | NEW-GAP1 | Requires **full dedicated PM + arch-council sprint** before implementation begins; blocked on all K–N complete |
+| O6 | NEW-GAP1: Timesheet / Attendance Layer — `timesheet_entry` table; derivation pipeline auto-populates configurable OT/PH inputs at run-claim time (not hardcoded OT1/OT2/OT3 codes) 🔄 Sprint 16 in progress | Pay Events (A3) | NEW-GAP1 | Sprint 15 design sprint (arch-council locked AC-1–AC-10, C1, C2); Sprint 16 implementation: migrations MIG-D/E/A/B/C applied; timesheet derivation service + routes + frontend complete |
 
 ---
 
