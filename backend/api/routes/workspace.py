@@ -198,13 +198,20 @@ def list_employees(workspace_id: str):
                     d.designation_code   AS designation,
                     g.grade_code         AS grade,
                     ec.start_date        AS contract_start,
+                    ec.end_date          AS contract_end,
+                    (ec.end_date IS NOT NULL AND ec.end_date < CURRENT_DATE) AS is_ended,
                     ec.shift_type,
                     ec.state_of_tax,
                     ec.skill_level
                 FROM employee e
-                LEFT JOIN employee_contract ec
-                    ON ec.employee_id = e.employee_id
-                    AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                LEFT JOIN LATERAL (
+                    SELECT ec2.*
+                    FROM employee_contract ec2
+                    WHERE ec2.employee_id = e.employee_id
+                    ORDER BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                             ec2.start_date DESC NULLS LAST
+                    LIMIT 1
+                ) ec ON true
                 LEFT JOIN designation d ON d.designation_id = ec.designation_id
                 LEFT JOIN grade       g ON g.grade_id       = ec.grade_id
                 WHERE e.workspace_id = :wid
@@ -222,9 +229,11 @@ def list_employees(workspace_id: str):
                 "designation":    row[4],
                 "grade":          row[5],
                 "contract_start": str(row[6]) if row[6] else None,
-                "shift_type":     row[7],
-                "state_of_tax":   row[8],
-                "skill_level":    row[9],
+                "contract_end":   str(row[7]) if row[7] else None,
+                "is_ended":       bool(row[8]) if row[8] is not None else False,
+                "shift_type":     row[9],
+                "state_of_tax":   row[10],
+                "skill_level":    row[11],
             }
             for row in rows
         ]
@@ -354,20 +363,29 @@ def update_employee_contract(
                 )
             designation_id = str(row[0])
 
-        db.execute(
+        # Target the most recent contract regardless of end_date so that
+        # ended-contract employees (shown in their own section) can have
+        # grade/designation corrected without touching end_date.
+        result = db.execute(
             text("""
-                UPDATE employee_contract ec
-                SET grade_id        = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
-                    designation_id  = COALESCE(CAST(:designation_id AS uuid), ec.designation_id),
-                    shift_type      = CASE WHEN :shift_type_set    THEN :shift_type      ELSE ec.shift_type      END,
-                    state_of_tax    = CASE WHEN :state_set         THEN :state_of_tax    ELSE ec.state_of_tax    END,
-                    skill_level     = CASE WHEN :skill_set         THEN :skill_level     ELSE ec.skill_level     END,
-                    is_union_member = CASE WHEN :union_member_set  THEN :is_union_member ELSE ec.is_union_member  END
-                WHERE ec.employee_id = CAST(:eid AS uuid)
-                  AND ec.employee_id IN (
-                      SELECT employee_id FROM employee WHERE workspace_id = :wid
-                  )
-                  AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                UPDATE employee_contract
+                SET grade_id        = COALESCE(CAST(:grade_id AS uuid), grade_id),
+                    designation_id  = COALESCE(CAST(:designation_id AS uuid), designation_id),
+                    shift_type      = CASE WHEN :shift_type_set    THEN :shift_type      ELSE shift_type      END,
+                    state_of_tax    = CASE WHEN :state_set         THEN :state_of_tax    ELSE state_of_tax    END,
+                    skill_level     = CASE WHEN :skill_set         THEN :skill_level     ELSE skill_level     END,
+                    is_union_member = CASE WHEN :union_member_set  THEN :is_union_member ELSE is_union_member  END
+                WHERE contract_id = (
+                    SELECT ec2.contract_id
+                    FROM employee_contract ec2
+                    WHERE ec2.employee_id = CAST(:eid AS uuid)
+                      AND ec2.employee_id IN (
+                          SELECT employee_id FROM employee WHERE workspace_id = :wid
+                      )
+                    ORDER BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                             ec2.start_date DESC NULLS LAST
+                    LIMIT 1
+                )
             """),
             {
                 "grade_id":          grade_id,
@@ -384,6 +402,11 @@ def update_employee_contract(
                 "wid":               workspace_id,
             },
         )
+        if result.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No contract record found for this employee. Re-run onboarding to create one.",
+            )
         db.commit()
         return {"status": "updated", "employee_id": employee_id}
     except HTTPException:

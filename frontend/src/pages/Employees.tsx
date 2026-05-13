@@ -128,17 +128,18 @@ function EditSlideOver({ employee, gradeOptions, designationOptions, onClose, on
 
 interface TableProps {
   rows: Employee[];
-  unmatched: boolean;
+  variant?: 'active' | 'unmatched' | 'ended';
   onEdit: (emp: Employee) => void;
 }
 
-function EmployeeTable({ rows, unmatched, onEdit }: TableProps) {
+function EmployeeTable({ rows, variant = 'active', onEdit }: TableProps) {
+  const dateHeader = variant === 'ended' ? 'Contract End' : 'Contract Start';
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            {['Name', 'Employee #', 'Designation', 'Grade', 'Contract Start', 'Status', ''].map((h, i) => (
+            {['Name', 'Employee #', 'Designation', 'Grade', dateHeader, 'Status', ''].map((h, i) => (
               <th
                 key={i}
                 className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
@@ -153,14 +154,16 @@ function EmployeeTable({ rows, unmatched, onEdit }: TableProps) {
             <tr
               key={emp.employee_id}
               className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${
-                unmatched ? 'border-l-4 border-amber-400' : ''
+                variant === 'unmatched' ? 'border-l-4 border-amber-400' : ''
               }`}
             >
               <td className="px-4 py-3 font-medium text-gray-800">{emp.full_name}</td>
               <td className="px-4 py-3 font-mono text-xs text-gray-500">{emp.employee_number}</td>
               <td className="px-4 py-3 text-gray-600">{emp.designation ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
               <td className="px-4 py-3 text-gray-600">{emp.grade ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
-              <td className="px-4 py-3 text-gray-500 text-xs">{emp.contract_start ?? '—'}</td>
+              <td className="px-4 py-3 text-gray-500 text-xs">
+                {variant === 'ended' ? (emp.contract_end ?? '—') : (emp.contract_start ?? '—')}
+              </td>
               <td className="px-4 py-3">
                 <StatusBadge status={emp.status ?? 'ACTIVE'} size="sm" />
               </td>
@@ -215,14 +218,16 @@ export function Employees() {
       .finally(() => setLoading(false));
   }, [workspaceId]);
 
-  const unmatched = employees.filter((e) => !e.grade || !e.designation);
-  const matched   = employees.filter((e) => e.grade && e.designation);
+  const ended     = employees.filter((e) => e.is_ended);
+  const active    = employees.filter((e) => !e.is_ended);
+  const unmatched = active.filter((e) => !e.grade || !e.designation);
+  const matched   = active.filter((e) => e.grade && e.designation);
 
   return (
     <div className="max-w-5xl">
       <ContentHeader
         title="Employees"
-        subtitle={loading ? 'Loading…' : `${employees.length} employee${employees.length !== 1 ? 's' : ''}`}
+        subtitle={loading ? 'Loading…' : `${active.length} active · ${ended.length} ended`}
         back={
           <Breadcrumb items={[
             { label: 'Bureau Dashboard', to: '/' },
@@ -286,7 +291,7 @@ export function Employees() {
                 </div>
                 <EmployeeTable
                   rows={unmatched}
-                  unmatched
+                  variant="unmatched"
                   onEdit={setEditingEmployee}
                 />
               </Card>
@@ -303,7 +308,24 @@ export function Employees() {
               </div>
               <EmployeeTable
                 rows={matched}
-                unmatched={false}
+                variant="active"
+                onEdit={setEditingEmployee}
+              />
+            </Card>
+          )}
+
+          {/* Contract Ended section */}
+          {ended.length > 0 && (
+            <Card padding="sm">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Contract Ended — {ended.length} employee{ended.length !== 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-gray-400">Contract end date has passed</p>
+              </div>
+              <EmployeeTable
+                rows={ended}
+                variant="ended"
                 onEdit={setEditingEmployee}
               />
             </Card>

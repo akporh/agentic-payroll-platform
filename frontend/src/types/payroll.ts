@@ -51,6 +51,8 @@ export interface Employee {
   designation?: string;
   grade?: string;
   contract_start?: string;
+  contract_end?: string;
+  is_ended?: boolean;
 }
 
 export interface ReconciliationRecord {
