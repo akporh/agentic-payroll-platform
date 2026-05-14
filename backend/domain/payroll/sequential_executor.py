@@ -715,6 +715,7 @@ def run_sequential_payroll(
             "ph_source":            ctx.get("ph_source"),
             "salary_basis":           ctx.get("salary_basis", "salary_definition_absolute"),
             "shift_type":             ctx.get("shift_type"),
+            "timesheet_source":       ctx.get("timesheet_source"),
             "hire_proration_applied": ctx.get("_hire_proration_applied", False),
             "result":                 None,
         }

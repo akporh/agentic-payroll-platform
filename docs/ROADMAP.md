@@ -23,7 +23,7 @@
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
 | **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
 | **Track S — Security** | — | — | — | — | — | 5✅ closed; 3⬜ open (S6 DB constraint, S7 upload cap, S8 pin dep) |
-| **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 3⬜ new Sprint 16 (Q5/Q6/Q7); 1⬜ new Sprint 14 (Q8) | — | — | — |
+| **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 1✅ (Q5 AUD-16-3); 2⬜ new Sprint 16 (Q6/Q7); 1⬜ new Sprint 14 (Q8) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -393,7 +393,7 @@ Observations are logged here as they are identified by `/auditor` reviews. Full 
 | Q2 | Store `period_type` on `payroll_run` row; pass to `build_period_context` on retry — CUSTOM runs must reproduce with correct annualization | Observation | `backend/application/payroll_retry_service.py:147–151` (migration required) | AUD-2 | Sprint 10 | 🔜 |
 | Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
 | Q4 | `salary_basis` + `shift_type` added as named fields in `_period_context` trace header in `sequential_executor.py` — per-employee context that gates calculations is now auditable ✅ | Resolved | `backend/domain/payroll/sequential_executor.py` | AUD-4 | Sprint 11 | ✅ |
-| Q5 | `timesheet_source` missing from `_period_context` trace header — auditor cannot determine from trace whether hours came from timesheet upload vs. manual entry | Observation | `backend/domain/payroll/sequential_executor.py:718` | AUD-16-3 | Sprint 16 | ⬜ |
+| Q5 | `timesheet_source` missing from `_period_context` trace header — auditor cannot determine from trace whether hours came from timesheet upload vs. manual entry ✅ | Resolved | `backend/domain/payroll/sequential_executor.py:718` | AUD-16-3 | Sprint 16 | ✅ |
 | Q6 | Re-upload overwrites APPROVED timesheet entries without guard — evidence destruction; APPROVED status must block upsert | Finding | `backend/application/timesheet_derivation_service.py` | AUD-16-2 | Sprint 16 | ⬜ |
 | Q7 | No actor identity (`approved_by`) on timesheet state transitions — who approved cannot be determined from audit log | Observation | `backend/api/routes/payroll.py` (approve endpoint) + migration | AUD-16-1 | Sprint 16 | ⬜ |
 | Q8 | `proration_strategy` not captured in `rules_context_snapshot` at run start — retry may execute with different strategy than original run | Finding | `backend/application/payroll_run_service.py` (snapshot write) | AUD-14-1 | Sprint 14 | ⬜ |
