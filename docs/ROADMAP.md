@@ -22,8 +22,8 @@
 | **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
 | **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
-| **Track S — Security** | — | — | — | — | — | 3✅ (SEC-S1/S2/S3 shipped Sprint 13) |
-| **Track Q — Audit Observations** | — | — | 3🔜 (AUD-1 trace gap, AUD-2 period_type on retry, AUD-3 simulate script) | — | — | — |
+| **Track S — Security** | — | — | — | — | — | 5✅ closed; 3⬜ open (S6 DB constraint, S7 upload cap, S8 pin dep) |
+| **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 3⬜ new Sprint 16 (Q5/Q6/Q7); 1⬜ new Sprint 14 (Q8) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -375,6 +375,9 @@ Findings are logged here as they are identified by `/security` reviews. Full nar
 | S3 | Move `import logging` to module level in `payroll.py`; replace inline `_logging.getLogger` call | Low | `backend/api/routes/payroll.py:498` | SEC-S3 | Sprint 13 | ✅ |
 | S4 | Grade query in `/run-payroll` route hardened with `workspace_id` filter to prevent cross-workspace grade leakage ✅ | Low | `backend/api/routes/payroll.py` | SEC-S4 | Sprint 11 | ✅ |
 | S5 | `shift_type`, `state_of_tax`, `skill_level` onboarding endpoint: enum allowlist validation + VARCHAR length guards added ✅ | Low | `backend/api/routes/onboarding.py` | SEC-S5 | Sprint 11 | ✅ |
+| S6 | `proration_strategy` no enum validation — arbitrary string silently stored; engine falls back with no error. API guard added ✅. DB CHECK constraint still missing. | Medium→Low | `backend/api/routes/workspace.py` + migration needed | SEC-S5 (report) | Sprint 14 | ⬜ DB constraint pending |
+| S7 | Add file size cap (10 MB) on timesheet upload — `openpyxl.load_workbook` loads entire file into memory; no current guard | Low | `backend/api/routes/payroll.py:1492` | SEC-S6 (report) | Sprint 16 | ⬜ |
+| S8 | Pin `python-multipart==0.0.28` in `requirements.txt` (currently unpinned; safe at 0.0.28 but unguarded against future regression) | Low | `requirements.txt` | SEC-S7 (report) | Sprint 16 | ⬜ |
 
 > **Policy:** Security findings are batched into the next sprint unless severity is Critical or High, in which case they block sprint closure. Full review narratives: `docs/security/`.
 
@@ -390,6 +393,10 @@ Observations are logged here as they are identified by `/auditor` reviews. Full 
 | Q2 | Store `period_type` on `payroll_run` row; pass to `build_period_context` on retry — CUSTOM runs must reproduce with correct annualization | Observation | `backend/application/payroll_retry_service.py:147–151` (migration required) | AUD-2 | Sprint 10 | 🔜 |
 | Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
 | Q4 | `salary_basis` + `shift_type` added as named fields in `_period_context` trace header in `sequential_executor.py` — per-employee context that gates calculations is now auditable ✅ | Resolved | `backend/domain/payroll/sequential_executor.py` | AUD-4 | Sprint 11 | ✅ |
+| Q5 | `timesheet_source` missing from `_period_context` trace header — auditor cannot determine from trace whether hours came from timesheet upload vs. manual entry | Observation | `backend/domain/payroll/sequential_executor.py:718` | AUD-16-3 | Sprint 16 | ⬜ |
+| Q6 | Re-upload overwrites APPROVED timesheet entries without guard — evidence destruction; APPROVED status must block upsert | Finding | `backend/application/timesheet_derivation_service.py` | AUD-16-2 | Sprint 16 | ⬜ |
+| Q7 | No actor identity (`approved_by`) on timesheet state transitions — who approved cannot be determined from audit log | Observation | `backend/api/routes/payroll.py` (approve endpoint) + migration | AUD-16-1 | Sprint 16 | ⬜ |
+| Q8 | `proration_strategy` not captured in `rules_context_snapshot` at run start — retry may execute with different strategy than original run | Finding | `backend/application/payroll_run_service.py` (snapshot write) | AUD-14-1 | Sprint 14 | ⬜ |
 
 > **Policy:** Observations are batched into the next available sprint. Any Observation rated "must fix before UAT/external audit" is escalated to Finding status and blocks the relevant sign-off gate. Full review narratives: `docs/audit/`.
 

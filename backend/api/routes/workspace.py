@@ -856,6 +856,14 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
     - D-ARCH-2: Statutory deduction components cannot be disabled.
     - D-ARCH-8: component_code must be valid for this workspace's country.
     """
+    _VALID_PRORATION_STRATEGIES = {"work_days", "calendar_days", "fixed_30"}
+    strategy = payload.get("proration_strategy")
+    if strategy is not None and strategy not in _VALID_PRORATION_STRATEGIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"proration_strategy must be one of {sorted(_VALID_PRORATION_STRATEGIES)}.",
+        )
+
     db = SessionLocal()
     try:
         code_upper = component_code.upper()
@@ -1471,8 +1479,8 @@ def list_attendance_codes(workspace_id: str):
 
 
 class AttendanceCodeCreateSchema(BaseModel):
-    client_code: str
-    description: str | None = None
+    client_code: str = Field(..., max_length=20)
+    description: str | None = Field(default=None, max_length=200)
     category: str
     is_active: bool = True
     counts_as_paid: bool = True
@@ -1528,13 +1536,15 @@ def create_attendance_code(workspace_id: str, payload: AttendanceCodeCreateSchem
             eligible_for_ot=payload.eligible_for_ot,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        import logging as _logging
+        _logging.getLogger(__name__).error("create_attendance_code failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Failed to create attendance code.")
 
     return {**code_row, **policy_row}
 
 
 class AttendanceCodePatchSchema(BaseModel):
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=200)
     is_active: bool | None = None
 
 
@@ -1567,7 +1577,9 @@ def patch_attendance_code(workspace_id: str, client_code: str, payload: dict):
             **{k: v for k, v in payload.items() if k in allowed},
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        import logging as _logging
+        _logging.getLogger(__name__).error("patch_attendance_code failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Failed to update attendance code.")
 
     return updated
 
