@@ -1,6 +1,12 @@
 .env
 .env.local
+.env.production
+.env.staging
 *.env
+# Frontend env files with real values (use Vercel dashboard for VITE_* vars)
+frontend/.env.local
+frontend/.env.production
+frontend/.env.staging
 __pycache__/
 *.py[cod]
 *$py.class

@@ -1,4 +1,8 @@
-const BASE = '/api';
+// VITE_API_URL is the full base URL of the deployed backend (e.g. https://payroll-backend.onrender.com).
+// In development it is left empty so Vite's dev-server proxy handles /api → localhost:8000/api/v1.
+// In production (Vercel) set VITE_API_URL to the Render backend URL in the Vercel dashboard.
+const VITE_API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+const BASE = `${VITE_API_URL}/api`;
 
 export class ApiError extends Error {
   response: { status: number };

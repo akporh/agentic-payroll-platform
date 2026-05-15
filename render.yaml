@@ -1,0 +1,44 @@
+## Render Blueprint — Agentic Payroll Platform
+## Docs: https://render.com/docs/blueprint-spec
+##
+## Provisions:
+##   - payroll-db     : Free-tier managed PostgreSQL
+##   - payroll-backend: Free-tier web service (Docker, FastAPI + Alembic)
+##
+## One-time manual steps after first deploy (Render dashboard → payroll-backend → Environment):
+##   SECRET_KEY    : python -c "import secrets; print(secrets.token_hex(32))"
+##   ENCRYPTION_KEY: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+##   ALLOWED_ORIGINS: https://<your-vercel-app>.vercel.app  (tighten after UAT)
+##   DATABASE_URL is auto-injected by Render from the database block below.
+
+databases:
+  - name: payroll-db
+    plan: free
+    databaseName: payroll
+    user: payroll_user
+
+services:
+  - type: web
+    name: payroll-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Run migrations then start the server.
+    # Render overrides CMD when startCommand is set.
+    startCommand: >-
+      sh -c "alembic upgrade head && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000"
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: payroll-db
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false          # Must be set manually in the Render dashboard
+      - key: ENCRYPTION_KEY
+        sync: false          # Must be set manually in the Render dashboard
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOWED_ORIGINS
+        sync: false          # Set to your Vercel URL after first deploy, e.g. https://payroll-abc123.vercel.app

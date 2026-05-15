@@ -1,6 +1,12 @@
 import { api } from './client';
 import type { PayrollRun, PayrollResult, PayrollTotals, ReconciliationRecord, ExecutionTraceStep, AuditLogEntry, TimesheetEntry, AttendanceCodeConfig } from '../types/payroll';
 
+// Re-use the same base URL as the api client so raw fetch() calls work in production.
+const _apiBase = (): string => {
+  const viteUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+  return `${viteUrl}/api`;
+};
+
 export const payrollApi = {
   createRun: (
     workspaceId: string,
@@ -77,7 +83,7 @@ export const payrollApi = {
     fd.append('file', file);
     fd.append('period_start', periodStart);
     fd.append('period_end', periodEnd);
-    return fetch(`/api/workspaces/${workspaceId}/timesheet/upload`, { method: 'POST', body: fd })
+    return fetch(`${_apiBase()}/workspaces/${workspaceId}/timesheet/upload`, { method: 'POST', body: fd })
       .then(async (r) => {
         const json = await r.json();
         if (!r.ok) throw new Error(json.detail ?? r.statusText);
@@ -122,7 +128,7 @@ export const payrollApi = {
 
   /** Fetch a CSV export and trigger a browser download. */
   downloadExport: async (workspaceId: string, runId: string, exportType: 'bank-upload' | 'paye' | 'pension' | 'full-detail') => {
-    const res = await fetch(`/api/${workspaceId}/payroll/runs/${runId}/exports/${exportType}`);
+    const res = await fetch(`${_apiBase()}/${workspaceId}/payroll/runs/${runId}/exports/${exportType}`);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`${res.status} ${res.statusText}: ${text}`);
