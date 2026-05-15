@@ -1,0 +1,15 @@
+backend/
+migrations/
+tests/
+scripts/
+services/
+infrastructure/
+data/
+docs/
+uat/
+*.py
+requirements.txt
+alembic.ini
+Dockerfile
+Dockerfile.frontend
+docker-compose.yml
