@@ -1,0 +1,49 @@
+# Frontend — not needed inside the backend container
+frontend/
+frontend/.vite/
+node_modules/
+
+# Python virtual envs
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Dev / local tooling
+.git/
+.github/
+.env
+.env.*
+!.env.example
+
+# Docs and scripts that aren't needed at runtime
+docs/
+attached_assets/
+scripts/
+uat/
+data/
+database/
+netpay.csv
+paye_summary.csv
+payroll_register.csv
+claude-code-history-viewer/
+free-claude-code/
+memory/
+
+# Misc
+*.md
+TODOS.md
+README.md
+CLAUDE.md
+DEPLOY.md
+deploy.sh
+replit.md
+download.html
+Dockerfile.frontend
+docker-compose.yml
+nginx/
+infrastructure/
+pytest.ini
+tests/
