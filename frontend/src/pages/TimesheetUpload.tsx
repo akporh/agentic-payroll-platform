@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
-import type { TimesheetEntry, DerivationStatus } from '../types/payroll';
+import type { TimesheetEntry } from '../types/payroll';
 import {
   ContentHeader,
   Card,
