@@ -109,7 +109,6 @@ export function WorkspaceSetup() {
   const [commitResult, setCommitResult] = useState<CommitResponse | null>(null);
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const [sqlOpen, setSqlOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [advancedJsonOpen, setAdvancedJsonOpen] = useState(false);
 
@@ -360,20 +359,6 @@ export function WorkspaceSetup() {
       if (result.status === 'valid') setCommitStage('validated');
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Validation request failed');
-    } finally { setLoading(false); }
-  }
-
-  async function preview() {
-    const payload = buildFinalPayload();
-    if (!payload) return;
-    setLoading(true);
-    setActionError(null);
-    try {
-      const result = await onboardingApi.preview(payload);
-      setPreviewResult(result);
-      if (result.status === 'valid') setCommitStage('previewed');
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Preview request failed');
     } finally { setLoading(false); }
   }
 
@@ -1598,17 +1583,6 @@ function SectionHeader({ label }: { label: string }) {
     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide pt-1 border-t border-slate-100 mt-1">
       {label}
     </p>
-  );
-}
-
-function SqlBlock({ label, sql }: { label: string; sql: string }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
-      <pre className="bg-slate-900 text-green-400 text-xs rounded p-3 overflow-auto max-h-32 whitespace-pre-wrap">
-        {sql}
-      </pre>
-    </div>
   );
 }
 

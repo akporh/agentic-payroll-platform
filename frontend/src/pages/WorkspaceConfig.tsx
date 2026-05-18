@@ -62,7 +62,7 @@ interface PayrollRule {
 
 interface ComponentOverride {
   component_name: string;
-  overrides_json: Record<string, unknown>;
+  overrides_json?: Record<string, unknown>;
   is_active: boolean;
   proration_strategy: string | null;
 }
@@ -1642,7 +1642,7 @@ function AddSalaryDefSlideOver({
       components_jsonb[c.component_name] = { amount: parseFloat(c.amount) };
     }
     try {
-      await workspaceApi.createSalaryDefinition(workspaceId, { name, components_jsonb });
+      await workspaceApi.createSalaryDefinition(workspaceId, { name, code: code || name.toUpperCase().replace(/\s+/g, '_'), components_jsonb });
       onSaved();
       onClose();
     } catch (e) {
@@ -1870,7 +1870,6 @@ function EditPayrollConfigSlideOver({
             label="Timesheet Mode"
             checked={timesheetEnabled}
             onChange={setTimesheetEnabled}
-            hint="When enabled, payroll inputs are derived from daily attendance grids. Enabling seeds the workspace with the standard attendance code set."
           />
         </div>
       </div>
@@ -2041,9 +2040,6 @@ export function WorkspaceConfig() {
       .then(setPlatformComponents)
       .catch(() => { /* non-critical — labels fall back to component_code */ });
   }, [workspaceId]);
-
-  const componentLabel = (code: string) =>
-    platformComponents.find((c) => c.component_code === code)?.label ?? code;
 
   async function handleRuleToggleConfirm() {
     if (!workspaceId || !ruleToToggle) return;

@@ -8,7 +8,7 @@
  * All Excel parse logic preserved exactly from prior implementation.
  */
 
-import { useRef, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
 import * as XLSX from 'xlsx';
@@ -20,7 +20,6 @@ import {
   DownloadBtn,
   FileDropZone,
   AlertBanner,
-  EmptyState,
   useToast,
   Breadcrumb,
 } from '../design-system';
@@ -110,15 +109,6 @@ function parseSheet(rows: Record<string, unknown>[], codeMap: Map<string, string
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-
-function UploadCloudIcon() {
-  return (
-    <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-    </svg>
-  );
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 

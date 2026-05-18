@@ -13,7 +13,7 @@
  * - ui-designer: modals use 24px padding, focus-trap, Escape key closes
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Btn } from './Actions';
 

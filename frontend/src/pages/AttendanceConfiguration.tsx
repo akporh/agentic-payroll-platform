@@ -83,7 +83,7 @@ function AddCodeSlideOver({
         eligible_for_ot: eligibleForOt,
         eligible_for_shift_allowance: eligibleForShift,
       });
-      toast.success('Attendance code created.');
+      toast.show('success', 'Attendance code created.');
       onSaved();
       onClose();
     } catch (e) {
@@ -109,9 +109,9 @@ function AddCodeSlideOver({
     >
       <div className="space-y-4">
         {error && <AlertBanner variant="error" description={error} />}
-        <TextInput label="Code" value={clientCode} onChange={setClientCode}
+        <TextInput label="Code" value={clientCode} onChange={(e) => setClientCode(e.target.value)}
           hint="Short identifier used in the attendance grid (e.g. SLA, OT1)." />
-        <TextInput label="Description" value={description} onChange={setDescription} />
+        <TextInput label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
           <select
@@ -125,17 +125,16 @@ function AddCodeSlideOver({
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pay Interpretation</p>
           <Toggle label="Counts as paid" checked={countsAsPaid} onChange={setCountsAsPaid} />
-          <Toggle label="Counts towards OT threshold" checked={countsTowardsOt} onChange={setCountsTowardsOt}
-            hint="Cannot be true when counts as paid is false." />
+          <Toggle label="Counts towards OT threshold" checked={countsTowardsOt} onChange={setCountsTowardsOt} />
           <Toggle label="Eligible for OT" checked={eligibleForOt} onChange={setEligibleForOt} />
           <Toggle label="Eligible for shift allowance" checked={eligibleForShift} onChange={setEligibleForShift} />
         </div>
         <div className="border-t border-gray-100 pt-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Hours Resolution (mutually exclusive)</p>
-          <NumberInput label="Hours equivalent" value={hoursEquivalent} onChange={setHoursEquivalent}
+          <NumberInput label="Hours equivalent" value={hoursEquivalent} onChange={(e) => setHoursEquivalent(e.target.value)}
             hint="Fixed hours this code represents (e.g. 6.5 for a half-day sick leave)." />
           <div className="mt-3">
-            <NumberInput label="Unit fraction" value={unitFraction} onChange={setUnitFraction}
+            <NumberInput label="Unit fraction" value={unitFraction} onChange={(e) => setUnitFraction(e.target.value)}
               hint="Fraction of hours_per_day this code represents (e.g. 1.0 for a full day)." />
           </div>
         </div>
@@ -198,7 +197,7 @@ function EditPolicySlideOver({
         eligible_for_ot: eligibleForOt,
         eligible_for_shift_allowance: eligibleForShift,
       });
-      toast.success(`Policy updated for ${code.client_code}.`);
+      toast.show('success', `Policy updated for ${code.client_code}.`);
       onSaved();
       onClose();
     } catch (e) {
@@ -225,15 +224,14 @@ function EditPolicySlideOver({
       <div className="space-y-4">
         {error && <AlertBanner variant="error" description={error} />}
         <Toggle label="Counts as paid" checked={countsAsPaid} onChange={setCountsAsPaid} />
-        <Toggle label="Counts towards OT threshold" checked={countsTowardsOt} onChange={setCountsTowardsOt}
-          hint="Cannot be true when counts as paid is false." />
+        <Toggle label="Counts towards OT threshold" checked={countsTowardsOt} onChange={setCountsTowardsOt} />
         <Toggle label="Eligible for OT" checked={eligibleForOt} onChange={setEligibleForOt} />
         <Toggle label="Eligible for shift allowance" checked={eligibleForShift} onChange={setEligibleForShift} />
         <div className="border-t border-gray-100 pt-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Hours Resolution (mutually exclusive)</p>
-          <NumberInput label="Hours equivalent" value={hoursEquivalent} onChange={setHoursEquivalent} />
+          <NumberInput label="Hours equivalent" value={hoursEquivalent} onChange={(e) => setHoursEquivalent(e.target.value)} />
           <div className="mt-3">
-            <NumberInput label="Unit fraction" value={unitFraction} onChange={setUnitFraction} />
+            <NumberInput label="Unit fraction" value={unitFraction} onChange={(e) => setUnitFraction(e.target.value)} />
           </div>
         </div>
       </div>
@@ -274,7 +272,7 @@ export function AttendanceConfiguration() {
       });
       load();
     } catch (e) {
-      toast.error(extractError(e));
+      toast.show('error', extractError(e));
     }
   }
 

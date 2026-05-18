@@ -22,7 +22,6 @@ import type {
   ExecutionTraceStep,
   AuditLogEntry,
   ReconciliationRecord,
-  ComponentTraceEntry,
 } from '../types/payroll';
 import {
   ContentHeader,
@@ -70,7 +69,6 @@ function formatPeriod(start: string, end: string) {
 
 interface ActionPanelProps {
   run: PayrollRun;
-  totals: PayrollTotals | null;
   onApprove: () => Promise<void>;
   onLock: () => Promise<void>;
   onPay: () => void;    // opens confirm dialog
@@ -78,7 +76,7 @@ interface ActionPanelProps {
   actionLoading: boolean;
 }
 
-function ActionPanel({ run, totals, onApprove, onLock, onPay, onRetry, actionLoading }: ActionPanelProps) {
+function ActionPanel({ run, onApprove, onLock, onPay, onRetry, actionLoading }: ActionPanelProps) {
   if (run.status === 'CALCULATING') {
     return (
       <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -354,7 +352,6 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
       )}
       <ActionPanel
         run={run}
-        totals={totals}
         onApprove={onApprove}
         onLock={onLock}
         onPay={onPay}

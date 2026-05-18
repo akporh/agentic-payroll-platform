@@ -174,7 +174,7 @@ function parseWorkbook(
       errors.push(`Missing required sheet: "${sheet}"`);
     }
   }
-  if (errors.length > 0) return { config: null, errors };
+  if (errors.length > 0) return { config: null, errors, warnings };
 
   // ── Pay Cycle ─────────────────────────────────────────────────────────────
   const payCycleRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(

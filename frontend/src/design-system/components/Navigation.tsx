@@ -238,13 +238,6 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
     }] : []),
   ];
 
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors group
-     ${isActive
-      ? 'bg-brand text-white'
-      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-    }`;
-
   return (
     <aside
       style={{

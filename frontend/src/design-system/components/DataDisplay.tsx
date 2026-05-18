@@ -18,7 +18,6 @@
  */
 
 import React, { useState } from 'react';
-import { StatusBadge } from './Status';
 
 // ── Monetary formatter ────────────────────────────────────────────────────────
 
@@ -168,7 +167,7 @@ export function DataTable<T>({
                 <span className="inline-flex items-center gap-1">
                   {col.header}
                   {col.sortable && onSort && (
-                    <SortIcon active={sortKey === col.key} dir={sortKey === col.key ? sortDir : null} />
+                    <SortIcon active={sortKey === col.key} dir={sortKey === col.key ? (sortDir ?? null) : null} />
                   )}
                 </span>
               </th>

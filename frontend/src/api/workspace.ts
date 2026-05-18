@@ -183,7 +183,7 @@ export const workspaceApi = {
     api.delete<{ status: string; rule_id: string }>(`/${workspaceId}/payroll-rule/${ruleId}`),
 
   updateComponentOverride: (workspaceId: string, componentCode: string, payload: {
-    is_active?: boolean; proration_strategy?: string;
+    is_active?: boolean; proration_strategy?: string; overrides_json?: Record<string, unknown>;
   }) => api.patch<{ status: string }>(`/${workspaceId}/component-overrides/${encodeURIComponent(componentCode)}`, payload),
 
   getPlatformComponents: (workspaceId: string) =>

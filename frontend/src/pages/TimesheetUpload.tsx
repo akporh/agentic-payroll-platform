@@ -20,17 +20,6 @@ function extractError(e: unknown): string {
   return String(e);
 }
 
-function statusVariant(s: DerivationStatus): 'success' | 'warning' | 'error' | 'info' {
-  if (s === 'APPROVED') return 'success';
-  if (s === 'DERIVED') return 'info';
-  if (s === 'FAILED') return 'error';
-  return 'warning'; // PENDING
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function firstOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -85,7 +74,7 @@ export function TimesheetUpload() {
     try {
       const result = await payrollApi.uploadTimesheet(workspaceId, periodStart, periodEnd, file);
       setUploadResult(result);
-      toast.success('Timesheet uploaded successfully.');
+      toast.show('success', 'Timesheet uploaded successfully.');
       loadStatus();
     } catch (e) {
       setUploadError(extractError(e));
@@ -101,7 +90,7 @@ export function TimesheetUpload() {
     setActionError(null);
     try {
       await payrollApi.triggerDerivation(workspaceId, periodStart, periodEnd);
-      toast.success('Derivation complete.');
+      toast.show('success', 'Derivation complete.');
       loadStatus();
     } catch (e) {
       setActionError(extractError(e));
@@ -116,7 +105,7 @@ export function TimesheetUpload() {
     setActionError(null);
     try {
       await payrollApi.approveTimesheetPeriod(workspaceId, periodStart, periodEnd);
-      toast.success('Timesheet period approved. Inputs are now ready for payroll.');
+      toast.show('success', 'Timesheet period approved. Inputs are now ready for payroll.');
       loadStatus();
     } catch (e) {
       setActionError(extractError(e));
