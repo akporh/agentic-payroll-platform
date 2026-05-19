@@ -3,9 +3,6 @@
 Revision ID: ee5ff6aa7bb8
 Revises: dd4ee5ff6aa7
 Create Date: 2026-05-13
-
-STANDALONE MIGRATION — uses AUTOCOMMIT isolation because CREATE INDEX CONCURRENTLY
-cannot run inside a transaction. No other SQL belongs in this file.
 """
 from typing import Union, Sequence
 from alembic import op
@@ -19,11 +16,9 @@ depends_on = None
 
 def upgrade() -> None:
     connection = op.get_bind()
-    connection.execution_options(isolation_level="AUTOCOMMIT")
-
     connection.execute(text("DROP INDEX IF EXISTS uq_payroll_input_unclaimed"))
     connection.execute(text("""
-        CREATE UNIQUE INDEX CONCURRENTLY uq_payroll_input_unclaimed
+        CREATE UNIQUE INDEX uq_payroll_input_unclaimed
         ON payroll_input (workspace_id, employee_id, input_code, reference_date, source)
         WHERE payroll_run_id IS NULL
     """))
@@ -31,11 +26,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     connection = op.get_bind()
-    connection.execution_options(isolation_level="AUTOCOMMIT")
-
     connection.execute(text("DROP INDEX IF EXISTS uq_payroll_input_unclaimed"))
     connection.execute(text("""
-        CREATE UNIQUE INDEX CONCURRENTLY uq_payroll_input_unclaimed
+        CREATE UNIQUE INDEX uq_payroll_input_unclaimed
         ON payroll_input (workspace_id, employee_id, input_code, reference_date)
         WHERE payroll_run_id IS NULL
     """))
