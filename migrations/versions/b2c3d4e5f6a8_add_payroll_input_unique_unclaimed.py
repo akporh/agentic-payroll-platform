@@ -1,7 +1,7 @@
 """Add partial unique index on payroll_input for unclaimed rows
 
 Revision ID: b2c3d4e5f6a8
-Revises: a1b2c3d4e5f6
+Revises: a1b2c3d4e5f7
 Create Date: 2026-04-08 00:01:00.000000
 
 Prevents re-uploading the same (workspace_id, employee_id, input_code, reference_date)
@@ -14,7 +14,7 @@ from typing import Sequence, Union
 from alembic import op
 
 revision: str = "b2c3d4e5f6a8"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
+down_revision: Union[str, None] = "a1b2c3d4e5f7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
