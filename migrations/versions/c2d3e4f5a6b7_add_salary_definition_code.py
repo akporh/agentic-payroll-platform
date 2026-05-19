@@ -30,15 +30,11 @@ def upgrade():
     )
 
     # 2. Backfill: derive code from name (UPPER + spaces → underscores).
-    #    Disable the immutability trigger temporarily — this is a schema-level
-    #    migration adding a new column, not a business data change.
-    op.execute("ALTER TABLE salary_definition DISABLE TRIGGER ALL")
     op.execute("""
         UPDATE salary_definition
         SET code = UPPER(REPLACE(COALESCE(name, 'UNKNOWN'), ' ', '_'))
         WHERE code IS NULL
     """)
-    op.execute("ALTER TABLE salary_definition ENABLE TRIGGER ALL")
 
     # 3. Enforce NOT NULL now that all rows have a value
     op.alter_column("salary_definition", "code", nullable=False)
