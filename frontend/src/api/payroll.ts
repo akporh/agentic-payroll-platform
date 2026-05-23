@@ -4,7 +4,7 @@ import type { PayrollRun, PayrollResult, PayrollTotals, ReconciliationRecord, Ex
 // Re-use the same base URL as the api client so raw fetch() calls work in production.
 const _apiBase = (): string => {
   const viteUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
-  return `${viteUrl}/api`;
+  return `${viteUrl}/api/v1`;
 };
 
 export const payrollApi = {
