@@ -75,10 +75,10 @@ def upgrade() -> None:
             INSERT INTO tax_band
                 (tax_band_id, statutory_rule_id, lower_limit, upper_limit, rate)
             SELECT
-                gen_random_uuid(), :sr_id, :lower, :upper, :rate
+                gen_random_uuid(), CAST(:sr_id AS uuid), :lower, :upper, :rate
             WHERE NOT EXISTS (
                 SELECT 1 FROM tax_band
-                WHERE statutory_rule_id = :sr_id::uuid
+                WHERE statutory_rule_id = CAST(:sr_id AS uuid)
                   AND lower_limit = :lower
             )
         """), {"sr_id": sr_id, "lower": lower, "upper": upper, "rate": rate})
@@ -99,17 +99,13 @@ def downgrade() -> None:
     # Remove tax bands seeded by this migration.
     conn.execute(sa.text("""
         DELETE FROM tax_band
-        WHERE statutory_rule_id = (
-            SELECT statutory_rule_id FROM statutory_rule
-            WHERE country_code = 'NG' AND effective_from = '2026-01-01'
-              AND statutory_rule_id = :id::uuid
-        )
+        WHERE statutory_rule_id = CAST(:id AS uuid)
     """), {"id": _SR_ID})
 
     # Remove the statutory_rule row only if it was inserted by this migration.
     conn.execute(sa.text("""
         DELETE FROM statutory_rule
-        WHERE statutory_rule_id = :id::uuid
+        WHERE statutory_rule_id = CAST(:id AS uuid)
     """), {"id": _SR_ID})
 
     # Revert RENT_RELIEF effective_from.
