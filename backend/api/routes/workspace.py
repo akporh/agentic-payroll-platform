@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import date as _date
 from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -241,6 +242,156 @@ def list_employees(workspace_id: str):
         db.close()
 
 
+class CreateEmployeeSchema(BaseModel):
+    first_name: str
+    last_name: str
+    employee_number: str
+    salary_definition_code: str
+    grade_code: str | None = None
+    designation_code: str | None = None
+    contract_start: str | None = None
+    contract_end: str | None = None
+    tin: str | None = None
+    rsa: str | None = None
+    bank: str | None = None
+    account_number: str | None = None
+    shift_type: str | None = None
+    state_of_tax: str | None = Field(default=None, max_length=50)
+    skill_level: str | None = Field(default=None, max_length=50)
+
+
+@router.post("/{workspace_id}/employees")
+def create_employee(workspace_id: str, payload: CreateEmployeeSchema):
+    """Create a single employee with an employee_contract in one transaction."""
+    from uuid import uuid4 as _uuid4
+    from psycopg2.extras import Json
+
+    _VALID_SHIFT_TYPES = {"DAY", "2_SHIFT", "4_SHIFT"}
+    if payload.shift_type is not None and payload.shift_type not in _VALID_SHIFT_TYPES:
+        raise HTTPException(status_code=422, detail=f"shift_type must be one of: DAY, 2_SHIFT, 4_SHIFT")
+
+    db = SessionLocal()
+    try:
+        # Duplicate employee_number check
+        dup = db.execute(
+            text("SELECT 1 FROM employee WHERE workspace_id = :wid AND employee_number = :num"),
+            {"wid": workspace_id, "num": payload.employee_number},
+        ).fetchone()
+        if dup:
+            raise HTTPException(status_code=409, detail=f"Employee number '{payload.employee_number}' already exists in this workspace")
+
+        # Resolve salary definition
+        sd_row = db.execute(
+            text("SELECT salary_definition_id FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
+            {"wid": workspace_id, "code": payload.salary_definition_code},
+        ).fetchone()
+        if not sd_row:
+            raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
+        salary_definition_id = str(sd_row[0])
+
+        # Resolve grade
+        grade_id = None
+        if payload.grade_code:
+            g_row = db.execute(
+                text("SELECT grade_id FROM grade WHERE workspace_id = :wid AND grade_code = :code"),
+                {"wid": workspace_id, "code": payload.grade_code},
+            ).fetchone()
+            if not g_row:
+                raise HTTPException(status_code=400, detail=f"Grade '{payload.grade_code}' not found")
+            grade_id = str(g_row[0])
+
+        # Resolve designation
+        designation_id = None
+        if payload.designation_code:
+            d_row = db.execute(
+                text("SELECT designation_id FROM designation WHERE workspace_id = :wid AND designation_code = :code"),
+                {"wid": workspace_id, "code": payload.designation_code},
+            ).fetchone()
+            if not d_row:
+                raise HTTPException(status_code=400, detail=f"Designation '{payload.designation_code}' not found")
+            designation_id = str(d_row[0])
+
+        # Validate dates
+        try:
+            start_date = _date.fromisoformat(payload.contract_start) if payload.contract_start else None
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"contract_start '{payload.contract_start}' is not a valid date (YYYY-MM-DD)")
+        try:
+            end_date = _date.fromisoformat(payload.contract_end) if payload.contract_end else None
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"contract_end '{payload.contract_end}' is not a valid date (YYYY-MM-DD)")
+        if start_date and end_date and end_date < start_date:
+            raise HTTPException(status_code=422, detail="contract_end must be on or after contract_start")
+
+        full_name = f"{payload.first_name.strip()} {payload.last_name.strip()}".strip()
+        employee_id = str(_uuid4())
+
+        biodata = {}
+        if payload.tin: biodata["TIN"] = payload.tin
+        if payload.rsa: biodata["RSA"] = payload.rsa
+        if payload.bank: biodata["BANK"] = payload.bank
+        if payload.account_number: biodata["ACCOUNT_NUMBER"] = payload.account_number
+
+        db.execute(
+            text("""
+                INSERT INTO employee (
+                    employee_id, workspace_id, full_name,
+                    employee_number, personal_details_encrypted, status
+                )
+                VALUES (
+                    CAST(:eid AS uuid), :wid, :name,
+                    :emp_number, :biodata, 'ACTIVE'
+                )
+            """),
+            {
+                "eid": employee_id,
+                "wid": workspace_id,
+                "name": full_name,
+                "emp_number": payload.employee_number,
+                "biodata": Json(biodata),
+            },
+        )
+
+        db.execute(
+            text("""
+                INSERT INTO employee_contract (
+                    contract_id, employee_id, salary_definition_id,
+                    grade_id, designation_id, start_date, end_date,
+                    shift_type, state_of_tax, skill_level, is_union_member
+                )
+                VALUES (
+                    CAST(:cid AS uuid), CAST(:eid AS uuid), CAST(:sd_id AS uuid),
+                    CAST(:grade_id AS uuid), CAST(:designation_id AS uuid),
+                    COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
+                    CAST(:end_date AS DATE),
+                    :shift_type, :state_of_tax, :skill_level, false
+                )
+            """),
+            {
+                "cid": str(_uuid4()),
+                "eid": employee_id,
+                "sd_id": salary_definition_id,
+                "grade_id": grade_id,
+                "designation_id": designation_id,
+                "start_date": str(start_date) if start_date else None,
+                "end_date": str(end_date) if end_date else None,
+                "shift_type": payload.shift_type,
+                "state_of_tax": payload.state_of_tax,
+                "skill_level": payload.skill_level,
+            },
+        )
+
+        db.commit()
+        return {"status": "created", "employee_id": employee_id, "full_name": full_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
 class EmployeeContractUpdateSchema(BaseModel):
     grade_code: str | None = None
     designation_code: str | None = None
@@ -248,6 +399,8 @@ class EmployeeContractUpdateSchema(BaseModel):
     state_of_tax: str | None = Field(default=None, max_length=50)
     skill_level:  str | None = Field(default=None, max_length=50)
     is_union_member: bool | None = None
+    contract_end: str | None = None
+    set_contract_end: bool = False
 
 
 @router.patch("/{workspace_id}/employees/contracts")
@@ -366,6 +519,16 @@ def update_employee_contract(
         # Target the most recent contract regardless of end_date so that
         # ended-contract employees (shown in their own section) can have
         # grade/designation corrected without touching end_date.
+        if payload.set_contract_end and payload.contract_end is not None:
+            try:
+                contract_end_date: _date | None = _date.fromisoformat(payload.contract_end)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"contract_end '{payload.contract_end}' is not a valid date (use YYYY-MM-DD)")
+        elif payload.set_contract_end:
+            contract_end_date = None
+        else:
+            contract_end_date = None
+
         result = db.execute(
             text("""
                 UPDATE employee_contract
@@ -374,7 +537,8 @@ def update_employee_contract(
                     shift_type      = CASE WHEN :shift_type_set    THEN :shift_type      ELSE shift_type      END,
                     state_of_tax    = CASE WHEN :state_set         THEN :state_of_tax    ELSE state_of_tax    END,
                     skill_level     = CASE WHEN :skill_set         THEN :skill_level     ELSE skill_level     END,
-                    is_union_member = CASE WHEN :union_member_set  THEN :is_union_member ELSE is_union_member  END
+                    is_union_member = CASE WHEN :union_member_set  THEN :is_union_member ELSE is_union_member  END,
+                    end_date        = CASE WHEN :end_date_set      THEN CAST(:end_date AS DATE) ELSE end_date  END
                 WHERE contract_id = (
                     SELECT ec2.contract_id
                     FROM employee_contract ec2
@@ -398,6 +562,8 @@ def update_employee_contract(
                 "skill_set":         payload.skill_level is not None,
                 "is_union_member":   payload.is_union_member,
                 "union_member_set":  payload.is_union_member is not None,
+                "end_date":          str(contract_end_date) if contract_end_date else None,
+                "end_date_set":      payload.set_contract_end,
                 "eid":               employee_id,
                 "wid":               workspace_id,
             },

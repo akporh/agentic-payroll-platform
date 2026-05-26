@@ -196,6 +196,7 @@ export interface SidebarItem {
   to: string;
   icon: keyof typeof ICONS;
   end?: boolean;
+  badge?: number;
 }
 
 export interface WorkspaceSidebarProps {
@@ -205,23 +206,24 @@ export interface WorkspaceSidebarProps {
   isLive?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  unmatchedEmployeeCount?: number;
 }
 
-export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse, unmatchedEmployeeCount = 0 }: WorkspaceSidebarProps) {
   const w = workspaceId;
 
   const sections: SidebarSection[] = [
     {
       heading: 'Payroll',
       items: [
-        { label: 'Runs',   to: `/workspaces/${w}/payroll`,        icon: 'payroll', end: true },
         { label: 'Inputs', to: `/workspaces/${w}/payroll/inputs`, icon: 'inputs',  end: true },
+        { label: 'Runs',   to: `/workspaces/${w}/payroll`,        icon: 'payroll', end: true },
       ],
     },
     {
       heading: 'People',
       items: [
-        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees' },
+        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees', badge: unmatchedEmployeeCount || undefined },
       ],
     },
     {
@@ -277,10 +279,18 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
                   }`
                 }
                 style={{ borderRadius: 'var(--radius-btn)' }}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? (item.badge ? `${item.label} (${item.badge} unmatched)` : item.label) : undefined}
               >
                 <Icon d={ICONS[item.icon]} className="w-5 h-5 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
+                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {!collapsed && item.badge && (
+                  <span
+                    className="shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none"
+                    aria-label={`${item.badge} unmatched`}
+                  >
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>

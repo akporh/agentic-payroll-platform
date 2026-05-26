@@ -118,8 +118,34 @@ export const workspaceApi = {
   updateEmployeeContract: (
     workspaceId: string,
     employeeId: string,
-    payload: { grade_code?: string | null; designation_code?: string | null }
+    payload: {
+      grade_code?: string | null;
+      designation_code?: string | null;
+      contract_end?: string | null;
+      set_contract_end?: boolean;
+    }
   ) => api.patch(`/${workspaceId}/employees/${employeeId}/contract`, payload),
+
+  createEmployee: (
+    workspaceId: string,
+    payload: {
+      first_name: string;
+      last_name: string;
+      employee_number: string;
+      salary_definition_code: string;
+      grade_code?: string | null;
+      designation_code?: string | null;
+      contract_start?: string | null;
+      contract_end?: string | null;
+      tin?: string | null;
+      rsa?: string | null;
+      bank?: string | null;
+      account_number?: string | null;
+    }
+  ) => api.post<{ status: string; employee_id: string; full_name: string }>(
+    `/${workspaceId}/employees`,
+    payload
+  ),
 
   getInputCodes: (workspaceId: string) =>
     api.get<{
