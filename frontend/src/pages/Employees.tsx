@@ -596,12 +596,11 @@ interface UploadSlideOverProps {
   onSaved: () => void;
   workspaceId: string;
   salaryDefinitions: SalaryDefinitionOption[];
-  gradeOptions: string[];
   designationOptions: string[];
 }
 
 function UploadSlideOver({
-  open, onClose, onSaved, workspaceId, salaryDefinitions, gradeOptions, designationOptions
+  open, onClose, onSaved, workspaceId, salaryDefinitions, designationOptions
 }: UploadSlideOverProps) {
   const toast = useToast();
   const [employees, setEmployees] = useState<MappedEmployee[]>([]);
@@ -1045,7 +1044,6 @@ export function Employees() {
         open={showUpload}
         workspaceId={workspaceId ?? ''}
         salaryDefinitions={salaryDefinitions}
-        gradeOptions={gradeOptions}
         designationOptions={designationOptions}
         onClose={() => setShowUpload(false)}
         onSaved={loadEmployees}
