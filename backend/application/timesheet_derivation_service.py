@@ -87,9 +87,14 @@ def _get_employee_map(workspace_id: str) -> dict[str, dict]:
                 SELECT e.employee_id, e.employee_number, e.full_name,
                        ec.shift_type, ec.start_date, ec.end_date
                 FROM employee e
-                LEFT JOIN employee_contract ec
-                       ON ec.employee_id = e.employee_id
-                      AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                LEFT JOIN LATERAL (
+                    SELECT ec2.*
+                    FROM   employee_contract ec2
+                    WHERE  ec2.employee_id = e.employee_id
+                    ORDER  BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                              ec2.start_date DESC NULLS LAST
+                    LIMIT  1
+                ) ec ON true
                 WHERE e.workspace_id = :wid
                   AND e.status       = 'ACTIVE'
             """),

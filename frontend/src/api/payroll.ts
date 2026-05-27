@@ -144,4 +144,12 @@ export const payrollApi = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   },
+
+  getInputIssues: (workspaceId: string) =>
+    api.get<{
+      total: number;
+      deactivated_with_inputs: number;
+      unmatched_with_inputs: number;
+      period_label: string;
+    }>(`/workspaces/${workspaceId}/payroll/inputs/issues`),
 };

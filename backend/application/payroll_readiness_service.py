@@ -135,9 +135,15 @@ def validate_payroll_run_ready(run_id: str) -> dict:
                     e.full_name,
                     ec.salary_definition_id
                 FROM   employee e
-                LEFT   JOIN employee_contract ec
-                           ON  e.employee_id = ec.employee_id
-                           AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                LEFT   JOIN LATERAL (
+                    SELECT ec2.*
+                    FROM   employee_contract ec2
+                    WHERE  ec2.employee_id = e.employee_id
+                      AND  (ec2.end_date IS NULL OR ec2.end_date >= CURRENT_DATE)
+                    ORDER  BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                              ec2.start_date DESC NULLS LAST
+                    LIMIT  1
+                ) ec ON true
                 WHERE  e.workspace_id = :wid
                   AND  e.status       = 'ACTIVE'
             """),

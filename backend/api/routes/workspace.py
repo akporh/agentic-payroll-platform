@@ -280,14 +280,26 @@ def create_employee(workspace_id: str, payload: CreateEmployeeSchema):
         if dup:
             raise HTTPException(status_code=409, detail=f"Employee number '{payload.employee_number}' already exists in this workspace")
 
-        # Resolve salary definition
+        # Resolve salary definition + NULL-safe effective_from validation
         sd_row = db.execute(
-            text("SELECT salary_definition_id FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
+            text("SELECT salary_definition_id, effective_from FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
             {"wid": workspace_id, "code": payload.salary_definition_code},
         ).fetchone()
         if not sd_row:
             raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
         salary_definition_id = str(sd_row[0])
+        _sd_effective_from = sd_row[1]
+        if payload.contract_start and _sd_effective_from is not None:
+            from datetime import date as _date_cls
+            try:
+                _cs = _date_cls.fromisoformat(payload.contract_start)
+                if _sd_effective_from > _cs:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Salary definition '{payload.salary_definition_code}' is not effective until {_sd_effective_from} — cannot use for a contract starting {_cs}",
+                    )
+            except ValueError:
+                pass  # date parse error caught below
 
         # Resolve grade
         grade_id = None

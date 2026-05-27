@@ -207,16 +207,17 @@ export interface WorkspaceSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   unmatchedEmployeeCount?: number;
+  inputIssueCount?: number;
 }
 
-export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse, unmatchedEmployeeCount = 0 }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse, unmatchedEmployeeCount = 0, inputIssueCount = 0 }: WorkspaceSidebarProps) {
   const w = workspaceId;
 
   const sections: SidebarSection[] = [
     {
       heading: 'Payroll',
       items: [
-        { label: 'Inputs', to: `/workspaces/${w}/payroll/inputs`, icon: 'inputs',  end: true },
+        { label: 'Inputs', to: `/workspaces/${w}/payroll/inputs`, icon: 'inputs',  end: true, badge: inputIssueCount || undefined },
         { label: 'Runs',   to: `/workspaces/${w}/payroll`,        icon: 'payroll', end: true },
       ],
     },

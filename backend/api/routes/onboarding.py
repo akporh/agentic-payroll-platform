@@ -28,6 +28,7 @@ from backend.domain.onboarding.sql_emitter import (
 from backend.domain.onboarding.review_runner import review_client_onboarding
 from backend.application import onboarding_service
 from backend.infra.repositories.workspace_config_repo import upsert_workspace_payroll_config
+from backend.infra.repositories.employee_repo import insert_employee, insert_employee_contract
 
 router = APIRouter()
 
@@ -459,25 +460,7 @@ async def commit_onboarding(request: Request):
             )
             emp_number = emp.get("employee_number") or emp.get("employee_id")
 
-            db.execute(
-                text("""
-                    INSERT INTO employee (
-                        employee_id, workspace_id, full_name,
-                        employee_number, personal_details_encrypted, status
-                    )
-                    VALUES (
-                        :eid, :workspace_id, :name,
-                        :employee_number, :biodata, 'ACTIVE'
-                    )
-                """),
-                {
-                    "eid": employee_id,
-                    "workspace_id": workspace_id,
-                    "name": full_name,
-                    "employee_number": emp_number,
-                    "biodata": Json(biodata),
-                },
-            )
+            insert_employee(db, workspace_id, employee_id, full_name, emp_number, biodata)
 
             # Resolve salary definition: prefer code, fall back to name.
             sd_code = emp.get("salary_definition_code")
@@ -568,34 +551,18 @@ async def commit_onboarding(request: Request):
                     f"Employee '{emp_number}': skill_level exceeds 50 characters"
                 )
 
-            db.execute(
-                text("""
-                    INSERT INTO employee_contract (
-                        contract_id, employee_id, salary_definition_id,
-                        grade_id, designation_id, start_date, end_date,
-                        shift_type, state_of_tax, skill_level, is_union_member
-                    )
-                    VALUES (
-                        :cid, :employee_id, :salary_definition_id,
-                        :grade_id, :designation_id,
-                        COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
-                        CAST(:end_date AS DATE),
-                        :shift_type, :state_of_tax, :skill_level, :is_union_member
-                    )
-                """),
-                {
-                    "cid":                  str(uuid4()),
-                    "employee_id":          employee_id,
-                    "salary_definition_id": salary_definition_id,
-                    "grade_id":             grade_id,
-                    "designation_id":       designation_id,
-                    "start_date":           emp_start_date,
-                    "end_date":             emp_end_date,
-                    "shift_type":           _shift_type,
-                    "state_of_tax":         _state_of_tax,
-                    "skill_level":          _skill_level,
-                    "is_union_member":      _is_union_member,
-                },
+            insert_employee_contract(
+                db,
+                employee_id=employee_id,
+                salary_definition_id=salary_definition_id,
+                start_date=emp_start_date,
+                grade_id=grade_id,
+                designation_id=designation_id,
+                shift_type=_shift_type,
+                state_of_tax=_state_of_tax,
+                skill_level=_skill_level,
+                is_union_member=_is_union_member,
+                end_date=emp_end_date,
             )
 
         # Publish rule_set snapshots for rules that carry an effective_from date.

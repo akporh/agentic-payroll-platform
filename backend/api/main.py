@@ -19,6 +19,7 @@ from backend.api.routes import admin
 from backend.api.routes import payroll
 from backend.api.routes import payroll_input
 from backend.api.routes import workspace
+from backend.api.routes import employees
 
 app = FastAPI(
     title="Agentic Payroll Platform",
@@ -56,3 +57,4 @@ app.include_router(onboarding_validation_router, prefix="/api/v1")
 app.include_router(payroll.router, prefix="/api/v1")
 app.include_router(payroll_input.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
+app.include_router(employees.router, prefix="/api/v1")

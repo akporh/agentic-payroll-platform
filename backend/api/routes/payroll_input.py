@@ -248,6 +248,77 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
         db.close()
 
 
+@router.get("/workspaces/{workspace_id}/payroll/inputs/issues")
+def get_input_issues(workspace_id: str):
+    """Return a count of payroll inputs that require attention before the next run.
+
+    Scoped to unclaimed inputs (payroll_run_id IS NULL) for the current calendar month.
+    Two conditions counted:
+      - deactivated_with_inputs: inputs for employees whose contract has ended
+        (contract_end IS NOT NULL AND contract_end < first day of current month)
+      - unmatched_with_inputs: inputs for employees missing grade or salary definition
+    """
+    from datetime import date as _date
+    today       = _date.today()
+    period_start = today.replace(day=1)
+
+    db = SessionLocal()
+    try:
+        deactivated = db.execute(
+            text("""
+                SELECT COUNT(DISTINCT pi.payroll_input_id) AS cnt
+                FROM   payroll_input pi
+                JOIN   employee e ON pi.employee_id = e.employee_id
+                LEFT JOIN LATERAL (
+                    SELECT ec2.end_date
+                    FROM   employee_contract ec2
+                    WHERE  ec2.employee_id = e.employee_id
+                    ORDER  BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                              ec2.start_date DESC NULLS LAST
+                    LIMIT  1
+                ) ec ON true
+                WHERE  e.workspace_id      = :wid
+                  AND  pi.payroll_run_id   IS NULL
+                  AND  ec.end_date         IS NOT NULL
+                  AND  ec.end_date         < CAST(:period_start AS DATE)
+            """),
+            {"wid": workspace_id, "period_start": str(period_start)},
+        ).scalar() or 0
+
+        unmatched = db.execute(
+            text("""
+                SELECT COUNT(DISTINCT pi.payroll_input_id) AS cnt
+                FROM   payroll_input pi
+                JOIN   employee e ON pi.employee_id = e.employee_id
+                LEFT JOIN LATERAL (
+                    SELECT ec2.grade_id, ec2.salary_definition_id
+                    FROM   employee_contract ec2
+                    WHERE  ec2.employee_id = e.employee_id
+                      AND  (ec2.end_date IS NULL OR ec2.end_date >= CAST(:period_start AS DATE))
+                    ORDER  BY COALESCE(ec2.end_date, '9999-12-31') DESC,
+                              ec2.start_date DESC NULLS LAST
+                    LIMIT  1
+                ) ec ON true
+                WHERE  e.workspace_id    = :wid
+                  AND  pi.payroll_run_id IS NULL
+                  AND  (ec.grade_id IS NULL OR ec.salary_definition_id IS NULL)
+            """),
+            {"wid": workspace_id, "period_start": str(period_start)},
+        ).scalar() or 0
+
+        import calendar as _cal
+        month_name = today.strftime("%B %Y")
+
+        return {
+            "total":                    int(deactivated) + int(unmatched),
+            "deactivated_with_inputs":  int(deactivated),
+            "unmatched_with_inputs":    int(unmatched),
+            "period_label":             month_name,
+        }
+    finally:
+        db.close()
+
+
 @router.delete("/{workspace_id}/payroll/inputs/{input_id}")
 def remove_input(workspace_id: str, input_id: str):
     """Delete an unclaimed payroll_input row."""

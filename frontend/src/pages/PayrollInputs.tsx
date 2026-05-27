@@ -13,9 +13,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { payrollInputApi } from '../api/payrollInput';
 import { workspaceApi } from '../api/workspace';
+import { payrollApi } from '../api/payroll';
 import type { PayrollInput, Employee } from '../types/payroll';
 import {
   ContentHeader,
@@ -101,6 +102,7 @@ function InboxIcon() {
 
 export function PayrollInputs() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
   const toast = useToast();
   const { workspace } = useWorkspaceContext();
 
@@ -109,6 +111,7 @@ export function PayrollInputs() {
   const [inputDefs, setInputDefs] = useState<InputCodeDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<{ total: number; deactivated_with_inputs: number; unmatched_with_inputs: number; period_label: string } | null>(null);
 
   // slide-over state
   const [panelOpen, setPanelOpen] = useState(false);
@@ -129,11 +132,13 @@ export function PayrollInputs() {
       workspaceApi.getEmployees(workspaceId),
       payrollInputApi.list(workspaceId),
       workspaceApi.getInputCodes(workspaceId),
+      payrollApi.getInputIssues(workspaceId).catch(() => null),
     ])
-      .then(([emps, data, codesData]) => {
+      .then(([emps, data, codesData, issuesData]) => {
         setEmployees(emps);
         setInputs(data.inputs);
         setInputDefs(codesData.input_codes);
+        setIssues(issuesData);
       })
       .catch((e) => setPageError(e.message))
       .finally(() => setLoading(false));
@@ -250,6 +255,19 @@ export function PayrollInputs() {
 
       {pageError && (
         <AlertBanner variant="error" title="Failed to load inputs" description={pageError} className="mb-4" />
+      )}
+
+      {issues && issues.total > 0 && (
+        <AlertBanner
+          variant="warning"
+          title={`${issues.total} input${issues.total !== 1 ? 's' : ''} require attention before running payroll`}
+          description={[
+            issues.deactivated_with_inputs > 0 && `${issues.deactivated_with_inputs} deactivated employee${issues.deactivated_with_inputs !== 1 ? 's' : ''}`,
+            issues.unmatched_with_inputs > 0 && `${issues.unmatched_with_inputs} employee${issues.unmatched_with_inputs !== 1 ? 's' : ''} missing grade or salary definition`,
+          ].filter(Boolean).join(', ') + '.'}
+          action={{ label: 'Review employees →', onClick: () => navigate(`/workspaces/${workspaceId}/employees`) }}
+          className="mb-4"
+        />
       )}
 
       {/* Inputs table */}

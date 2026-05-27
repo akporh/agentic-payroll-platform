@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageShell } from '../../design-system';
 import { workspaceApi } from '../../api/workspace';
+import { payrollApi } from '../../api/payroll';
 import type { Workspace } from '../../types/workspace';
 import type { Employee } from '../../types/payroll';
 import { WorkspaceContext } from '../../context/WorkspaceContext';
@@ -12,14 +13,16 @@ export function MainLayout() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [inputIssueCount, setInputIssueCount] = useState(0);
 
   useEffect(() => {
     workspaceApi.list().then(setWorkspaces).catch(() => {});
-  }, [workspaceId]); // re-fetch when navigating to a different workspace so newly-created workspaces appear
+  }, [workspaceId]);
 
   useEffect(() => {
-    if (!workspaceId) { setEmployees([]); return; }
+    if (!workspaceId) { setEmployees([]); setInputIssueCount(0); return; }
     workspaceApi.getEmployees(workspaceId).then(setEmployees).catch(() => {});
+    payrollApi.getInputIssues(workspaceId).then((d) => setInputIssueCount(d.total)).catch(() => {});
   }, [workspaceId]);
 
   const currentWorkspace = workspaces.find(w => w.workspace_id === workspaceId) ?? null;
@@ -48,6 +51,7 @@ export function MainLayout() {
         sidebarCollapsed={collapsed}
         onToggleSidebar={() => setCollapsed(v => !v)}
         unmatchedEmployeeCount={unmatchedEmployeeCount}
+        inputIssueCount={inputIssueCount}
       />
     </WorkspaceContext.Provider>
   );
