@@ -392,6 +392,8 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "statutory_version":      statutory_version,
         "payroll_rule_ids":       payroll_rule_ids,
         "rules_context_snapshot": original_snapshot or None,
+        "period_start":           period_start,
+        "period_end":             period_end,
     }
 
 
@@ -495,6 +497,12 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
 
     Called inside the same transaction and DB session as the caller.
     """
+    # FULL_RUN is disabled pending snapshot engine implementation (arch-council v3).
+    # It deletes SUCCESS rows unconditionally and reads live salary/component data,
+    # both of which violate the determinism contract. Use PER_EMPLOYEE retry instead.
+    raise ValueError(
+        "FULL_RUN retry is disabled. Use PER_EMPLOYEE retry or open a new correction run."
+    )
 
     # 1. Build the same shared execution context the original /payroll/run route built.
     shared_ctx = _build_shared_context(db, workspace_id, payroll_run_id)
@@ -513,9 +521,12 @@ def _retry_full_run(db, payroll_run_id: str, workspace_id: str, performed_by: st
             JOIN   salary_definition sd ON ec.salary_definition_id = sd.salary_definition_id
             WHERE  e.workspace_id = :wid
               AND  e.status       = 'ACTIVE'
-              AND  (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+              AND  ec.start_date  <= :period_end_date
+              AND  (ec.end_date IS NULL OR ec.end_date >= :period_start_date)
         """),
-        {"wid": workspace_id},
+        {"wid": workspace_id,
+         "period_end_date":   shared_ctx["period_end"],
+         "period_start_date": shared_ctx["period_start"]},
     ).fetchall()
 
     if not emp_rows:
@@ -838,9 +849,12 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                            ON ec.salary_definition_id = sd.salary_definition_id
                     WHERE  e.employee_id = :eid
                       AND  e.status      = 'ACTIVE'
-                      AND  (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+                      AND  ec.start_date <= :period_end_date
+                      AND  (ec.end_date IS NULL OR ec.end_date >= :period_start_date)
                 """),
-                {"eid": employee_id},
+                {"eid": employee_id,
+                 "period_end_date":   shared_ctx["period_end"],
+                 "period_start_date": shared_ctx["period_start"]},
             ).fetchone()
 
             # ----------------------------------------------------------------

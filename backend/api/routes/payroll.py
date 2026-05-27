@@ -118,6 +118,9 @@ def run_payroll(
             }
 
     # --- Load Employees ---
+    _period_end_date   = period_end   or str(statutory_effective_date)
+    _period_start_date = period_start or str(statutory_effective_date.replace(day=1))
+
     employee_rows = db.execute(text("""
         SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date,
                ec.shift_type, ec.state_of_tax, ec.skill_level, ec.grade_id
@@ -128,13 +131,14 @@ def run_payroll(
           ON ec.salary_definition_id = sd.salary_definition_id
         WHERE e.workspace_id = :workspace_id
           AND e.status = 'ACTIVE'
-          AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+          AND ec.start_date <= :period_end_date
+          AND (ec.end_date IS NULL OR ec.end_date >= :period_start_date)
           AND (sd.effective_from IS NULL OR sd.effective_from <= :period_end_date)
           AND (sd.effective_to   IS NULL OR sd.effective_to   >= :period_start_date)
     """), {
-        "workspace_id": workspace_id,
-        "period_end_date":   period_end   or str(statutory_effective_date),
-        "period_start_date": period_start or str(statutory_effective_date.replace(day=1)),
+        "workspace_id":      workspace_id,
+        "period_end_date":   _period_end_date,
+        "period_start_date": _period_start_date,
     }).fetchall()
 
     # Bulk-load grade rows for percentage salary derivation (O2)
@@ -196,9 +200,12 @@ def run_payroll(
             FROM employee e
             JOIN employee_contract ec ON e.employee_id = ec.employee_id
             WHERE e.employee_id = ANY(CAST(:ids AS uuid[]))
-              AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
+              AND ec.start_date <= :period_end_date
+              AND (ec.end_date IS NULL OR ec.end_date >= :period_start_date)
         """),
-        {"ids": _emp_ids},
+        {"ids": _emp_ids,
+         "period_end_date":   _period_end_date,
+         "period_start_date": _period_start_date},
     ).fetchall()
     _union_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _union_rows}
     for emp in employees:
