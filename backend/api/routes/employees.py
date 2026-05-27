@@ -9,11 +9,14 @@ workspace.py (pre-existing).  This module adds the four new endpoints:
     PATCH /{workspace_id}/employee-contracts/{contract_id}  update end_date / change_reason
 """
 
+import logging
 from datetime import date as _date
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+
+_log = logging.getLogger(__name__)
 
 from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.employee_repo import (
@@ -89,7 +92,7 @@ def _resolve_optional_id(db, workspace_id: str, table: str, code_col: str, id_co
 # ---------------------------------------------------------------------------
 
 class PatchEmployeeSchema(BaseModel):
-    full_name: str | None = None
+    full_name: str | None = Field(default=None, max_length=255)
     status:    str | None = None
 
 
@@ -101,12 +104,12 @@ class AddContractSchema(BaseModel):
     shift_type:           str | None = None
     state_of_tax:         str | None = Field(default=None, max_length=50)
     skill_level:          str | None = Field(default=None, max_length=50)
-    change_reason:        str | None = None
+    change_reason:        str | None = Field(default=None, max_length=255)
 
 
 class PatchContractSchema(BaseModel):
     end_date:      str | None = None
-    change_reason: str | None = None
+    change_reason: str | None = Field(default=None, max_length=255)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +150,8 @@ def patch_employee(workspace_id: str, employee_id: str, payload: PatchEmployeeSc
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_employee error: %s", e)
+        raise HTTPException(status_code=400, detail="Failed to update employee")
     finally:
         db.close()
 
@@ -210,7 +214,8 @@ def add_contract(workspace_id: str, employee_id: str, payload: AddContractSchema
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("add_contract error: %s", e)
+        raise HTTPException(status_code=400, detail="Failed to add contract")
     finally:
         db.close()
 
@@ -241,6 +246,7 @@ def patch_contract(workspace_id: str, contract_id: str, payload: PatchContractSc
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_contract error: %s", e)
+        raise HTTPException(status_code=400, detail="Failed to update contract")
     finally:
         db.close()

@@ -41,6 +41,13 @@ Domain code must never import infrastructure. Routes must never contain business
 
 ---
 
+## API Route Rules (Standing — Do Not Break)
+
+- **Never return `str(e)` in an HTTP response.** All `except Exception as e` blocks in route files must log the raw exception server-side (`_log.error(...)`) and return a generic human-readable string to the client (`"Failed to update employee"` etc.). DB constraint violations expose table names, column names, and constraint names verbatim in `str(e)`. This has appeared in new routes in Sprint 10 and Sprint 17 — it is a standing prohibition.
+- **Free-text fields mapped to VARCHAR(N) must have `max_length=N` in the Pydantic schema.** Without it, an oversized value hits a DB truncation error whose message leaks the column name. Applies to every `str | None` field that maps to a bounded column.
+
+---
+
 ## Known Data Contract Rules (Do Not Break)
 
 | Field | Invariant |
@@ -87,26 +94,29 @@ Domain code must never import infrastructure. Routes must never contain business
 
 1. `/roadmap` — orient: what's done, what's next, what's deferred
 2. `/pm` — scope stories + write acceptance criteria before plan mode
-3. Explicit user confirmation of scope
+3. `/ux-designer` — define flows and IA (frontend track only)
 4. `/architect` — for any structural or cross-layer design work
-5. Plan mode — research, write plan file, get approval
-6. `/arch-council` — mandatory before ExitPlanMode on any data contract risk
-7. Implementation
-8. `/simplify` — code quality pass on changed files
-9. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
-10. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
-11. `/frontend-designer` — any sprint with a frontend track (auto-invoked, see below)
-12. `/tester` — verification against acceptance criteria from step 2
-13. `/retro` — update skill checklists
-14. `/save-session` — safe exit
+5. Explicit user confirmation of scope
+6. Plan mode — research, write plan file, get approval
+7. `/arch-council` — mandatory before ExitPlanMode on any data contract risk
+8. Implementation
+9. `/simplify` — code quality pass on all changed files
+10. `/ui-designer` — visual design and polish review (frontend track only)
+11. `/frontend-designer` — broader frontend review (frontend track only)
+12. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
+13. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
+14. `/tester` — verification against acceptance criteria from step 2
+15. `/retro` — update skill checklists
+16. `/save-session` — safe exit
 
 ### Auto-Invoke Rules (Claude must invoke without being asked)
 
-- When a sprint plan or implementation touches `backend/api/routes/`, invoke `/security` automatically after implementation — do not wait to be asked.
-- When a sprint plan or implementation touches `sequential_executor.py`, `rule_evaluator.py`, `executor.py`, or any file under `migrations/versions/` that alters a statutory rule or calculation, invoke `/auditor` after `/tester` — do not wait to be asked.
-- When a sprint plan includes any file under `frontend/src/`, invoke `/frontend-designer` after implementation — do not wait to be asked.
 - At the start of every new sprint session, invoke `/roadmap` before asking the user what to work on.
 - When the user says "let's scope sprint", "what's next", or "start sprint", invoke `/pm` immediately — do not summarise the backlog manually.
+- When a sprint plan includes any file under `frontend/src/`, invoke `/ux-designer` before plan mode, then `/ui-designer` and `/frontend-designer` after implementation — do not wait to be asked.
+- When a sprint plan includes any structural or cross-layer design, invoke `/architect` before plan mode — do not wait to be asked.
+- When a sprint plan or implementation touches `backend/api/routes/`, invoke `/security` automatically after implementation — do not wait to be asked.
+- When a sprint plan or implementation touches `sequential_executor.py`, `rule_evaluator.py`, `executor.py`, or any file under `migrations/versions/` that alters a statutory rule or calculation, invoke `/auditor` after `/security` — do not wait to be asked.
 - When the user says "done", "sprint complete", or "close sprint", invoke `/retro` — do not skip.
 
 ### Hook-Enforced Guards (fires automatically on every file save)
