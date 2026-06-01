@@ -13,7 +13,7 @@ Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
 
 from decimal import Decimal
 
-from backend.infra.repositories.payroll_run_repo import save_payroll_run
+from backend.infra.repositories.payroll_run_repo import finalise_payroll_run
 from backend.infra.repositories.payroll_result_repo import save_payroll_result
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
@@ -32,6 +32,7 @@ def persist_payroll_run_execution(
     run_type: str = "REGULAR",
     tracer=None,
     public_holidays_snapshot: list | None = None,
+    salary_inputs_by_employee: dict | None = None,
 ):
     """Persist all outputs from a payroll run execution.
 
@@ -64,7 +65,7 @@ def persist_payroll_run_execution(
     audit_logs = execution_output["audit_logs"]
     events = execution_output["events"]
 
-    # 1️⃣ Insert payroll_run first (with financial totals for reconciliation)
+    # 1️⃣ Finalise payroll_run (DRAFT row created before execution; write totals + status)
     final_status = events[-1]["event_payload"]["to"]
 
     with tracer.step("Save payroll run header"):
@@ -74,23 +75,13 @@ def persist_payroll_run_execution(
             f"PAYE: {totals['total_deduction']}  │  "
             f"Net: {totals['total_net_pay']}"
         )
-        save_payroll_run(
+        finalise_payroll_run(
             payroll_run_id=payroll_run_id,
-            workspace_id=workspace_id,
             status=final_status,
-            rules_context_snapshot=execution_output["rules_context_snapshot"],
-            idempotency_key=idempotency_key,
-            period_start=period_start,
-            period_end=period_end,
             total_gross_pay=Decimal(str(totals["total_gross_pay"])),
             total_deduction=Decimal(str(totals["total_deduction"])),
             total_tax=Decimal(str(totals["total_paye"])),
             total_net_pay=Decimal(str(totals["total_net_pay"])),
-            retry_strategy=retry_strategy,
-            rule_set_id=rule_set_id,
-            statutory_effective_date=statutory_effective_date,
-            run_type=run_type,
-            public_holidays_snapshot=public_holidays_snapshot,
         )
 
     # 2️⃣ Insert payroll_results
@@ -106,6 +97,7 @@ def persist_payroll_run_execution(
                 if output and output.get("payroll_result")
                 else None
             )
+            sal_snap = (salary_inputs_by_employee or {}).get(r["employee_id"], {})
             save_payroll_result(
                 payroll_run_id=payroll_run_id,
                 employee_id=r["employee_id"],
@@ -114,6 +106,7 @@ def persist_payroll_run_execution(
                 error_message=r.get("error"),
                 component_trace=component_trace,
                 employee_context=r.get("employee_context"),
+                salary_inputs_snapshot=sal_snap,
             )
 
     # 3️⃣ Insert audit logs

@@ -59,7 +59,6 @@ PAID runs are rejected before any work begins.  The DB triggers would also
 reject any writes, but the early ValueError is cleaner.
 """
 
-import json
 from datetime import date
 from decimal import Decimal
 
@@ -77,26 +76,9 @@ from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
 from backend.infra.repositories.payroll_input_repo import load_inputs_for_run
 from backend.infra.repositories.payroll_result_repo import get_employee_context_from_result
+from backend.infra.json_utils import sanitize_jsonb as _sanitize
 from backend.infra.repositories.rate_code_repo import list_rate_codes
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _sanitize(obj: dict) -> dict:
-    """Coerce Decimal / UUID / date values to JSON-safe types.
-
-    Decimal is serialised as a JSON *number* (via float) so that JSONB
-    columns remain queryable with val::text::numeric casts.  All other
-    non-serialisable types fall back to str().
-    """
-    def _default(o):
-        if isinstance(o, Decimal):
-            return float(o)
-        return str(o)
-
-    return json.loads(json.dumps(obj, default=_default))
+from backend.application.snapshot_service import validate_snapshot_complete
 
 
 def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
@@ -149,6 +131,9 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
             f"Run {payroll_run_id} has no public holiday snapshot — open a correction run."
         )
     public_holiday_dates = {date.fromisoformat(d) for d in ph_snapshot}
+
+    # D3/D6: abort if snapshot is absent or incomplete — hard-fail, not skip
+    validate_snapshot_complete(db, payroll_run_id)
 
     period_ctx = build_period_context(
         period_start=period_start,
@@ -218,17 +203,16 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         for r in tax_rows
     ]
 
-    # ── Component metadata ────────────────────────────────────────────────────
+    # ── Component metadata — read from snapshot (not live table) ─────────────
     comp_rows = db.execute(
         text("""
             SELECT component_code, component_class, calculation_method,
                    execution_priority, is_active, metadata_json
-            FROM   component_metadata
-            WHERE  country_code = :cc
-              AND  is_active     = TRUE
+            FROM   component_metadata_snapshot
+            WHERE  payroll_run_id = :run_id
             ORDER  BY execution_priority
         """),
-        {"cc": country_code},
+        {"run_id": payroll_run_id},
     ).fetchall()
 
     component_metadata = [
@@ -243,10 +227,15 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         for r in comp_rows
     ]
 
-    # ── Workspace component overrides (disable + flat-amount + proration) ─────
+    # ── Workspace component overrides — read from snapshot (D2 workspace scoping) ─
     override_rows = db.execute(
-        text("SELECT component_code, overrides_json, proration_strategy FROM client_component_metadata WHERE workspace_id = :wid"),
-        {"wid": workspace_id},
+        text("""
+            SELECT component_code, overrides_json, proration_strategy
+            FROM   client_component_metadata_snapshot
+            WHERE  payroll_run_id = :run_id
+              AND  workspace_id   = :wid
+        """),
+        {"run_id": payroll_run_id, "wid": workspace_id},
     ).fetchall()
 
     client_overrides = {r[0]: r[1] for r in override_rows}
@@ -401,6 +390,7 @@ def _insert_result(
     payroll_output: dict | None,
     error_message: str | None,
     employee_context: dict | None = None,
+    salary_inputs_snapshot: dict | None = None,
 ) -> None:
     """Insert a single payroll_result row."""
 
@@ -432,7 +422,8 @@ def _insert_result(
                 component_trace_jsonb,
                 status,
                 error_message,
-                per_employee_context_json
+                per_employee_context_json,
+                salary_inputs_snapshot
             )
             VALUES (
                 gen_random_uuid(),
@@ -445,7 +436,8 @@ def _insert_result(
                 :trace,
                 :status,
                 :error,
-                :per_employee_context_json
+                :per_employee_context_json,
+                :salary_inputs_snapshot
             )
         """),
         {
@@ -461,6 +453,7 @@ def _insert_result(
             "per_employee_context_json": (
                 Json(_sanitize(employee_context)) if employee_context else None
             ),
+            "salary_inputs_snapshot": Json(salary_inputs_snapshot or {}),
         },
     )
 
@@ -613,28 +606,29 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
 
         for employee_id in failed_employee_ids:
 
-            # Load the employee's CURRENT salary components and contract dates.
-            # If the data was corrected since the original run (the normal
-            # "fix then retry" workflow), the corrected values are picked up
-            # here automatically.
-            emp_row = db.execute(
+            # D1: structural fields from employee_contract_snapshot; salary amounts
+            # from live salary_definition joined on the frozen salary_definition_id.
+            # D6: hard-fail (raise) if no snapshot row — do not silently skip.
+            snap_row = db.execute(
                 text("""
-                    SELECT sd.components_jsonb, ec.start_date, ec.end_date,
-                           ec.shift_type, ec.grade_id
-                    FROM   employee e
-                    JOIN   employee_contract ec
-                           ON e.employee_id = ec.employee_id
+                    SELECT ecs.salary_definition_id,
+                           ecs.contract_start, ecs.contract_end,
+                           ecs.shift_type, ecs.grade_id, ecs.grade_jsonb,
+                           sd.components_jsonb
+                    FROM   employee_contract_snapshot ecs
                     JOIN   salary_definition sd
-                           ON ec.salary_definition_id = sd.salary_definition_id
-                    WHERE  e.employee_id = :eid
-                      AND  e.status      = 'ACTIVE'
-                      AND  ec.start_date <= :period_end_date
-                      AND  (ec.end_date IS NULL OR ec.end_date >= :period_start_date)
+                           ON sd.salary_definition_id = ecs.salary_definition_id
+                    WHERE  ecs.payroll_run_id = :run_id
+                      AND  ecs.employee_id    = :eid
                 """),
-                {"eid": employee_id,
-                 "period_end_date":   shared_ctx["period_end"],
-                 "period_start_date": shared_ctx["period_start"]},
+                {"run_id": payroll_run_id, "eid": employee_id},
             ).fetchone()
+
+            if snap_row is None:
+                raise ValueError(
+                    f"No snapshot row for employee {employee_id} on run {payroll_run_id} "
+                    "— data integrity failure (D6)"
+                )
 
             # ----------------------------------------------------------------
             # a) Attempt calculation — pure, no DB side-effects.
@@ -645,57 +639,43 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             # Rows predating the migration yield {} — eligibility gates suppressed.
             frozen_ctx = get_employee_context_from_result(db, payroll_run_id, employee_id)
 
-            if emp_row is None:
-                # No active contract — the calculation cannot proceed.
-                calc_result   = None
-                calc_error    = "Employee has no active contract"
-            else:
-                _shift_type = emp_row[3]
-                _grade_id   = str(emp_row[4]) if emp_row[4] is not None else None
-                _grade      = None
-                if _grade_id:
-                    g = db.execute(
-                        text("""
-                            SELECT grade_id, total_monthly, basic_pct, housing_pct,
-                                   transport_pct, utility_pct
-                            FROM   grade WHERE grade_id = :gid
-                        """),
-                        {"gid": _grade_id},
-                    ).fetchone()
-                    if g:
-                        _grade = {
-                            "total_monthly": g[1], "basic_pct": g[2],
-                            "housing_pct": g[3], "transport_pct": g[4], "utility_pct": g[5],
-                        }
-                _sal_components, _salary_basis = derive_salary_components(emp_row[0], _grade)
-                components = [{"code": k, "amount": v} for k, v in _sal_components.items()]
-                contract_start = emp_row[1].isoformat() if emp_row[1] else None
-                contract_end   = emp_row[2].isoformat() if emp_row[2] else None
-                emp_context    = {**shared_ctx["context"], "shift_type": _shift_type, "salary_basis": _salary_basis}
+            _shift_type    = snap_row[3]
+            _grade_id      = str(snap_row[4]) if snap_row[4] is not None else None
+            _grade         = snap_row[5]   # grade_jsonb frozen at run time
+            _components_jsonb = snap_row[6]  # live components from salary_definition (D1)
 
-                try:
-                    calc_result = execute_single_employee_payroll(
-                        payroll_run_id          = payroll_run_id,
-                        employee_id             = employee_id,
-                        components              = components,
-                        tax_bands               = shared_ctx["tax_bands"],
-                        statutory_rule_id       = shared_ctx["statutory_rule_id"],
-                        statutory_version       = shared_ctx["statutory_version"],
-                        payroll_rule_ids        = shared_ctx["payroll_rule_ids"],
-                        performed_by            = "admin@internal",
-                        component_metadata      = shared_ctx["component_metadata"],
-                        context                 = emp_context,
-                        contract_start          = contract_start,
-                        contract_end            = contract_end,
-                        rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
-                        inputs                  = inputs_by_employee.get(employee_id, {}),
-                        employee_context        = frozen_ctx or None,
-                        tracer                  = tracer,
-                    )
-                    calc_error = None
-                except Exception as exc:
-                    calc_result = None
-                    calc_error  = str(exc)
+            _sal_components, _salary_basis = derive_salary_components(_components_jsonb, _grade)
+            components    = [{"code": k, "amount": v} for k, v in _sal_components.items()]
+            contract_start = snap_row[1].isoformat() if snap_row[1] else None
+            contract_end   = snap_row[2].isoformat() if snap_row[2] else None
+            emp_context    = {**shared_ctx["context"], "shift_type": _shift_type, "salary_basis": _salary_basis}
+
+            # D4: salary_inputs_snapshot for audit trail (detects live vs original divergence)
+            sal_snap = {c["code"]: str(c["amount"]) for c in components}
+
+            try:
+                calc_result = execute_single_employee_payroll(
+                    payroll_run_id          = payroll_run_id,
+                    employee_id             = employee_id,
+                    components              = components,
+                    tax_bands               = shared_ctx["tax_bands"],
+                    statutory_rule_id       = shared_ctx["statutory_rule_id"],
+                    statutory_version       = shared_ctx["statutory_version"],
+                    payroll_rule_ids        = shared_ctx["payroll_rule_ids"],
+                    performed_by            = "admin@internal",
+                    component_metadata      = shared_ctx["component_metadata"],
+                    context                 = emp_context,
+                    contract_start          = contract_start,
+                    contract_end            = contract_end,
+                    rules_context_snapshot  = shared_ctx["rules_context_snapshot"],
+                    inputs                  = inputs_by_employee.get(employee_id, {}),
+                    employee_context        = frozen_ctx or None,
+                    tracer                  = tracer,
+                )
+                calc_error = None
+            except Exception as exc:
+                calc_result = None
+                calc_error  = str(exc)
 
             # ----------------------------------------------------------------
             # b) DELETE the old FAILED row — only after the attempt.
@@ -704,28 +684,30 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             _delete_failed_row(db, payroll_run_id=payroll_run_id, employee_id=employee_id)
 
             # ----------------------------------------------------------------
-            # c) INSERT new result row.
+            # c) INSERT new result row (sal_snap written for D4 audit trail).
             # ----------------------------------------------------------------
             if calc_error is None:
                 _insert_result(
                     db,
-                    payroll_run_id   = payroll_run_id,
-                    employee_id      = employee_id,
-                    status           = "SUCCESS",
-                    payroll_output   = calc_result,
-                    error_message    = None,
-                    employee_context = frozen_ctx or None,
+                    payroll_run_id          = payroll_run_id,
+                    employee_id             = employee_id,
+                    status                  = "SUCCESS",
+                    payroll_output          = calc_result,
+                    error_message           = None,
+                    employee_context        = frozen_ctx or None,
+                    salary_inputs_snapshot  = sal_snap,
                 )
                 success_count += 1
             else:
                 _insert_result(
                     db,
-                    payroll_run_id   = payroll_run_id,
-                    employee_id      = employee_id,
-                    status           = "FAILED",
-                    payroll_output   = None,
-                    error_message    = calc_error,
-                    employee_context = frozen_ctx or None,
+                    payroll_run_id          = payroll_run_id,
+                    employee_id             = employee_id,
+                    status                  = "FAILED",
+                    payroll_output          = None,
+                    error_message           = calc_error,
+                    employee_context        = frozen_ctx or None,
+                    salary_inputs_snapshot  = sal_snap,
                 )
                 still_failed += 1
 
@@ -761,7 +743,8 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
                     COALESCE(SUM((
                         SELECT SUM(val::text::numeric)
                         FROM   jsonb_each(deductions_jsonb) AS j(key, val)
-                    )), 0)
+                    )), 0),
+                    COALESCE(SUM((deductions_jsonb->>'PAYE')::numeric), 0)
                 FROM payroll_result
                 WHERE payroll_run_id = :run_id
                   AND status         = 'SUCCESS'
@@ -769,16 +752,7 @@ def retry_failed_payroll_employees(payroll_run_id: str, performed_by: str = "adm
             {"run_id": payroll_run_id},
         ).fetchone()
 
-        paye_total_row = db.execute(
-            text("""
-                SELECT COALESCE(SUM((deductions_jsonb->>'PAYE')::numeric), 0)
-                FROM   payroll_result
-                WHERE  payroll_run_id = :run_id
-                  AND  status         = 'SUCCESS'
-            """),
-            {"run_id": payroll_run_id},
-        ).fetchone()
-        paye_total = paye_total_row[0]
+        paye_total = totals_row[3]
 
         # trg_payroll_run_state_machine allows PARTIAL → CALCULATED
         # (only DRAFT / PROCESSING / COMPLETED / PAID transitions are enforced)

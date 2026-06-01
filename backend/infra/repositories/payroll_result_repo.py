@@ -8,28 +8,7 @@ Handles JSON sanitization at infrastructure boundary.
 from sqlalchemy import text
 from psycopg2.extras import Json
 from backend.infra.db.session import SessionLocal
-import json
-
-
-def _sanitize_json(payload: dict | None) -> dict:
-    """
-    Convert Decimal, UUID, etc. into JSON-safe values.
-
-    Decimal is serialised as a JSON *number* (via float) so that JSONB
-    columns remain queryable with val::text::numeric casts.  All other
-    non-serialisable types fall back to str().
-    """
-    if payload is None:
-        return {}
-
-    from decimal import Decimal as _Decimal
-
-    def _default(obj):
-        if isinstance(obj, _Decimal):
-            return float(obj)
-        return str(obj)
-
-    return json.loads(json.dumps(payload, default=_default))
+from backend.infra.json_utils import sanitize_jsonb as _sanitize_json
 
 
 def get_employee_context_from_result(db, payroll_run_id: str, employee_id: str) -> dict:
@@ -61,6 +40,7 @@ def save_payroll_result(
     error_message: str | None,
     component_trace: list | None = None,
     employee_context: dict | None = None,
+    salary_inputs_snapshot: dict | None = None,
 ):
     """
     Persist a single payroll result.
@@ -111,7 +91,8 @@ def save_payroll_result(
             component_trace_jsonb,
             status,
             error_message,
-            per_employee_context_json
+            per_employee_context_json,
+            salary_inputs_snapshot
         )
         VALUES (
             gen_random_uuid(),
@@ -124,7 +105,8 @@ def save_payroll_result(
             :trace,
             :status,
             :error_message,
-            :per_employee_context_json
+            :per_employee_context_json,
+            :salary_inputs_snapshot
         )
         """),
         {
@@ -140,6 +122,7 @@ def save_payroll_result(
             "per_employee_context_json": (
                 Json(_sanitize_json(employee_context)) if employee_context else None
             ),
+            "salary_inputs_snapshot": Json(salary_inputs_snapshot or {}),
         }
     )
 

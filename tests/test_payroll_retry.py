@@ -44,6 +44,7 @@ Run:
 import uuid
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from psycopg2.extras import Json
 from sqlalchemy import text
@@ -392,6 +393,65 @@ def test_payroll_retry_e2e():
             f"Employee B net_pay: expected {EXPECTED_NET_B}, got {b[2]}"
         )
         assert b[3] is None, f"Employee B must have no error after retry, got: {b[3]}"
+
+        # -------------------------------------------------------------------
+        # STEP 9b — Verify payroll_run aggregate totals match per-employee data
+        #
+        # total_tax  must equal the PAYE-only sum (not all deductions).
+        # total_deduction must equal all deductions combined.
+        # total_net_pay must equal the net_pay sum.
+        # This guards the merged totals query in payroll_retry_service against
+        # silent COALESCE swallowing from a cast mismatch.
+        # -------------------------------------------------------------------
+        run_totals = db.execute(
+            text("""
+                SELECT total_tax, total_deduction, total_net_pay
+                FROM payroll_run
+                WHERE payroll_run_id = :rid
+            """),
+            {"rid": payroll_run_id},
+        ).fetchone()
+
+        # Independent aggregates from payroll_result (the ground truth).
+        expected_tax = db.execute(
+            text("""
+                SELECT COALESCE(SUM((deductions_jsonb->>'PAYE')::numeric), 0)
+                FROM payroll_result
+                WHERE payroll_run_id = :rid AND status = 'SUCCESS'
+            """),
+            {"rid": payroll_run_id},
+        ).scalar()
+
+        expected_deduction = db.execute(
+            text("""
+                SELECT COALESCE(SUM((
+                    SELECT SUM(val::text::numeric)
+                    FROM jsonb_each(deductions_jsonb) AS j(key, val)
+                )), 0)
+                FROM payroll_result
+                WHERE payroll_run_id = :rid AND status = 'SUCCESS'
+            """),
+            {"rid": payroll_run_id},
+        ).scalar()
+
+        expected_net = db.execute(
+            text("""
+                SELECT COALESCE(SUM(net_pay), 0)
+                FROM payroll_result
+                WHERE payroll_run_id = :rid AND status = 'SUCCESS'
+            """),
+            {"rid": payroll_run_id},
+        ).scalar()
+
+        assert float(run_totals[0]) == pytest.approx(float(expected_tax), rel=1e-4), (
+            f"total_tax mismatch: run says {run_totals[0]}, PAYE sum says {expected_tax}"
+        )
+        assert float(run_totals[1]) == pytest.approx(float(expected_deduction), rel=1e-4), (
+            f"total_deduction mismatch: run says {run_totals[1]}, deductions sum says {expected_deduction}"
+        )
+        assert float(run_totals[2]) == pytest.approx(float(expected_net), rel=1e-4), (
+            f"total_net_pay mismatch: run says {run_totals[2]}, net_pay sum says {expected_net}"
+        )
 
         # -------------------------------------------------------------------
         # STEP 10 — Idempotency: second retry on a CALCULATED run returns 400

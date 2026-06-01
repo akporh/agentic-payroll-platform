@@ -37,6 +37,7 @@ import {
   TimelineTable,
   AlertBanner,
   ConfirmDialog,
+  Modal,
   EmptyState,
   NumberInput,
   Textarea,
@@ -90,6 +91,16 @@ function ActionPanel({ run, onApprove, onLock, onPay, onRetry, actionLoading }: 
   }
 
   if (run.status === 'PARTIAL') {
+    if (!run.statutory_effective_date) {
+      return (
+        <AlertBanner
+          variant="warning"
+          title="Some employees failed to calculate — retry not available"
+          description="This run was created before the snapshot engine was enabled. Open a new payroll run to correct this period."
+          className="mb-5"
+        />
+      );
+    }
     return (
       <AlertBanner
         variant="warning"
@@ -618,6 +629,7 @@ export function PayrollResults() {
   const [activeTab, setActiveTab] = useState<TabKey>('results');
   const [showPayConfirm, setShowPayConfirm] = useState(false);
   const [payConfirmLoading, setPayConfirmLoading] = useState(false);
+  const [showRetryBlockedModal, setShowRetryBlockedModal] = useState(false);
 
   const fetchRun = useCallback(() => {
     if (!workspaceId || !runId) return;
@@ -669,7 +681,12 @@ export function PayrollResults() {
       await fn();
       fetchRun();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : `${label} failed`);
+      const msg = e instanceof Error ? e.message : `${label} failed`;
+      if (label === 'Retry' && msg.includes('predates snapshot engine')) {
+        setShowRetryBlockedModal(true);
+      } else {
+        setActionError(msg);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -820,6 +837,28 @@ export function PayrollResults() {
         destructive
         loading={payConfirmLoading}
       />
+
+      {/* EMP-UX-3: Retry blocked — run predates snapshot engine */}
+      <Modal
+        open={showRetryBlockedModal}
+        onClose={() => setShowRetryBlockedModal(false)}
+        title="Cannot retry this run"
+        size="form"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => setShowRetryBlockedModal(false)}>Close</Btn>
+            <Btn variant="primary" onClick={() => navigate(`/workspaces/${workspaceId}/payroll/new`)}>
+              New Run →
+            </Btn>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          This run was created before the snapshot engine was enabled. Retrying would read live
+          data and may produce different results to the original. To correct this period, open a
+          new payroll run.
+        </p>
+      </Modal>
     </div>
   );
 }

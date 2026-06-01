@@ -21,6 +21,8 @@ from backend.domain.payroll.period_context import build_period_context
 from backend.domain.rules.snapshot import build_rules_context_snapshot
 from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
+from backend.application.snapshot_service import create_payroll_snapshot
+from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
 from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status, resolve_reconciliation
@@ -64,6 +66,20 @@ def run_payroll(
 
     if not workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id required")
+
+    _VALID_RUN_TYPES = {"REGULAR", "ADJUSTMENT", "CORRECTION"}
+    if run_type not in _VALID_RUN_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid run_type. Allowed values: {sorted(_VALID_RUN_TYPES)}",
+        )
+
+    _VALID_RETRY_STRATEGIES = {"PER_EMPLOYEE"}
+    if retry_strategy not in _VALID_RETRY_STRATEGIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid retry_strategy. Allowed values: {sorted(_VALID_RETRY_STRATEGIES)}",
+        )
 
     if period_type_raw and period_type_raw.upper() == "CUSTOM" and not working_days_input:
         raise HTTPException(
@@ -123,7 +139,8 @@ def run_payroll(
 
     employee_rows = db.execute(text("""
         SELECT e.employee_id, sd.components_jsonb, ec.start_date, ec.end_date,
-               ec.shift_type, ec.state_of_tax, ec.skill_level, ec.grade_id
+               ec.shift_type, ec.state_of_tax, ec.skill_level, ec.grade_id,
+               ec.salary_definition_id
         FROM employee e
         JOIN employee_contract ec
           ON e.employee_id = ec.employee_id
@@ -176,16 +193,21 @@ def run_payroll(
             salary_basis = "salary_definition_absolute"
             derivation_error = f"salary_derivation_failed: {exc}"
         employees.append({
-            "employee_id":       str(row[0]),
-            "components":        components_list,
-            "contract_start":    row[2].isoformat() if row[2] else None,
-            "contract_end":      row[3].isoformat() if row[3] else None,
+            "employee_id":          str(row[0]),
+            "components":           components_list,
+            "contract_start":       row[2].isoformat() if row[2] else None,
+            "contract_end":         row[3].isoformat() if row[3] else None,
             # shift_type: NULL is treated as 'DAY' by the ot_multiplier handler gate (O3/D9)
-            "shift_type":        row[4],
-            "state_of_tax":      row[5],
-            "skill_level":       row[6],
-            "salary_basis":      salary_basis,
-            "derivation_error":  derivation_error,
+            "shift_type":           row[4],
+            "state_of_tax":         row[5],
+            "skill_level":          row[6],
+            "salary_basis":         salary_basis,
+            "derivation_error":     derivation_error,
+            # Snapshot fields (D1: frozen at run time; retry joins salary_definition live on salary_definition_id)
+            "salary_definition_id": str(row[8]) if row[8] is not None else None,
+            "components_jsonb":     row[1],
+            "grade_id":             grade_id,
+            "grade_jsonb":          grade,
         })
 
     if not employees:
@@ -473,6 +495,12 @@ def run_payroll(
 
     payroll_run_id = str(uuid.uuid4())
 
+    # ── Build per-employee salary audit map (D4 — written to payroll_result.salary_inputs_snapshot) ─
+    salary_inputs_by_employee = {
+        emp["employee_id"]: {c["code"]: str(c["amount"]) for c in emp.get("components", [])}
+        for emp in employees
+    }
+
     # ── Load unclaimed inputs (own session — payroll_run row doesn't exist yet) ─
     inputs_by_employee = load_unclaimed_inputs_by_employee(
         workspace_id,
@@ -752,32 +780,70 @@ def run_payroll(
         "itf_threshold_met":               itf_threshold_met,
     }
 
-    ph_snapshot = sorted(str(d) for d in public_holiday_dates)
+    # ── Create DRAFT run row (rules_ctx_snapshot now available; FK needed for snapshot tables) ──
+    try:
+        create_draft_payroll_run(
+            payroll_run_id=payroll_run_id,
+            workspace_id=workspace_id,
+            rules_context_snapshot=rules_ctx_snapshot,
+            idempotency_key=idempotency_key,
+            period_start=period_start,
+            period_end=period_end,
+            retry_strategy=retry_strategy,
+            rule_set_id=str(rule_set_id) if rule_set_id else None,
+            statutory_effective_date=str(statutory_effective_date),
+            run_type=run_type,
+            public_holidays_snapshot=sorted(str(d) for d in public_holiday_dates),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    # ── Snapshot component metadata + overrides + employee contracts (D3 atomicity) ─
+    _snap_db = SessionLocal()
+    _override_rows_dicts = [
+        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2]}
+        for r in override_rows
+    ]
+    try:
+        create_payroll_snapshot(
+            _snap_db,
+            payroll_run_id=payroll_run_id,
+            workspace_id=workspace_id,
+            component_metadata_rows=component_metadata,
+            client_override_rows=_override_rows_dicts,
+            employees_data=employees,
+        )
+    except Exception as exc:
+        logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to create payroll snapshot")
+    finally:
+        _snap_db.close()
 
     try:
         result = execute_and_persist(
-            payroll_run_id            = payroll_run_id,
-            workspace_id              = workspace_id,
-            employees                 = employees,
-            tax_bands                 = tax_bands,
-            statutory_rule_id         = statutory_rule_id,
-            statutory_version         = statutory_version,
-            payroll_rule_ids          = payroll_rule_ids,
-            performed_by              = "admin@internal",
-            execution_mode            = "isolated",
-            idempotency_key           = idempotency_key,
-            period_start              = period_start,
-            period_end                = period_end,
-            pay_cycle_definition      = pay_cycle_definition,
-            retry_strategy            = retry_strategy,
-            component_metadata        = component_metadata or None,
-            context                   = context,
-            rules_context_snapshot    = rules_ctx_snapshot,
-            rule_set_id               = rule_set_id,
-            statutory_effective_date  = str(statutory_effective_date),
-            run_type                  = run_type,
-            pre_warnings              = _ph_pre_warnings or None,
-            public_holidays_snapshot  = ph_snapshot,
+            payroll_run_id              = payroll_run_id,
+            workspace_id                = workspace_id,
+            employees                   = employees,
+            tax_bands                   = tax_bands,
+            statutory_rule_id           = statutory_rule_id,
+            statutory_version           = statutory_version,
+            payroll_rule_ids            = payroll_rule_ids,
+            performed_by                = "admin@internal",
+            execution_mode              = "isolated",
+            idempotency_key             = idempotency_key,
+            period_start                = period_start,
+            period_end                  = period_end,
+            pay_cycle_definition        = pay_cycle_definition,
+            retry_strategy              = retry_strategy,
+            component_metadata          = component_metadata or None,
+            context                     = context,
+            rules_context_snapshot      = rules_ctx_snapshot,
+            rule_set_id                 = rule_set_id,
+            statutory_effective_date    = str(statutory_effective_date),
+            run_type                    = run_type,
+            pre_warnings                = _ph_pre_warnings or None,
+            public_holidays_snapshot    = sorted(str(d) for d in public_holiday_dates),
+            salary_inputs_by_employee   = salary_inputs_by_employee,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -880,7 +946,8 @@ def get_payroll_run(workspace_id: str, run_id: str):
         row = db.execute(
             text("""
                 SELECT payroll_run_id, workspace_id, status,
-                       period_start, period_end, pay_date, created_at
+                       period_start, period_end, pay_date, created_at,
+                       statutory_effective_date
                 FROM payroll_run
                 WHERE payroll_run_id = :rid AND workspace_id = :wid
             """),
@@ -891,13 +958,14 @@ def get_payroll_run(workspace_id: str, run_id: str):
             raise HTTPException(status_code=404, detail="Payroll run not found")
 
         return {
-            "run_id":       str(row[0]),
-            "workspace_id": str(row[1]),
-            "status":       row[2],
-            "period_start": str(row[3]) if row[3] else None,
-            "period_end":   str(row[4]) if row[4] else None,
-            "pay_date":     str(row[5]) if row[5] else None,
-            "created_at":   str(row[6]) if row[6] else None,
+            "run_id":                    str(row[0]),
+            "workspace_id":              str(row[1]),
+            "status":                    row[2],
+            "period_start":              str(row[3]) if row[3] else None,
+            "period_end":                str(row[4]) if row[4] else None,
+            "pay_date":                  str(row[5]) if row[5] else None,
+            "created_at":                str(row[6]) if row[6] else None,
+            "statutory_effective_date":  str(row[7]) if row[7] else None,
         }
     finally:
         db.close()
@@ -933,10 +1001,12 @@ def get_payroll_run_results(workspace_id: str, run_id: str):
                     pr.component_trace_jsonb
                 FROM payroll_result pr
                 JOIN employee e ON e.employee_id = pr.employee_id
+                JOIN payroll_run r ON r.payroll_run_id = pr.payroll_run_id
                 WHERE pr.payroll_run_id = :rid
+                  AND r.workspace_id = :wid
                 ORDER BY e.full_name
             """),
-            {"rid": run_id},
+            {"rid": run_id, "wid": workspace_id},
         ).fetchall()
 
         results = []
@@ -991,6 +1061,7 @@ def retry_payroll_run(run_id: str, performed_by: str = Header(default="admin@int
     try:
         result = retry_failed_payroll_employees(run_id, performed_by=performed_by)
     except ValueError as exc:
+        logger.error("Retry failed for run %s: %s", run_id, exc)
         raise HTTPException(status_code=400, detail=str(exc))
 
     return {

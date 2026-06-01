@@ -39,6 +39,7 @@ def execute_and_persist(
     run_type: str = "REGULAR",
     pre_warnings: list[tuple[str, str | None]] | None = None,
     public_holidays_snapshot: list | None = None,
+    salary_inputs_by_employee: dict | None = None,
 ) -> dict:
 
     """Execute a full payroll run and persist all outputs.
@@ -132,6 +133,7 @@ def execute_and_persist(
             run_type=run_type,
             tracer=tracer,
             public_holidays_snapshot=public_holidays_snapshot,
+            salary_inputs_by_employee=salary_inputs_by_employee,
         )
 
     tracer.separator()

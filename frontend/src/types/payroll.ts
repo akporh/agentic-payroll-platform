@@ -15,6 +15,7 @@ export interface PayrollRun {
   pay_date: string;
   status: PayrollRunStatus;
   created_at: string;
+  statutory_effective_date?: string | null;
 }
 
 export interface ComponentTraceEntry {
