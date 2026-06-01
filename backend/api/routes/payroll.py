@@ -313,6 +313,10 @@ def run_payroll(
         db.close()
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # Ensure period_start/period_end are always persisted even when the caller omits them.
+    period_start = period_start or str(period_ctx.period_start)
+    period_end   = period_end   or str(period_ctx.period_end)
+
     # ── A3-A4: Rule set resolution ────────────────────────────────────────────
     # Find the rule set effective on statutory_effective_date.
     # ADJUSTMENT runs may supply a specific rule_set_id override.
@@ -748,29 +752,32 @@ def run_payroll(
         "itf_threshold_met":               itf_threshold_met,
     }
 
+    ph_snapshot = sorted(str(d) for d in public_holiday_dates)
+
     try:
         result = execute_and_persist(
-            payroll_run_id           = payroll_run_id,
-            workspace_id             = workspace_id,
-            employees                = employees,
-            tax_bands                = tax_bands,
-            statutory_rule_id        = statutory_rule_id,
-            statutory_version        = statutory_version,
-            payroll_rule_ids         = payroll_rule_ids,
-            performed_by             = "admin@internal",
-            execution_mode           = "isolated",
-            idempotency_key          = idempotency_key,
-            period_start             = period_start,
-            period_end               = period_end,
-            pay_cycle_definition     = pay_cycle_definition,
-            retry_strategy           = retry_strategy,
-            component_metadata       = component_metadata or None,
-            context                  = context,
-            rules_context_snapshot   = rules_ctx_snapshot,
-            rule_set_id              = rule_set_id,
-            statutory_effective_date = str(statutory_effective_date),
-            run_type                 = run_type,
-            pre_warnings             = _ph_pre_warnings or None,
+            payroll_run_id            = payroll_run_id,
+            workspace_id              = workspace_id,
+            employees                 = employees,
+            tax_bands                 = tax_bands,
+            statutory_rule_id         = statutory_rule_id,
+            statutory_version         = statutory_version,
+            payroll_rule_ids          = payroll_rule_ids,
+            performed_by              = "admin@internal",
+            execution_mode            = "isolated",
+            idempotency_key           = idempotency_key,
+            period_start              = period_start,
+            period_end                = period_end,
+            pay_cycle_definition      = pay_cycle_definition,
+            retry_strategy            = retry_strategy,
+            component_metadata        = component_metadata or None,
+            context                   = context,
+            rules_context_snapshot    = rules_ctx_snapshot,
+            rule_set_id               = rule_set_id,
+            statutory_effective_date  = str(statutory_effective_date),
+            run_type                  = run_type,
+            pre_warnings              = _ph_pre_warnings or None,
+            public_holidays_snapshot  = ph_snapshot,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

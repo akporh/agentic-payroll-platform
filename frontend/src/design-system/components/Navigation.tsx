@@ -232,7 +232,8 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
       items: [
         { label: 'Configuration', to: `/workspaces/${w}/config`,            icon: 'config' },
         { label: 'Public Holidays', to: `/workspaces/${w}/public-holidays`, icon: 'calendar' },
-        { label: 'Rate Codes',    to: `/workspaces/${w}/rate-codes`,        icon: 'tag' },
+        { label: 'Rate Codes',       to: `/workspaces/${w}/rate-codes`,                icon: 'tag' },
+        { label: 'Attendance Codes', to: `/workspaces/${w}/attendance-configuration`, icon: 'calendar' },
       ],
     },
     ...(!isLive ? [{

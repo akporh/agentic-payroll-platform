@@ -69,7 +69,7 @@ def test_run_snapshot_is_immutable():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
+                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-03-15')
             """),
             {"id": statutory_rule_id},
         )

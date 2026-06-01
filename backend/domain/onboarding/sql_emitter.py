@@ -73,7 +73,9 @@ def emit_employees_sql(workspace_id: str, employees: list[dict]) -> str:
     """
     statements = []
     for emp in employees:
-        employee_number = emp.get("employee_number", "UNKNOWN")
+        employee_number = emp.get("employee_number")
+        if not employee_number:
+            raise ValueError(f"Employee at index {employees.index(emp)} is missing employee_number.")
         biodata = emp.get("biodata", {})
         full_name = biodata.get("FULL_NAME", employee_number)
         biodata_json = json.dumps(biodata)

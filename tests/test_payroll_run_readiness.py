@@ -171,6 +171,7 @@ def _standard_onboarding_payload(workspace_id: uuid.UUID) -> dict:
                 "employee_number":        "EMP001",
                 "full_name":              "Jane Okeke",
                 "salary_definition_name": "STANDARD",
+                "contract_start":         "2025-01-01",
                 "biodata": {
                     "TIN":            "1234567890",
                     "BANK":           "GTBank",
@@ -465,7 +466,7 @@ def test_employee_missing_salary_definition_not_ready():
         db.execute(
             text("""
                 UPDATE employee_contract
-                SET    end_date = '2020-01-01'
+                SET    end_date = '2025-12-31'
                 WHERE  employee_id IN (
                     SELECT employee_id FROM employee WHERE workspace_id = :wid
                 )

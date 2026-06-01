@@ -56,8 +56,9 @@ HOUSING   = 200_000
 TRANSPORT = 100_000
 GROSS     = BASIC + HOUSING + TRANSPORT   # 800_000
 
-# Expected PAYE using seeded 5-band rates + 8% explicit pension + 2.5% NHF:
-#   Pension = GROSS × 8% = 64 000;  NHF = BASIC × 2.5% = 12 500
+# Expected PAYE using seeded 5-band rates + 8% explicit pension. No NHF workspace rule
+# is configured so NHF is not deducted.
+#   Pension = GROSS × 8% = 64 000
 #   Annual taxable = (800k - 64k) × 12 = 8 832 000
 #   Band 1  0–300k       @ 7%  →    21 000
 #   Band 2  300k–600k    @ 11% →    33 000
@@ -65,9 +66,9 @@ GROSS     = BASIC + HOUSING + TRANSPORT   # 800_000
 #   Band 4  1100k–1600k  @ 19% →    95 000
 #   Band 5  1600k+       @ 21% → 1 518 720
 #   Monthly PAYE = 1 742 720 / 12 = 145 226.67
-#   NET = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+#   NET = 800 000 - 64 000 - 145 226.67 = 590 773.33
 EXPECTED_PAYE = 145_226.67
-EXPECTED_NET  = 578_273.33
+EXPECTED_NET  = 590_773.33
 
 
 def test_partial_payroll_run_e2e():
@@ -120,7 +121,7 @@ def test_partial_payroll_run_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9998, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
+                VALUES (:id, 'NATIONAL', 9998, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-03-01')
             """),
             {"id": statutory_rule_id},
         )

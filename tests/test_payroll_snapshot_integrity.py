@@ -97,7 +97,7 @@ def _create_prerequisites(
         text("""
             INSERT INTO statutory_rule
                 (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-            VALUES (:id, 'NATIONAL', :ver, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
+            VALUES (:id, 'NATIONAL', :ver, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-04-15')
         """),
         {"id": statutory_rule_id, "ver": stat_version},
     )

@@ -66,13 +66,13 @@ BASIC     = 500_000
 HOUSING   = 200_000
 TRANSPORT = 100_000
 GROSS     = BASIC + HOUSING + TRANSPORT          # 800_000
-# 5-band PAYE + 8% explicit pension (rules_jsonb pension.employee_rate=0.08) + 2.5% NHF:
+# 5-band PAYE + 8% explicit pension (rules_jsonb pension.employee_rate=0.08).
+# No NHF workspace rule is configured so NHF is not deducted.
 #   Pension = GROSS × 8% = 64 000
-#   NHF     = BASIC × 2.5% = 12 500
 #   Annual taxable = (800k - 64k) × 12 = 8 832 000 → Monthly PAYE = 145 226.67
-#   NET = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+#   NET = 800 000 - 64 000 - 145 226.67 = 590 773.33
 EXPECTED_PAYE = 145_226.67
-EXPECTED_NET  = 578_273.33
+EXPECTED_NET  = 590_773.33
 
 
 def test_payroll_approval_and_lock_e2e():
@@ -123,7 +123,7 @@ def test_payroll_approval_and_lock_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9996, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
+                VALUES (:id, 'NATIONAL', 9996, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-04-01')
             """),
             {"id": statutory_rule_id},
         )

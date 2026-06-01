@@ -31,6 +31,7 @@ def persist_payroll_run_execution(
     statutory_effective_date: str | None = None,
     run_type: str = "REGULAR",
     tracer=None,
+    public_holidays_snapshot: list | None = None,
 ):
     """Persist all outputs from a payroll run execution.
 
@@ -89,6 +90,7 @@ def persist_payroll_run_execution(
             rule_set_id=rule_set_id,
             statutory_effective_date=statutory_effective_date,
             run_type=run_type,
+            public_holidays_snapshot=public_holidays_snapshot,
         )
 
     # 2️⃣ Insert payroll_results

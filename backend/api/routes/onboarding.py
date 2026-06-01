@@ -458,7 +458,12 @@ async def commit_onboarding(request: Request):
                 or biodata.get("FULL_NAME")
                 or emp.get("employee_number", "UNKNOWN")
             )
-            emp_number = emp.get("employee_number") or emp.get("employee_id")
+            emp_number = emp.get("employee_number")
+            if not emp_number:
+                _emp_idx = payload.get("employees", []).index(emp)
+                raise ValueError(
+                    f"Employee at index {_emp_idx} is missing employee_number — this field is required."
+                )
 
             insert_employee(db, workspace_id, employee_id, full_name, emp_number, biodata)
 

@@ -42,6 +42,7 @@ def save_payroll_run(
     rule_set_id: str | None = None,
     statutory_effective_date: str | None = None,
     run_type: str = "REGULAR",
+    public_holidays_snapshot: list | None = None,
 ):
     """Insert a new payroll_run row and advance it to the target status.
 
@@ -91,7 +92,8 @@ def save_payroll_run(
                 retry_strategy,
                 rule_set_id,
                 statutory_effective_date,
-                run_type
+                run_type,
+                public_holidays_snapshot
             )
             VALUES (
                 :payroll_run_id,
@@ -108,7 +110,8 @@ def save_payroll_run(
                 :retry_strategy,
                 :rule_set_id,
                 :statutory_effective_date,
-                :run_type
+                :run_type,
+                :public_holidays_snapshot
             )
             """),
             {
@@ -122,10 +125,11 @@ def save_payroll_run(
                 "total_deduction":         total_deduction,
                 "total_tax":               total_tax,
                 "total_net_pay":           total_net_pay,
-                "retry_strategy":          retry_strategy,
-                "rule_set_id":             rule_set_id,
+                "retry_strategy":           retry_strategy,
+                "rule_set_id":              rule_set_id,
                 "statutory_effective_date": statutory_effective_date,
-                "run_type":                run_type,
+                "run_type":                 run_type,
+                "public_holidays_snapshot": _Json(public_holidays_snapshot) if public_holidays_snapshot is not None else None,
             },
         )
 

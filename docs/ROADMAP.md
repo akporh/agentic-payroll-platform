@@ -22,6 +22,9 @@
 | **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
 | **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
+| **Sprint 15** | — | ⬜→🔜 (timesheet layer arch-council locked) | — | — | — | — |
+| **Sprint 16** | 2✅ (employee page enhancements + contract edit fix) | 7✅ (TM-1→TM-7 complete) | 2✅ (C1 per-employee expected_hours; C2 readiness gate) | — | — | 1✅ (AUD-16-3 timesheet_source trace) |
+| **Sprint 17** | 6✅ (B0a–B4 employee lifecycle refactor + EMP-UX-1/UX-3/UX-4) | — | — | — | — | 2✅ (SEC-17-1 str(e) fix; SEC-17-2 max_length guard) |
 | **Track S — Security** | — | — | — | — | — | 5✅ closed; 3⬜ open (S6 DB constraint, S7 upload cap, S8 pin dep) |
 | **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 1✅ (Q5 AUD-16-3); 2⬜ new Sprint 16 (Q6/Q7); 1⬜ new Sprint 14 (Q8) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
@@ -553,7 +556,7 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint 14, 2026-05-10)
+## Known Test Failures (Pre-existing — Live State as of Sprint 18, 2026-05-31)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
@@ -561,10 +564,153 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 |---|------|------|------------|------------|-------------|--------|
 | TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
 | TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
-| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Test expects `net_pay=578273.33`; engine produces `590773.33` — diff=₦12,500 = NHF (2.5% × ₦500k basic) not deducted in test fixture workspace | Investigate NHF toggle/key in test fixture setup | F1 / SR9 area | 🔴 Open |
-| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
-| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
-| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3 | Same fix | F1 / SR9 area | 🔴 Open |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ✅ RESOLVED Sprint 18 |
+
+---
+
+## Sprint 15 — Timesheet Layer Design Sprint
+
+**Sprint goal:** Lock all arch-council decisions for the Sprint 16 timesheet derivation layer. No implementation code — design-only sprint.
+
+**Sprint date:** 2026-05-12
+
+**Deliverable:** `docs/stories/sprint-16-timesheet-layer.md` — complete story set (TM-1 through TM-7) with full acceptance criteria, three-step cap formula specification, canonical upload format schema (AC-10), and all 10 binding arch-council decisions (AC-1 through AC-10 + C1, C2 + H1–H4) resolved.
+
+**Arch-council:** ✅ APPROVED — session 2026-05-12 (10 binding decisions). Attendance config revision ✅ APPROVED — 2026-05-13 (two-table split, template versioning, onboarding flow, `resolve_hours()` spec).
+
+**Key decisions locked:**
+- `payroll_input` IS the canonical pay instruction model — no new abstraction (AC-1)
+- `timesheet_entry` stores raw grid + derivation metadata; status machine: `PENDING → DERIVED → APPROVED / FAILED` (AC-4)
+- Three-step cap formula for `proration_factor` — prevents ₦10–13K overpayment per employee per period (TM-3-AC-5)
+- `expected_hours` must be per-employee (from `shift_type`), not a batch scalar — C1 (live bug)
+- Timesheet completeness gate in `payroll_readiness_service` before `link_inputs_to_run` — C2
+- `attendance_code_config` + `attendance_policy_config` two-table architecture for workspace-configurable codes (attendance revision)
+- Rate codes resolved from `ot_trigger_config` — not hardcoded (AC-3)
+
+**Three-employee Client B validation:** gross figures verified to match client spreadsheet exactly (Jan 21–Feb 20, 4-SHIFT, 152h expected, PH = Thu 29 Jan).
+
+---
+
+## Sprint 16 — Timesheet Derivation Layer
+
+**Sprint goal:** Implement the full timesheet upload, derivation, approval, and audit trail pipeline (TM-1 through TM-7) plus the attendance code configuration system. Onboard timesheet-based clients on the platform.
+
+**Sprint date:** 2026-05-13 (start); full delivery 2026-05-26
+
+**Arch-council:** ✅ APPROVED WITH CONDITIONS — Sprint 15 locked all decisions. All pre-conditions (H1–H4, C1, C2) resolved in this sprint.
+
+**Story files:** `docs/stories/sprint-16-timesheet-layer.md`
+
+**Roadmap refs:** Track O (O6 — NEW-GAP1 complete)
+
+---
+
+### Story Index
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| TM-1 | Workspace timesheet configuration (`timesheet_enabled` flag, attendance code seeding) | ✅ |
+| TM-2 | Timesheet upload — row parsing, employee matching, code validation, PH header check | ✅ |
+| TM-3 | Timesheet derivation pipeline — three-step cap formula, policy-driven OT classification | ✅ |
+| TM-4 | Manual OT override (`source = 'MANUAL_OT'`) | ✅ |
+| TM-5 | Timesheet-to-pay-instruction flow — atomic approval, readiness gate, executor hire-proration suppression | ✅ |
+| TM-6 | Timesheet audit trail — per-employee derivation summary, policy snapshot, per-day grid | ✅ |
+| TM-7 | Attendance code + policy workspace configuration (CRUD + immutability guards) | ✅ |
+| C1 | Per-employee `expected_hours` from `shift_type` (live bug fix) | ✅ |
+| C2 | Timesheet completeness gate in `payroll_readiness_service` | ✅ |
+
+**Also shipped in Sprint 16:**
+- Employee page enhancements: add single employee form, edit contract end date, start/end date columns display, contract edit silent no-op fix
+- `dbbc8b8` — ended-contract employees now shown in Employees list
+- FULL_RUN retry disabled; period-overlap predicates replace `CURRENT_DATE` in retry paths
+- NG statutory rule + PAYE bands seeded
+- AUD-16-3 (Q5) — `timesheet_source` added to `_period_context` trace header
+- SEC-S5 API guard (applied); SEC-S6 upload cap (pending); SEC-S7 dep pin (pending)
+- Render + Vercel deployment config (`de9fb22`)
+- Post-sprint: migration revision ID conflict resolved, TypeScript build errors fixed, VITE_API_URL Vercel env var wired
+
+**Migrations applied:** MIG-A (`timesheet_entry` + `derivation_status` enum), MIG-B (`timesheet_enabled` + `attendance_template_version`), MIG-C (standalone AUTOCOMMIT — `uq_payroll_input_unclaimed` includes `source`), MIG-D (platform template tables + v1 seed), MIG-E (`attendance_code_config` + `attendance_policy_config`)
+
+**Test report:** `docs/test-reports/2026-05-13-sprint-16.md` — 22 code-level checks, 22 PASS. Runtime deferred to staging.
+
+**Alembic state post-sprint:** two heads (`a2b3c4d5e6f7`, `ee5ff6aa7bb8`) — MIG-C is a standalone AUTOCOMMIT migration; two heads are expected and correct.
+
+---
+
+### Explicitly Out of Scope (Sprint 16)
+
+| Item | Reason |
+|------|--------|
+| Executor changes for new pay types | Derivation produces `payroll_input` rows in existing format; executor unchanged |
+| Attendance policy config via onboarding file | Post-onboarding config via TM-7 covers Sprint 16; Excel onboarding deferred |
+| Template drift propagation admin endpoint | UI warning (TM-1-AC-7) covers the case; admin endpoint deferred |
+| Retroactive re-derivation for approved runs | Runs immutable once APPROVED |
+| Fuzzy employee matching | Exact `employee_number` match only |
+
+---
+
+## Sprint 17 — Employee Lifecycle Refactor
+
+**Sprint goal:** Decouple employee management from the bulk-upload onboarding path. Add a proper CRUD API for employees and contracts, fix two blocking LATERAL join bugs, and wire the UI split-action row operations.
+
+**Sprint date:** 2026-05-27
+
+**Arch-council:** ✅ APPROVED WITH CONDITIONS — session 2026-05-27. All 6 blocking issues resolved.
+
+**Story files:** `docs/stories/sprint-17-employee-crud.md`, `docs/stories/sprint-17-employee-ux.md`
+
+**Roadmap refs:** Track B (employee lifecycle)
+
+---
+
+### Story Index
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| B0a | Fix LATERAL join in `payroll_readiness_service.py` — date-filtered, no false-positive block for multi-contract employees | ✅ |
+| B0b | Fix LATERAL join in `timesheet_derivation_service.py` — unconditional most-recent contract (no date filter) | ✅ |
+| B1 | New employee CRUD API: `GET/PATCH /{wid}/employees/{eid}`, `POST /{wid}/employees/{eid}/contracts`, `PATCH /{wid}/employee-contracts/{cid}` — with D-ARCH-1 run-lock + backdating guard | ✅ |
+| B2 | Replace inline SQL in `onboarding.py:451–598` with `employee_repo` calls — unified creation path | ✅ |
+| B3 | `Employees.tsx` rework — split `EditSlideOver` (name+status only) + `ChangeContractSlideOver` + `ViewContractsSlideOver`; new `frontend/src/api/employees.ts` | ✅ |
+| B4 | Migration `b6c7d8e9f0a1` — `idx_employee_contract_employee_date` on `(employee_id, start_date)` | ✅ |
+| EMP-UX-1 | Split "Edit" row action into "Edit Details" and "Change Grade / Salary" (EMP-UX-1) | ✅ |
+| EMP-UX-3 | Mid-period hire warning in `AddEmployeeSlideOver` when `contract_start` falls in current month | ✅ |
+| EMP-UX-4 | Payroll Inputs issues badge — `GET /payroll/inputs/issues` endpoint; nav badge; `AlertBanner` in `PayrollInputs.tsx` | ✅ |
+
+**Also shipped post-Sprint 17:**
+- SEC-17-1: `str(e)` replaced with generic messages + `_log.error` server-side in `employees.py` (standing prohibition)
+- SEC-17-2: `max_length=255` on `full_name` and `change_reason` Pydantic fields
+- CORS fix 1: `allow_credentials=True` incompatible with wildcard origin — resolved
+- CORS fix 2: proxy `/api/v1` through Vercel rewrite to eliminate CORS entirely
+
+**Test report:** `docs/test-reports/2026-05-27-sprint-17-full.md` — 266 unit/integration tests passed (1 skipped); 14 live API checks PASS; 13 static/compile checks PASS; 1 infrastructure check PASS; 2 BLOCKED (B3 browser UAT, B0b multi-contract test data).
+
+---
+
+### Deferred from Sprint 17
+
+| Ref | Item | Target |
+|-----|------|--------|
+| B3-BROWSER | Manual browser UAT of Edit / Change Grade / View Contracts SlideOvers | Sprint 18 or UAT |
+| B0b-VERIFY | Multi-contract employee through timesheet derivation (needs test data) | Sprint 18 |
+| Attendance Codes nav entry | `AttendanceConfiguration.tsx` built but not in Settings sidebar (`Navigation.tsx`) | Sprint 18 |
+| AUD-16-2 | Re-upload overwrites APPROVED timesheet entries — no guard | Sprint 18 |
+| AUD-16-1 | No `approved_by` on timesheet state transitions | Sprint 18 |
+| AUD-14-1 | `proration_strategy` missing from `rules_context_snapshot` | Sprint 18 |
+
+---
+
+### Explicitly Out of Scope (Sprint 17)
+
+| Item | Target sprint |
+|------|--------------|
+| Deactivation UI (dedicated flow + input warning) | Sprint 20 (EMP-P3-2 / EMP-UX-2) |
+| Contract history showing multiple past rows | Sprint 20 (EMP-P3-1) |
+| External ID field | Sprint 20 |
+| "Final period" badge on payroll results | Sprint 20 (EMP-P3-2) |
 
 ---
 

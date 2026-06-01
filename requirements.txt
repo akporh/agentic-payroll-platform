@@ -12,4 +12,4 @@ httpx==0.26.0
 python-dotenv==1.0.0
 jinja2
 rich
-python-multipart
+python-multipart==0.0.28

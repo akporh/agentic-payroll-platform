@@ -62,12 +62,12 @@ HOUSING_A   = 200_000
 TRANSPORT_A = 100_000
 GROSS_A     = BASIC_A + HOUSING_A + TRANSPORT_A   # 800_000
 
-# 5-band PAYE + 8% explicit pension (rules_jsonb pension.employee_rate=0.08) + 2.5% NHF:
-#   Pension_A = 800k × 8% = 64 000;  NHF_A = 500k × 2.5% = 12 500
+# 5-band PAYE + 8% explicit pension. No NHF workspace rule configured so NHF not deducted.
+#   Pension_A = 800k × 8% = 64 000
 #   Annual taxable_A = (800k - 64k) × 12 = 8 832 000 → Monthly PAYE = 145 226.67
-#   NET_A = 800 000 - 64 000 - 145 226.67 - 12 500 = 578 273.33
+#   NET_A = 800 000 - 64 000 - 145 226.67 = 590 773.33
 EXPECTED_PAYE_A = 145_226.67
-EXPECTED_NET_A  = 578_273.33
+EXPECTED_NET_A  = 590_773.33
 
 # ---------------------------------------------------------------------------
 # Employee B — fixed salary (after correction)
@@ -76,13 +76,13 @@ BASIC_B   = 300_000
 HOUSING_B = 100_000
 GROSS_B   = BASIC_B + HOUSING_B   # 400_000
 
-# 5-band PAYE + 8% explicit pension + 2.5% NHF (no TRANSPORT for B):
-#   Pension_B = 400k × 8% = 32 000;  NHF_B = 300k × 2.5% = 7 500
+# 5-band PAYE + 8% explicit pension. No NHF workspace rule configured so NHF not deducted.
+#   Pension_B = 400k × 8% = 32 000
 #   Annual taxable_B = (400k - 32k) × 12 = 4 416 000
 #   → Monthly PAYE = 815 360 / 12 = 67 946.67
-#   NET_B = 400 000 - 32 000 - 67 946.67 - 7 500 = 292 553.33
+#   NET_B = 400 000 - 32 000 - 67 946.67 = 300 053.33
 EXPECTED_PAYE_B = 67_946.67
-EXPECTED_NET_B  = 292_553.33
+EXPECTED_NET_B  = 300_053.33
 
 
 def test_payroll_retry_e2e():
@@ -129,7 +129,7 @@ def test_payroll_retry_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9997, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2000-01-01')
+                VALUES (:id, 'NATIONAL', 9997, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-02-15')
             """),
             {"id": statutory_rule_id},
         )

@@ -2,7 +2,7 @@
 
 **Delivery increment:** Track C (snapshot tables migration) + Track D (application wiring)  
 **Depends on:** Sprint 18 (Phase 1 constraints and code fixes fully applied and verified)  
-**Arch-council approval:** v1–v5 (all blocking decisions resolved)
+**Arch-council approval:** v1–v5 (original session) + D1–D6 (second session — employee contract retry model corrected)
 
 ---
 
@@ -38,7 +38,7 @@
 **Given** the migration is applied (`alembic upgrade head`),  
 **When** the schema is inspected,  
 **Then** all three tables exist with the correct columns and constraints:
-- `employee_contract_snapshot`: `UNIQUE(payroll_run_id, employee_id)`, FK to `payroll_run` and `employee`
+- `employee_contract_snapshot`: `UNIQUE(payroll_run_id, employee_id)`, FK to `payroll_run` and `employee`, includes `salary_definition_id UUID NOT NULL` (D1 — frozen FK used by retry to join live `salary_definition`)
 - `component_metadata_snapshot`: `UNIQUE(payroll_run_id, component_code)`, FK to `payroll_run`
 - `client_component_metadata_snapshot`: `UNIQUE(payroll_run_id, component_code)`, FK to `payroll_run`, includes `workspace_id`
 - `payroll_result.salary_inputs_snapshot`: `JSONB NOT NULL` (no permanent server default after migration)
@@ -87,6 +87,10 @@
 
 **Given** the function is called a second time for the same `payroll_run_id`,  
 **Then** it completes without error and row counts are unchanged (idempotency).
+
+**Given** a DB error occurs while writing any of the three snapshot tables,  
+**When** `create_payroll_snapshot` raises,  
+**Then** no rows are committed to any snapshot table — all three INSERT batches share one `db.commit()` and a failure in any batch aborts the whole write (D3 atomicity).
 
 **`validate_snapshot_complete`**
 
@@ -141,9 +145,13 @@
 **When** `SELECT COUNT(*) FROM component_metadata_snapshot WHERE payroll_run_id = '{id}'` is queried,  
 **Then** the count equals the number of distinct component codes loaded for the run.
 
-**Given** a run completes successfully and a salary_definition is then edited,  
+**Given** a run completes successfully and salary component amounts are edited in-place on the same `salary_definition` record,  
 **When** a PER_EMPLOYEE retry is triggered,  
-**Then** the retry uses the snapshot data (not the edited salary_definition) — verified by confirming the result matches the original, not the edited value.
+**Then** the retry picks up the corrected amounts — because retry joins `salary_definition` live using the `salary_definition_id` frozen in `employee_contract_snapshot` (D1). The retry result differs from the original by the correction amount; this divergence is intentional and detectable via `salary_inputs_snapshot` comparison.
+
+**Given** a run completes successfully and `employee_contract.salary_definition_id` is changed to point to a different salary definition,  
+**When** a PER_EMPLOYEE retry is triggered,  
+**Then** the retry still uses the original `salary_definition_id` from the snapshot — the new FK is ignored. Correcting which salary definition an employee is on requires a correction run, not a retry.
 
 ### Out of Scope
 - Changing what live data is queried (same queries as before, just snapshotted now)
@@ -176,9 +184,13 @@
 **When** the original `payroll_result` row is queried,  
 **Then** `salary_inputs_snapshot` still reflects the values at the time of the original run — unchanged by the edit.
 
-**Given** a PER_EMPLOYEE retry completes,  
+**Given** a PER_EMPLOYEE retry completes with no salary corrections made,  
 **When** the new `payroll_result` row is inspected,  
-**Then** `salary_inputs_snapshot` reflects the snapshot values used during retry (same as original — deterministic).
+**Then** `salary_inputs_snapshot` matches the original result row — the same amounts were used.
+
+**Given** a PER_EMPLOYEE retry completes after an operator deliberately corrected salary amounts in-place on `salary_definition`,  
+**When** the new `payroll_result` row is inspected,  
+**Then** `salary_inputs_snapshot` reflects the corrected amounts — not the original. The divergence between the original and retry result rows is visible and expected (D4).
 
 **Given** a result row is inserted without a `salary_inputs_snapshot` value,  
 **Then** the DB rejects it with a NOT NULL violation (no silent omission).
@@ -200,8 +212,8 @@
 **Priority:** P1 — Determinism contract enforcement
 
 **As a** payroll operator,  
-**I want** PER_EMPLOYEE retry to read component configuration, client overrides, and public holidays exclusively from the snapshot tables,  
-**So that** a retry after a config change produces identical output to the original run for unchanged employees.
+**I want** PER_EMPLOYEE retry to read component configuration, client overrides, public holidays, and employee contract structure exclusively from the snapshot tables,  
+**So that** a retry after any data change produces identical output to the original run for unchanged employees, and any intentional corrections are picked up only through controlled channels.
 
 ### Acceptance Criteria
 
@@ -226,7 +238,7 @@
 
 **Given** two workspaces with runs in the same period,  
 **When** retry is triggered for workspace A,  
-**Then** `client_component_metadata_snapshot` rows from workspace B are never loaded — workspace_id scoping enforced at query level.
+**Then** `client_component_metadata_snapshot` rows from workspace B are never loaded — `workspace_id` scoping enforced at query level.
 
 **Public holidays — snapshot reads**
 
@@ -234,26 +246,75 @@
 **When** PER_EMPLOYEE retry is triggered,  
 **Then** the retry uses the `public_holidays_snapshot` from the original run — the new holiday does not affect the retry output.
 
+**Employee contract structural fields — snapshot reads (D1)**
+
+**Given** an employee's `shift_type` is changed on their live contract after a run,  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the retry uses the `shift_type` frozen in `employee_contract_snapshot` — the updated value is NOT picked up. OT eligibility gates behave identically to the original run.
+
+**Given** an employee's contract `end_date` is backdated after a run (to fall before the pay period),  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the retry still includes the employee — scope is determined by snapshot existence, not by re-evaluating live contract dates against the period.
+
+**Given** an employee's `grade_id` is changed after a run,  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the retry uses the `grade_id` and `grade_jsonb` frozen in `employee_contract_snapshot` — percentage-based salary derivation is unchanged.
+
+**Salary amounts — live read via frozen FK (D1)**
+
+**Given** salary component amounts are edited in-place on `salary_definition` after a run (same record, same `salary_definition_id`),  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the retry picks up the corrected amounts — retry joins `salary_definition` live using the `salary_definition_id` frozen in the snapshot. The corrected result differs from the original; this divergence is intentional.
+
+**Given** `employee_contract.salary_definition_id` is changed to point to a different salary definition after a run,  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the retry uses the original `salary_definition_id` from the snapshot — the new FK is ignored. This correction requires a correction run, not a retry.
+
+**Employee set frozen (D2)**
+
+**Given** an employee was included in the original run (snapshot row exists),  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** that employee is always in scope for retry — regardless of any live contract changes made after the run.
+
+**Given** an employee was NOT included in the original run (no snapshot row),  
+**When** PER_EMPLOYEE retry is triggered,  
+**Then** the employee cannot be added to the retry — requires a correction run.
+
+**Hard-fail on missing snapshot row (D6)**
+
+**Given** retry is processing a failed employee and no `employee_contract_snapshot` row exists for that employee on that run,  
+**When** the retry service looks up the snapshot,  
+**Then** it raises immediately with a data integrity error — it does NOT silently skip the employee. This is not a "no active contract" case; it is a snapshot integrity failure.
+
 **Live reads eliminated**
 
 **Given** the retry service code after this change,  
-**When** `_build_shared_context` is inspected,  
-**Then** there are no live queries against `component_metadata`, `client_component_metadata`, `national_public_holiday`, or `workspace_public_holiday` tables — all reads go to snapshot tables or `payroll_run` columns.
+**When** `_build_shared_context` and the per-employee retry loop are inspected,  
+**Then** there are no live queries against:
+- `component_metadata`
+- `client_component_metadata`
+- `national_public_holiday` or `workspace_public_holiday`
+- `employee_contract` (structural reads — scope, shift_type, grade)
+
+**Then** the only live read in the per-employee loop is a join to `salary_definition` via the `salary_definition_id` frozen in `employee_contract_snapshot`.
 
 **Given** `alembic downgrade` reverts Phase 2 migrations,  
 **Then** retry reverts to prior behaviour (this is inherently unsafe — downgrade is only for dev/rollback, not production use).
 
 ### Out of Scope
 - Snapshotting statutory rules (already handled by `rules_context_snapshot` on `payroll_run`)
-- Snapshotting employee contracts for the retry path (the contract snapshot is used at original-run time; retry operates on already-resolved employee data passed through the execution pipeline)
-- Live salary correction intentionally allowed in PER_EMPLOYEE retry — this is the correction mechanism, not a determinism violation
+- Snapshotting `salary_definition` amounts at run time for audit purposes (covered by `salary_inputs_snapshot` on `payroll_result` in EMP-P2-4)
+- Retroactive re-snapshotting of historical runs
+- Any UI surface for snapshot inspection (future sprint)
 
 ### Business Risk
-- **Not done:** A component config change or override change between original run and retry silently produces different output — undetectable financial discrepancy. Two runs of the same payroll period produce different totals with no audit trail explaining why.
-- **Done wrong:** If workspace_id scoping is missing from the `client_component_metadata_snapshot` query, cross-workspace override leakage is possible — a critical financial data isolation failure.
+- **Not done:** A component config or override change between original run and retry silently produces different output — undetectable financial discrepancy. Two runs of the same payroll period produce different totals with no audit trail.
+- **Not done (employee contract):** An operator can backdate a contract `end_date` between run and retry, silently removing an employee from payroll for the period. Or change `shift_type`, silently altering OT eligibility. Neither change leaves any trace in the retry audit log under the prior (live-read) behaviour.
+- **Done wrong — workspace scoping missing:** Cross-workspace override leakage via `client_component_metadata_snapshot` — a critical financial data isolation failure.
+- **Done wrong — D6 missing (silent skip):** If a missing snapshot row is silently skipped, a failed employee is never retried and the run is left in PARTIAL with no error surfaced. The operator has no visibility into why the employee was dropped.
 
 ### Open Questions
-- None.
+- None. All decisions resolved in second arch-council session (D1–D6).
 
 ---
 

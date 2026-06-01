@@ -101,13 +101,14 @@ Domain code must never import infrastructure. Routes must never contain business
 7. `/arch-council` — mandatory before ExitPlanMode on any data contract risk
 8. Implementation
 9. `/simplify` — code quality pass on all changed files
-10. `/ui-designer` — visual design and polish review (frontend track only)
-11. `/frontend-designer` — broader frontend review (frontend track only)
-12. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
-13. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
-14. `/tester` — verification against acceptance criteria from step 2
-15. `/retro` — update skill checklists
-16. `/save-session` — safe exit
+10. `/verify` — run the app, observe live end-to-end behavior (API-to-frontend boundary touched only; skip for backend-only or migration-only sprints)
+11. `/ui-designer` — visual design and polish review (frontend track only)
+12. `/frontend-designer` — broader frontend review (frontend track only)
+13. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
+14. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
+15. `/tester` — verification against acceptance criteria from step 2
+16. `/retro` — update skill checklists
+17. `/save-session` — safe exit
 
 ### Auto-Invoke Rules (Claude must invoke without being asked)
 
@@ -115,6 +116,7 @@ Domain code must never import infrastructure. Routes must never contain business
 - When the user says "let's scope sprint", "what's next", or "start sprint", invoke `/pm` immediately — do not summarise the backlog manually.
 - When a sprint plan includes any file under `frontend/src/`, invoke `/ux-designer` before plan mode, then `/ui-designer` and `/frontend-designer` after implementation — do not wait to be asked.
 - When a sprint plan includes any structural or cross-layer design, invoke `/architect` before plan mode — do not wait to be asked.
+- When a sprint plan or implementation touches both `backend/api/routes/` and any file under `frontend/src/`, invoke `/verify` after `/simplify` — run the app and confirm end-to-end behavior before the review gates. Do not invoke for backend-only or migration-only sprints.
 - When a sprint plan or implementation touches `backend/api/routes/`, invoke `/security` automatically after implementation — do not wait to be asked.
 - When a sprint plan or implementation touches `sequential_executor.py`, `rule_evaluator.py`, `executor.py`, or any file under `migrations/versions/` that alters a statutory rule or calculation, invoke `/auditor` after `/security` — do not wait to be asked.
 - When the user says "done", "sprint complete", or "close sprint", invoke `/retro` — do not skip.

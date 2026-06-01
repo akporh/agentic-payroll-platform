@@ -139,6 +139,10 @@ def upload_timesheet(
     """
     import openpyxl  # imported here so the rest of the module works without it
 
+    MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise ValueError("Timesheet file exceeds 10 MB limit.")
+
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     ws = wb.active
 
