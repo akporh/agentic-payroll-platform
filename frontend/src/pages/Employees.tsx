@@ -35,7 +35,7 @@ import {
   EmployeeUpload,
   type MappedEmployee,
   type SalaryDefinitionOption,
-} from '../components/onboarding/EmployeeUpload';
+} from '../components/employees/EmployeeUpload';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 

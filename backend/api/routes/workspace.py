@@ -657,7 +657,7 @@ def create_salary_definition_by_code(workspace_id: str, body: dict):
         row = db.execute(
             text("""
                 INSERT INTO salary_definition (salary_definition_id, workspace_id, code, name, components_jsonb)
-                VALUES (gen_random_uuid(), :wid, :code, :name, '{}'::jsonb)
+                VALUES (gen_random_uuid(), :wid, :code, :name, '{"BASIC": 0}'::jsonb)
                 ON CONFLICT DO NOTHING
                 RETURNING salary_definition_id, code, name
             """),

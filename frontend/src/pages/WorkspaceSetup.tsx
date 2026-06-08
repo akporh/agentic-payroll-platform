@@ -8,8 +8,8 @@ import type { Workspace } from '../types/workspace';
 import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
 import { ContentHeader, Card, Btn, AlertBanner, OnboardingStepper, Breadcrumb } from '../design-system';
 import type { Step } from '../design-system';
-import { EmployeeUpload } from '../components/onboarding/EmployeeUpload';
-import type { MappedEmployee, SalaryDefinitionOption } from '../components/onboarding/EmployeeUpload';
+import { EmployeeUpload } from '../components/employees/EmployeeUpload';
+import type { MappedEmployee, SalaryDefinitionOption } from '../components/employees/EmployeeUpload';
 import { WorkspaceExcelUpload } from '../components/onboarding/WorkspaceExcelUpload';
 import type { WorkspaceConfig } from '../components/onboarding/WorkspaceExcelUpload';
 import { saveDraft, loadDraft, clearDraft } from '../utils/onboardingDraft';
@@ -28,26 +28,6 @@ function buildConfigTemplate(workspaceId: string): Record<string, unknown> {
     compensation: { salary_definitions: [] },
     rules: { payroll_rules: [] },
   };
-}
-
-function employeesToCommitShape(employees: MappedEmployee[]) {
-  return employees.map((emp) => ({
-    employee_number: emp.employee_id,
-    employee_id: emp.employee_id,
-    full_name: `${emp.first_name} ${emp.last_name}`.trim(),
-    grade: emp.grade,
-    designation: emp.designation,
-    salary_definition_code: emp.salary_definition_code,
-    contract_start: emp.contract_start || undefined,
-    contract_end: emp.contract_end || undefined,
-    biodata: {
-      FULL_NAME: `${emp.first_name} ${emp.last_name}`.trim(),
-      TIN: emp.tin,
-      RSA: emp.rsa,
-      BANK: emp.bank,
-      ACCOUNT_NUMBER: emp.account_number,
-    },
-  }));
 }
 
 function extractConfigSalaryDefs(
@@ -95,11 +75,6 @@ export function WorkspaceSetup() {
   const [componentSaving, setComponentSaving] = useState(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
-  // ── Step 4 — Employee Upload ───────────────────────────────────────────
-  const [employees, setEmployees] = useState<MappedEmployee[]>([]);
-  const [dbSalaryDefs, setDbSalaryDefs] = useState<SalaryDefinitionOption[]>([]);
-  const [dbDesignationOptions, setDbDesignationOptions] = useState<string[]>([]);
-
   // ── Commit ────────────────────────────────────────────────────────────────
   const [commitStage, setCommitStage] = useState<CommitStage>('idle');
   const [loading, setLoading] = useState(false);
@@ -109,7 +84,6 @@ export function WorkspaceSetup() {
   const [commitResult, setCommitResult] = useState<CommitResponse | null>(null);
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [advancedJsonOpen, setAdvancedJsonOpen] = useState(false);
 
   // Debounce timer for rawJson draft saves
@@ -124,10 +98,11 @@ export function WorkspaceSetup() {
     // is populated as fast as possible.
     const draft = loadDraft(workspaceId);
     if (draft) {
-      setStep(draft.activeStep);
+      // Guard: drafts saved with the old 'employee-upload' step fall back to component-settings
+      const safeStep = (draft.activeStep as string) === 'employee-upload' ? 'component-settings' : draft.activeStep;
+      setStep(safeStep);
       setRawJson(draft.rawJson);
       try { setConfigParsed(JSON.parse(draft.rawJson)); } catch { setConfigParsed(null); }
-      setEmployees(draft.employees);
     }
 
     // Fetch workspace from DB
@@ -160,7 +135,6 @@ export function WorkspaceSetup() {
           savedAt: new Date().toISOString(),
           activeStep: 'client-config-json',
           rawJson: formatted,
-          employees: [],
         });
       }
     }).catch((e: unknown) => {
@@ -199,41 +173,19 @@ export function WorkspaceSetup() {
       .finally(() => setComponentLoading(false));
   }, [step, workspaceId]);
 
-  // ── Fetch DB salary defs when entering Step 4 ─────────────────────────────
-
-  useEffect(() => {
-    if (step === 'employee-upload' && workspaceId) {
-      workspaceApi.getSalaryDefinitions(workspaceId).then(setDbSalaryDefs).catch(() => {});
-      workspaceApi.getDesignations(workspaceId)
-        .then((rows) => setDbDesignationOptions(rows.map((r) => r.code)))
-        .catch(() => {});
-    }
-  }, [step, workspaceId]);
-
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const configSalaryDefs = extractConfigSalaryDefs(configParsed);
-  const allSalaryDefs: SalaryDefinitionOption[] = [
-    ...dbSalaryDefs,
-    ...configSalaryDefs.filter((c) => !dbSalaryDefs.some((d) => d.code === c.code)),
-  ];
 
   const structure = configParsed?.structure as Record<string, unknown> | undefined;
   const compensation = configParsed?.compensation as Record<string, unknown> | undefined;
   const rules = configParsed?.rules as Record<string, unknown> | undefined;
-
-  const configDesignationOptions = (structure?.designations as { designation_code: string }[] ?? []).map((d) => d.designation_code);
-  const allDesignationOptions = [
-    ...dbDesignationOptions,
-    ...configDesignationOptions.filter((c) => !dbDesignationOptions.includes(c)),
-  ];
 
   const gradeCount = Array.isArray(structure?.grades) ? (structure.grades as unknown[]).length : 0;
   const designationCount = Array.isArray(structure?.designations) ? (structure.designations as unknown[]).length : 0;
   const salaryDefCount = Array.isArray(compensation?.salary_definitions) ? (compensation.salary_definitions as unknown[]).length : 0;
   const payrollRuleCount = Array.isArray(rules?.payroll_rules) ? (rules.payroll_rules as unknown[]).length : 0;
   const payCycleSet = structure?.pay_cycle != null && Object.keys(structure.pay_cycle as object).length > 0;
-  const unresolvedMappings = employees.filter((e) => e.mapping_unresolved).length;
   const aiWarnings: string[] = previewResult?.warnings
     ? previewResult.warnings.map((w) => (typeof w === 'string' ? w : String(w)))
     : [];
@@ -249,7 +201,7 @@ export function WorkspaceSetup() {
       // Flat fields consumed by the existing validation + SQL pipeline
       salary_definitions: (comp?.salary_definitions as unknown[]) ?? [],
       payroll_rules: (r?.payroll_rules as unknown[]) ?? [],
-      employees: employeesToCommitShape(employees),
+      employees: [],
       // Structural data — processed by the commit route to populate
       // pay_cycle, grade, designation tables and advance the state machine
       structure: configParsed.structure ?? {},
@@ -323,27 +275,13 @@ export function WorkspaceSetup() {
           overrides_json: { is_active: componentToggles[comp.component_code] ?? true },
         });
       }
-      setStep('employee-upload');
-      saveDraft(workspaceId, { activeStep: 'employee-upload' });
+      setStep('activate');
+      saveDraft(workspaceId, { activeStep: 'activate' });
     } catch (e: unknown) {
       setComponentError(e instanceof Error ? e.message : 'Failed to save component settings.');
     } finally {
       setComponentSaving(false);
     }
-  }
-
-  // ── Step 4 handlers ───────────────────────────────────────────────────────
-
-  function handleEmployeesLoaded(rows: MappedEmployee[]) {
-    setEmployees(rows);
-    resetCommitState();
-    if (workspaceId) saveDraft(workspaceId, { employees: rows });
-  }
-
-  function handleMappingChange(updated: MappedEmployee[]) {
-    setEmployees(updated);
-    resetCommitState();
-    if (workspaceId) saveDraft(workspaceId, { employees: updated });
   }
 
   // ── Commit handlers ───────────────────────────────────────────────────────
@@ -408,12 +346,11 @@ export function WorkspaceSetup() {
     { label: 'Create Workspace' },
     { label: 'Configure Client' },
     { label: 'Component Settings' },
-    { label: 'Upload Employees' },
     { label: 'Activate' },
   ];
   const wizardCurrentStep =
-    commitStage === 'committed' ? 5
-    : step === 'employee-upload' ? 3
+    commitStage === 'committed' ? 4
+    : step === 'activate' ? 3
     : step === 'component-settings' ? 2
     : 1;
 
@@ -421,7 +358,7 @@ export function WorkspaceSetup() {
     <div>
       <ContentHeader
         title="Client Setup"
-        subtitle={workspace ? `${workspace.name} · Configure client · Upload employees · Commit` : 'Loading…'}
+        subtitle={workspace ? `${workspace.name} · Configure client · Activate` : 'Loading…'}
         back={
           <Breadcrumb items={[
             { label: 'Bureau Dashboard', to: '/' },
@@ -489,7 +426,6 @@ export function WorkspaceSetup() {
                   </p>
                   <p className="text-xs text-amber-600 mb-3">
                     Salary definition codes should match <strong>DESIGNATION_GRADE</strong> (e.g. <code className="bg-slate-100 px-1 rounded">ENGINEER_G5</code>).
-                    Employees are uploaded separately in the next step.
                   </p>
                   <input
                     type="file"
@@ -541,8 +477,6 @@ export function WorkspaceSetup() {
                   <Row label="Salary Definitions" value={String(salaryDefCount)} />
                   <SectionHeader label="Rules" />
                   <Row label="Payroll Rules" value={String(payrollRuleCount)} />
-                  <SectionHeader label="Employees" />
-                  <Row label="Employees" value="Upload in next step" />
                 </div>
               )}
             </Card>
@@ -617,39 +551,15 @@ export function WorkspaceSetup() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          STEP 4 — Employee Upload + Mapping + Commit
+          STEP 4 — Activate Workspace
       ══════════════════════════════════════════════════════════════════════ */}
-      {step === 'employee-upload' && workspace && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {/* Left: upload + commit */}
-          <div className="flex flex-col gap-4">
-            <EmployeeUpload
-              employees={employees}
-              salaryDefinitions={allSalaryDefs}
-              designationOptions={allDesignationOptions}
-              onEmployeesLoaded={handleEmployeesLoaded}
-              onMappingChange={handleMappingChange}
-              onCreateSalaryDefinition={async (code) => {
-                const created = await workspaceApi.addSalaryDefinition(workspaceId!, code);
-                setDbSalaryDefs((prev) => [...prev, created]);
-                return created;
-              }}
-            />
-
-            <Card title="5. Activate Workspace">
+      {step === 'activate' && workspace && (
+        <div className="max-w-lg flex flex-col gap-4">
+            <Card title="Activate Workspace">
               <p className="text-xs text-slate-500 mb-3">
-                Validate and preview before committing. The final payload merges
-                the client config JSON with the uploaded employees.
+                Validate the configuration and commit to activate this workspace.
+                Employees can be added from the Employees page after activation.
               </p>
-
-              {unresolvedMappings > 0 && (
-                <div className="mb-3">
-                  <AlertBanner
-                    variant="warning"
-                    description={`${unresolvedMappings} employee${unresolvedMappings !== 1 ? 's have' : ' has'} an unresolved salary mapping. Resolve above before committing.`}
-                  />
-                </div>
-              )}
 
               {actionError && (
                 <div className="mb-3">
@@ -661,7 +571,7 @@ export function WorkspaceSetup() {
                 <Btn
                   onClick={validate}
                   loading={loading && commitStage === 'idle'}
-                  disabled={!configParsed || employees.length === 0 || unresolvedMappings > 0}
+                  disabled={!configParsed}
                 >
                   Validate
                 </Btn>
@@ -675,10 +585,6 @@ export function WorkspaceSetup() {
                   </Btn>
                 )}
               </div>
-
-              {employees.length === 0 && (
-                <p className="text-xs text-amber-600 mt-2">Upload employees above before committing.</p>
-              )}
 
               <button
                 className="mt-3 text-xs text-slate-400 underline"
@@ -764,51 +670,6 @@ export function WorkspaceSetup() {
                 )}
               </Card>
             )}
-          </div>
-
-          {/* Right: payload summary + SQL preview */}
-          <div className="flex flex-col gap-4">
-            <Card
-              title="Payload Summary"
-              action={
-                <button
-                  className="text-xs text-slate-500 hover:text-slate-800 underline"
-                  onClick={() => setDetailsOpen(true)}
-                >
-                  View details
-                </button>
-              }
-            >
-              <div className="space-y-2 text-sm">
-                <Row label="Workspace ID" value={workspace.workspace_id} />
-                <SectionHeader label="Structure" />
-                <Row label="Pay Cycle" value={payCycleSet ? 'Defined' : 'Empty'} />
-                <Row label="Grades" value={String(gradeCount)} />
-                <Row label="Designations" value={String(designationCount)} />
-                <SectionHeader label="Compensation" />
-                <Row label="Salary Definitions" value={String(salaryDefCount)} />
-                <SectionHeader label="Rules" />
-                <Row label="Payroll Rules" value={String(payrollRuleCount)} />
-                <SectionHeader label="Employees" />
-                <Row label="Employees" value={employees.length > 0 ? String(employees.length) : 'None uploaded yet'} />
-                {unresolvedMappings > 0 && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    ⚠ {unresolvedMappings} unresolved salary mapping{unresolvedMappings !== 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
-            </Card>
-
-          </div>
-
-          {detailsOpen && (
-            <DetailsModal
-              workspace={workspace}
-              configParsed={configParsed}
-              employees={employees}
-              onClose={() => setDetailsOpen(false)}
-            />
-          )}
         </div>
       )}
     </div>

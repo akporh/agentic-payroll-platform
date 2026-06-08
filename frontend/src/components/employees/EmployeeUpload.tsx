@@ -202,6 +202,10 @@ export function EmployeeUpload({
   const [pendingDesignationMap, setPendingDesignationMap] = useState<Record<string, string>>({});
   // Grade codes currently being created
   const [creatingCodes, setCreatingCodes] = useState<Set<string>>(new Set());
+  // Salary defs created during this upload session (not yet in parent's list)
+  const [createdDefs, setCreatedDefs] = useState<SalaryDefinitionOption[]>([]);
+  // Per-grade create errors
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -211,6 +215,8 @@ export function EmployeeUpload({
     setPendingMap({});
     setPendingDesignationMap({});
     setCreatingCodes(new Set());
+    setCreatedDefs([]);
+    setCreateErrors({});
     onEmployeesLoaded([]);
 
     const reader = new FileReader();
@@ -267,15 +273,19 @@ export function EmployeeUpload({
   async function handleCreateSalaryDef(grade: string) {
     if (!onCreateSalaryDefinition) return;
     setCreatingCodes((prev) => new Set(prev).add(grade));
+    setCreateErrors((prev) => { const next = { ...prev }; delete next[grade]; return next; });
     try {
-      await onCreateSalaryDefinition(grade);
-      // Mark all employees with this grade as resolved
+      const newDef = await onCreateSalaryDefinition(grade);
+      setCreatedDefs((prev) => [...prev, newDef]);
       const updated = employees.map((emp) =>
         emp.grade === grade && emp.mapping_unresolved
           ? { ...emp, mapping_unresolved: false }
           : emp
       );
       onMappingChange(updated);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to create salary definition';
+      setCreateErrors((prev) => ({ ...prev, [grade]: msg }));
     } finally {
       setCreatingCodes((prev) => {
         const next = new Set(prev);
@@ -418,14 +428,14 @@ export function EmployeeUpload({
                   <span className="ml-2 text-xs text-amber-600">({count} employee{count !== 1 ? 's' : ''})</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {salaryDefinitions.length > 0 && (
+                  {[...salaryDefinitions, ...createdDefs].length > 0 && (
                     <select
                       value={pendingMap[key] ?? ''}
                       onChange={(e) => handlePendingChange(key, e.target.value)}
                       className="flex-1 border border-amber-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
                     >
                       <option value="">— select existing —</option>
-                      {salaryDefinitions.map((sd) => (
+                      {[...salaryDefinitions, ...createdDefs].map((sd) => (
                         <option key={sd.code} value={sd.code}>
                           {sd.code}{sd.name ? ` — ${sd.name}` : ''}
                         </option>
@@ -452,6 +462,9 @@ export function EmployeeUpload({
                     </button>
                   )}
                 </div>
+                {createErrors[grade] && (
+                  <p className="text-xs text-red-600 mt-1">{createErrors[grade]}</p>
+                )}
               </div>
             ))}
           </div>

@@ -1,6 +1,4 @@
-import type { MappedEmployee } from '../components/onboarding/EmployeeUpload';
-
-export type OnboardingDraftStep = 'client-config-json' | 'component-settings' | 'employee-upload';
+export type OnboardingDraftStep = 'client-config-json' | 'component-settings' | 'activate';
 
 export interface OnboardingDraft {
   version: 1;
@@ -8,7 +6,6 @@ export interface OnboardingDraft {
   savedAt: string;
   activeStep: OnboardingDraftStep;
   rawJson: string;
-  employees: MappedEmployee[];
 }
 
 function draftKey(workspaceId: string): string {
@@ -27,7 +24,6 @@ export function saveDraft(workspaceId: string, patch: Partial<OnboardingDraft>):
       savedAt: new Date().toISOString(),
       activeStep: 'client-config-json' as OnboardingDraftStep,
       rawJson: '',
-      employees: [],
     };
     const updated: OnboardingDraft = {
       ...existing,
