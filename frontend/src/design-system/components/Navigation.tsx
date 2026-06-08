@@ -215,16 +215,16 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
 
   const sections: SidebarSection[] = [
     {
+      heading: 'People',
+      items: [
+        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees', badge: unmatchedEmployeeCount || undefined },
+      ],
+    },
+    {
       heading: 'Payroll',
       items: [
         { label: 'Inputs', to: `/workspaces/${w}/payroll/inputs`, icon: 'inputs',  end: true, badge: inputIssueCount || undefined },
         { label: 'Runs',   to: `/workspaces/${w}/payroll`,        icon: 'payroll', end: true },
-      ],
-    },
-    {
-      heading: 'People',
-      items: [
-        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees', badge: unmatchedEmployeeCount || undefined },
       ],
     },
     {

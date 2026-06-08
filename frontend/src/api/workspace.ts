@@ -132,7 +132,7 @@ export const workspaceApi = {
       first_name: string;
       last_name: string;
       employee_number: string;
-      salary_definition_code: string;
+      salary_definition_code?: string | null;
       grade_code?: string | null;
       designation_code?: string | null;
       contract_start?: string | null;
@@ -144,6 +144,19 @@ export const workspaceApi = {
     }
   ) => api.post<{ status: string; employee_id: string; full_name: string }>(
     `/${workspaceId}/employees`,
+    payload
+  ),
+
+  enrollEmployee: (
+    workspaceId: string,
+    employeeId: string,
+    payload: {
+      salary_definition_code: string;
+      grade_code?: string | null;
+      designation_code?: string | null;
+    }
+  ) => api.post<{ status: string; employee_id: string }>(
+    `/${workspaceId}/employees/${employeeId}/enroll`,
     payload
   ),
 

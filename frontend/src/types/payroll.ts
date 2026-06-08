@@ -54,6 +54,7 @@ export interface Employee {
   contract_start?: string;
   contract_end?: string;
   is_ended?: boolean;
+  is_enrolled?: boolean;
 }
 
 export interface ReconciliationRecord {

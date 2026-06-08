@@ -138,7 +138,7 @@ def get_current_contract(db, employee_id: str) -> dict | None:
         return None
     return {
         "contract_id":          str(row[0]),
-        "salary_definition_id": str(row[1]),
+        "salary_definition_id": str(row[1]) if row[1] else None,
         "start_date":           row[2],
         "end_date":             row[3],
     }
@@ -181,7 +181,7 @@ def insert_employee(
 def insert_employee_contract(
     db,
     employee_id: str,
-    salary_definition_id: str,
+    salary_definition_id: str | None,
     start_date: date | None = None,
     grade_id: str | None = None,
     designation_id: str | None = None,
@@ -250,6 +250,38 @@ def insert_employee_contract(
         },
     )
     return contract_id
+
+
+def enroll_employee_contract(
+    db,
+    employee_id: str,
+    salary_definition_id: str,
+    grade_id: str | None = None,
+    designation_id: str | None = None,
+) -> bool:
+    """Set salary_definition_id (and optionally grade/designation) on the open unenrolled contract.
+
+    Returns True if a row was updated. The contract must have salary_definition_id IS NULL.
+    Caller owns commit.
+    """
+    result = db.execute(
+        text("""
+            UPDATE employee_contract
+            SET    salary_definition_id = CAST(:sd_id AS uuid),
+                   grade_id       = COALESCE(CAST(:grade_id AS uuid), grade_id),
+                   designation_id = COALESCE(CAST(:designation_id AS uuid), designation_id)
+            WHERE  employee_id = CAST(:eid AS uuid)
+              AND  end_date IS NULL
+              AND  salary_definition_id IS NULL
+        """),
+        {
+            "eid":            employee_id,
+            "sd_id":          salary_definition_id,
+            "grade_id":       grade_id,
+            "designation_id": designation_id,
+        },
+    )
+    return result.rowcount > 0
 
 
 def update_employee(

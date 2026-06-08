@@ -203,7 +203,8 @@ def list_employees(workspace_id: str):
                     (ec.end_date IS NOT NULL AND ec.end_date < CURRENT_DATE) AS is_ended,
                     ec.shift_type,
                     ec.state_of_tax,
-                    ec.skill_level
+                    ec.skill_level,
+                    (ec.salary_definition_id IS NOT NULL) AS is_enrolled
                 FROM employee e
                 LEFT JOIN LATERAL (
                     SELECT ec2.*
@@ -235,6 +236,7 @@ def list_employees(workspace_id: str):
                 "shift_type":     row[9],
                 "state_of_tax":   row[10],
                 "skill_level":    row[11],
+                "is_enrolled":    bool(row[12]) if row[12] is not None else False,
             }
             for row in rows
         ]
@@ -246,7 +248,7 @@ class CreateEmployeeSchema(BaseModel):
     first_name: str
     last_name: str
     employee_number: str
-    salary_definition_code: str
+    salary_definition_code: str | None = None
     grade_code: str | None = None
     designation_code: str | None = None
     contract_start: str | None = None
@@ -280,26 +282,28 @@ def create_employee(workspace_id: str, payload: CreateEmployeeSchema):
         if dup:
             raise HTTPException(status_code=409, detail=f"Employee number '{payload.employee_number}' already exists in this workspace")
 
-        # Resolve salary definition + NULL-safe effective_from validation
-        sd_row = db.execute(
-            text("SELECT salary_definition_id, effective_from FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
-            {"wid": workspace_id, "code": payload.salary_definition_code},
-        ).fetchone()
-        if not sd_row:
-            raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
-        salary_definition_id = str(sd_row[0])
-        _sd_effective_from = sd_row[1]
-        if payload.contract_start and _sd_effective_from is not None:
-            from datetime import date as _date_cls
-            try:
-                _cs = _date_cls.fromisoformat(payload.contract_start)
-                if _sd_effective_from > _cs:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"Salary definition '{payload.salary_definition_code}' is not effective until {_sd_effective_from} — cannot use for a contract starting {_cs}",
-                    )
-            except ValueError:
-                pass  # date parse error caught below
+        # Resolve salary definition (optional — None means not-enrolled)
+        salary_definition_id = None
+        if payload.salary_definition_code:
+            sd_row = db.execute(
+                text("SELECT salary_definition_id, effective_from FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
+                {"wid": workspace_id, "code": payload.salary_definition_code},
+            ).fetchone()
+            if not sd_row:
+                raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
+            salary_definition_id = str(sd_row[0])
+            _sd_effective_from = sd_row[1]
+            if payload.contract_start and _sd_effective_from is not None:
+                from datetime import date as _date_cls
+                try:
+                    _cs = _date_cls.fromisoformat(payload.contract_start)
+                    if _sd_effective_from > _cs:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Salary definition '{payload.salary_definition_code}' is not effective until {_sd_effective_from} — cannot use for a contract starting {_cs}",
+                        )
+                except ValueError:
+                    pass  # date parse error caught below
 
         # Resolve grade
         grade_id = None
@@ -399,7 +403,92 @@ def create_employee(workspace_id: str, payload: CreateEmployeeSchema):
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        import logging as _logging
+        _logging.getLogger(__name__).error("create_employee failed: %s", e)
+        raise HTTPException(status_code=400, detail="Failed to create employee")
+    finally:
+        db.close()
+
+
+class EnrollEmployeeSchema(BaseModel):
+    salary_definition_code: str
+    grade_code: str | None = None
+    designation_code: str | None = None
+
+
+@router.post("/{workspace_id}/employees/{employee_id}/enroll")
+def enroll_employee(workspace_id: str, employee_id: str, payload: EnrollEmployeeSchema):
+    """Assign a salary definition to a not-enrolled employee, making them payroll-eligible."""
+    from backend.infra.repositories import employee_repo as _emp_repo
+
+    db = SessionLocal()
+    try:
+        # Verify the employee belongs to this workspace
+        emp_row = db.execute(
+            text("SELECT 1 FROM employee WHERE employee_id = CAST(:eid AS uuid) AND workspace_id = :wid"),
+            {"eid": employee_id, "wid": workspace_id},
+        ).fetchone()
+        if not emp_row:
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        # Verify employee is not already enrolled
+        already = db.execute(
+            text("""
+                SELECT 1 FROM employee_contract
+                WHERE employee_id = CAST(:eid AS uuid)
+                  AND end_date IS NULL
+                  AND salary_definition_id IS NOT NULL
+            """),
+            {"eid": employee_id},
+        ).fetchone()
+        if already:
+            raise HTTPException(status_code=400, detail="Employee is already enrolled in payroll")
+
+        # Resolve salary definition
+        sd_row = db.execute(
+            text("SELECT salary_definition_id FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
+            {"wid": workspace_id, "code": payload.salary_definition_code},
+        ).fetchone()
+        if not sd_row:
+            raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
+
+        # Resolve optional grade
+        grade_id = None
+        if payload.grade_code:
+            g_row = db.execute(
+                text("SELECT grade_id FROM grade WHERE workspace_id = :wid AND grade_code = :code"),
+                {"wid": workspace_id, "code": payload.grade_code},
+            ).fetchone()
+            if not g_row:
+                raise HTTPException(status_code=400, detail=f"Grade '{payload.grade_code}' not found")
+            grade_id = str(g_row[0])
+
+        # Resolve optional designation
+        designation_id = None
+        if payload.designation_code:
+            d_row = db.execute(
+                text("SELECT designation_id FROM designation WHERE workspace_id = :wid AND designation_code = :code"),
+                {"wid": workspace_id, "code": payload.designation_code},
+            ).fetchone()
+            if not d_row:
+                raise HTTPException(status_code=400, detail=f"Designation '{payload.designation_code}' not found")
+            designation_id = str(d_row[0])
+
+        updated = _emp_repo.enroll_employee_contract(
+            db, employee_id, str(sd_row[0]), grade_id, designation_id
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="No unenrolled contract found for this employee")
+
+        db.commit()
+        return {"status": "enrolled", "employee_id": employee_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import logging as _logging
+        _logging.getLogger(__name__).error("enroll_employee failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to enroll employee")
     finally:
         db.close()
 

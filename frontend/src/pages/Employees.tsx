@@ -65,6 +65,110 @@ function PlusIcon() {
   );
 }
 
+// ── Enroll Employee SlideOver ─────────────────────────────────────────────────
+
+interface EnrollSlideOverProps {
+  employee: Employee | null;
+  salaryDefinitions: SalaryDefinitionOption[];
+  gradeOptions: string[];
+  designationOptions: string[];
+  onClose: () => void;
+  onSaved: () => void;
+  workspaceId: string;
+}
+
+function EnrollSlideOver({
+  employee, salaryDefinitions, gradeOptions, designationOptions, onClose, onSaved, workspaceId,
+}: EnrollSlideOverProps) {
+  const toast = useToast();
+  const [salaryDefCode, setSalaryDefCode] = useState('');
+  const [grade, setGrade] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (employee) {
+      setSalaryDefCode('');
+      setGrade(employee.grade ?? '');
+      setDesignation(employee.designation ?? '');
+      setError(null);
+    }
+  }, [employee]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!salaryDefCode) { setError('Salary definition is required.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await workspaceApi.enrollEmployee(workspaceId, employee!.employee_id, {
+        salary_definition_code: salaryDefCode,
+        grade_code: grade || null,
+        designation_code: designation || null,
+      });
+      toast.show('success', `${employee!.full_name} enrolled — payroll eligible`);
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to enroll employee');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SlideOver
+      open={!!employee}
+      onClose={onClose}
+      title="Enroll Employee"
+      description={employee ? `${employee.full_name} · ${employee.employee_number}` : ''}
+      footer={
+        <div className="flex gap-3">
+          <Btn type="submit" form="enroll-employee-form" variant="primary" size="md" loading={saving}>
+            Enroll Employee
+          </Btn>
+          <Btn type="button" variant="secondary" size="md" onClick={onClose}>
+            Cancel
+          </Btn>
+        </div>
+      }
+    >
+      <form id="enroll-employee-form" onSubmit={handleSave} className="space-y-5">
+        <SearchableSelect
+          label="Salary Definition"
+          value={salaryDefCode}
+          onChange={setSalaryDefCode}
+          options={[
+            { value: '', label: '— select —' },
+            ...salaryDefinitions.map((sd) => ({ value: sd.code, label: sd.name ? `${sd.code} — ${sd.name}` : sd.code })),
+          ]}
+          required
+        />
+        <SearchableSelect
+          label="Grade"
+          value={grade}
+          onChange={setGrade}
+          options={[
+            { value: '', label: '— unassigned —' },
+            ...gradeOptions.map((g) => ({ value: g, label: g })),
+          ]}
+        />
+        <SearchableSelect
+          label="Designation"
+          value={designation}
+          onChange={setDesignation}
+          options={[
+            { value: '', label: '— unassigned —' },
+            ...designationOptions.map((d) => ({ value: d, label: d })),
+          ]}
+        />
+        {error && <AlertBanner variant="error" description={error} />}
+      </form>
+    </SlideOver>
+  );
+}
+
 // ── Edit Employee SlideOver (name + status only) ──────────────────────────────
 
 interface EditSlideOverProps {
@@ -435,8 +539,8 @@ function AddEmployeeSlideOver({
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !employeeNumber.trim() || !salaryDefCode) {
-      setError('First name, last name, employee number, and salary definition are required.');
+    if (!firstName.trim() || !lastName.trim() || !employeeNumber.trim()) {
+      setError('First name, last name, and employee number are required.');
       return;
     }
     setSaving(true);
@@ -446,7 +550,7 @@ function AddEmployeeSlideOver({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         employee_number: employeeNumber.trim(),
-        salary_definition_code: salaryDefCode,
+        salary_definition_code: salaryDefCode || null,
         grade_code: grade || null,
         designation_code: designation || null,
         contract_start: contractStart || null,
@@ -521,10 +625,9 @@ function AddEmployeeSlideOver({
           value={salaryDefCode}
           onChange={setSalaryDefCode}
           options={[
-            { value: '', label: '— select —' },
+            { value: '', label: '— none (register without enrolling) —' },
             ...salaryDefinitions.map((sd) => ({ value: sd.code, label: sd.name ? `${sd.code} — ${sd.name}` : sd.code })),
           ]}
-          required
         />
         <SearchableSelect
           label="Grade"
@@ -762,19 +865,26 @@ function UploadSlideOver({
 
 interface TableProps {
   rows: Employee[];
-  variant?: 'active' | 'unmatched' | 'ended';
+  variant?: 'active' | 'unmatched' | 'ended' | 'not-enrolled';
   onEdit: (emp: Employee) => void;
   onChangeContract?: (emp: Employee) => void;
   onViewContracts?: (emp: Employee) => void;
+  onEnroll?: (emp: Employee) => void;
+  canEnroll?: boolean;
 }
 
-function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onViewContracts }: TableProps) {
+function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onViewContracts, onEnroll, canEnroll = true }: TableProps) {
+  const isNotEnrolled = variant === 'not-enrolled';
+  const headers = isNotEnrolled
+    ? ['Name', 'Employee #', 'Start Date', 'Status', '']
+    : ['Name', 'Employee #', 'Designation', 'Grade', 'Start Date', 'End Date', 'Status', ''];
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            {['Name', 'Employee #', 'Designation', 'Grade', 'Start Date', 'End Date', 'Status', ''].map((h, i) => (
+            {headers.map((h, i) => (
               <th
                 key={i}
                 className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap"
@@ -790,36 +900,61 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
               key={emp.employee_id}
               className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${
                 variant === 'unmatched' ? 'border-l-4 border-amber-400' : ''
-              }`}
+              } ${isNotEnrolled ? 'border-l-4 border-rose-400' : ''}`}
             >
               <td className="px-4 py-3 font-medium text-gray-800">{emp.full_name}</td>
               <td className="px-4 py-3 font-mono text-xs text-gray-500">{emp.employee_number}</td>
-              <td className="px-4 py-3 text-gray-600">{emp.designation ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
-              <td className="px-4 py-3 text-gray-600">{emp.grade ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
+              {!isNotEnrolled && (
+                <>
+                  <td className="px-4 py-3 text-gray-600">{emp.designation ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
+                  <td className="px-4 py-3 text-gray-600">{emp.grade ?? <span className="text-amber-600 font-medium">Missing</span>}</td>
+                </>
+              )}
               <td className="px-4 py-3 text-gray-500 text-xs font-mono">{emp.contract_start ?? '—'}</td>
-              <td className="px-4 py-3 text-xs">
-                {emp.contract_end
-                  ? <span className={`font-mono ${variant === 'ended' ? 'text-gray-500' : 'text-amber-700 font-medium'}`}>{emp.contract_end}</span>
-                  : <span className="text-gray-300">—</span>
-                }
-              </td>
+              {!isNotEnrolled && (
+                <td className="px-4 py-3 text-xs">
+                  {emp.contract_end
+                    ? <span className={`font-mono ${variant === 'ended' ? 'text-gray-500' : 'text-amber-700 font-medium'}`}>{emp.contract_end}</span>
+                    : <span className="text-gray-300">—</span>
+                  }
+                </td>
+              )}
               <td className="px-4 py-3">
                 <StatusBadge status={emp.status ?? 'ACTIVE'} size="sm" />
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-1">
-                  <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
-                    Edit
-                  </Btn>
-                  {variant !== 'ended' && onChangeContract && (
-                    <Btn variant="ghost" size="sm" onClick={() => onChangeContract(emp)}>
-                      Change Grade / Salary
-                    </Btn>
-                  )}
-                  {onViewContracts && (
-                    <Btn variant="ghost" size="sm" onClick={() => onViewContracts(emp)}>
-                      View Contracts
-                    </Btn>
+                  {isNotEnrolled ? (
+                    <>
+                      <Btn
+                        variant="primary"
+                        size="sm"
+                        onClick={() => onEnroll?.(emp)}
+                        disabled={!canEnroll}
+                        title={canEnroll ? undefined : 'Configure salary definitions first'}
+                      >
+                        Enroll
+                      </Btn>
+                      <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
+                        Edit
+                      </Btn>
+                    </>
+                  ) : (
+                    <>
+                      <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
+                        Edit
+                      </Btn>
+                      {variant !== 'ended' && onChangeContract && (
+                        <Btn variant="ghost" size="sm" onClick={() => onChangeContract(emp)}>
+                          Change Grade / Salary
+                        </Btn>
+                      )}
+                      {onViewContracts && (
+                        <Btn variant="ghost" size="sm" onClick={() => onViewContracts(emp)}>
+                          View Contracts
+                        </Btn>
+                      )}
+                    </>
                   )}
                 </div>
               </td>
@@ -847,10 +982,12 @@ export function Employees() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [changingContractEmployee, setChangingContractEmployee] = useState<Employee | null>(null);
   const [viewingContractsEmployee, setViewingContractsEmployee] = useState<Employee | null>(null);
+  const [enrollingEmployee, setEnrollingEmployee] = useState<Employee | null>(null);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
 
   const unmatchedRef = useRef<HTMLDivElement>(null);
+  const notEnrolledRef = useRef<HTMLDivElement>(null);
 
   function loadEmployees() {
     if (!workspaceId) return;
@@ -883,16 +1020,19 @@ export function Employees() {
       .finally(() => setLoading(false));
   }, [workspaceId]);
 
-  const ended     = employees.filter((e) => e.is_ended);
-  const active    = employees.filter((e) => !e.is_ended);
-  const unmatched = active.filter((e) => !e.grade || !e.designation);
-  const matched   = active.filter((e) => e.grade && e.designation);
+  const ended        = employees.filter((e) => e.is_ended);
+  const active       = employees.filter((e) => !e.is_ended);
+  const notEnrolled  = active.filter((e) => e.is_enrolled === false);
+  const enrolled     = active.filter((e) => e.is_enrolled !== false);
+  const unmatched    = enrolled.filter((e) => !e.grade || !e.designation);
+  const matched      = enrolled.filter((e) => e.grade && e.designation);
+  const canEnroll    = salaryDefinitions.length > 0;
 
   return (
     <div className="max-w-5xl">
       <ContentHeader
         title="Employees"
-        subtitle={loading ? 'Loading…' : `${active.length} active · ${ended.length} ended`}
+        subtitle={loading ? 'Loading…' : `${active.length} active · ${ended.length} ended${notEnrolled.length > 0 ? ` · ${notEnrolled.length} not enrolled` : ''}`}
         back={
           <Breadcrumb items={[
             { label: 'Bureau Dashboard', to: '/' },
@@ -923,6 +1063,24 @@ export function Employees() {
       />
 
       {error && <AlertBanner variant="error" description={error} className="mb-4" />}
+
+      {/* Not Enrolled banner */}
+      {!loading && notEnrolled.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title={`${notEnrolled.length} employee${notEnrolled.length !== 1 ? 's' : ''} not enrolled in payroll`}
+          description={
+            canEnroll
+              ? 'These employees will not appear in payroll runs until a salary definition is assigned.'
+              : 'Salary definitions must be set up before employees can be enrolled.'
+          }
+          action={{
+            label: 'View not enrolled →',
+            onClick: () => notEnrolledRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          }}
+          className="mb-4"
+        />
+      )}
 
       {/* Unmatched banner */}
       {!loading && unmatched.length > 0 && (
@@ -964,6 +1122,27 @@ export function Employees() {
         </Card>
       ) : (
         <div className="space-y-5">
+          {/* Not Enrolled section */}
+          {notEnrolled.length > 0 && (
+            <div ref={notEnrolledRef}>
+              <Card padding="sm">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-rose-700 uppercase tracking-wide">
+                    Not Enrolled — {notEnrolled.length} employee{notEnrolled.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-gray-400">No salary definition assigned</p>
+                </div>
+                <EmployeeTable
+                  rows={notEnrolled}
+                  variant="not-enrolled"
+                  onEdit={setEditingEmployee}
+                  onEnroll={setEnrollingEmployee}
+                  canEnroll={canEnroll}
+                />
+              </Card>
+            </div>
+          )}
+
           {/* Unmatched section */}
           {unmatched.length > 0 && (
             <div ref={unmatchedRef}>
@@ -1005,6 +1184,16 @@ export function Employees() {
           )}
         </div>
       )}
+
+      <EnrollSlideOver
+        employee={enrollingEmployee}
+        salaryDefinitions={salaryDefinitions}
+        gradeOptions={gradeOptions}
+        designationOptions={designationOptions}
+        workspaceId={workspaceId ?? ''}
+        onClose={() => setEnrollingEmployee(null)}
+        onSaved={loadEmployees}
+      />
 
       <EditSlideOver
         employee={editingEmployee}
