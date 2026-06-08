@@ -284,6 +284,94 @@ def enroll_employee_contract(
     return result.rowcount > 0
 
 
+def bulk_enroll_employee_contracts(
+    db,
+    workspace_id: str,
+    employee_ids: list[str],
+    salary_definition_id: str,
+    grade_id: str | None = None,
+    designation_id: str | None = None,
+) -> dict:
+    """Bulk-enroll not-enrolled employees. Returns {enrolled, skipped, failed, details}.
+
+    Workspace guard fires first — employee_ids not belonging to this workspace are failed.
+    Already-enrolled employees are skipped (not an error).
+    Caller owns commit.
+    """
+    valid_rows = db.execute(
+        text("""
+            SELECT CAST(employee_id AS text)
+            FROM employee
+            WHERE employee_id = ANY(CAST(:ids AS uuid[]))
+              AND workspace_id = :wid
+        """),
+        {"ids": employee_ids, "wid": workspace_id},
+    ).fetchall()
+    valid_ids = {row[0] for row in valid_rows}
+    failed_ids = set(employee_ids) - valid_ids
+
+    if not valid_ids:
+        return {
+            "enrolled": 0,
+            "skipped": 0,
+            "failed": len(failed_ids),
+            "details": [{"employee_id": i, "status": "failed", "reason": "not found"} for i in failed_ids],
+        }
+
+    already_rows = db.execute(
+        text("""
+            SELECT CAST(ec.employee_id AS text)
+            FROM employee_contract ec
+            JOIN employee e ON e.employee_id = ec.employee_id AND e.workspace_id = :wid
+            WHERE ec.employee_id = ANY(CAST(:ids AS uuid[]))
+              AND ec.end_date IS NULL
+              AND ec.salary_definition_id IS NOT NULL
+        """),
+        {"ids": list(valid_ids), "wid": workspace_id},
+    ).fetchall()
+    skipped_ids = {row[0] for row in already_rows}
+
+    to_enroll = list(valid_ids - skipped_ids)
+    enrolled_ids: set[str] = set()
+    if to_enroll:
+        updated_rows = db.execute(
+            text("""
+                UPDATE employee_contract ec
+                SET    salary_definition_id = CAST(:sd_id AS uuid),
+                       grade_id       = COALESCE(CAST(:grade_id AS uuid), ec.grade_id),
+                       designation_id = COALESCE(CAST(:designation_id AS uuid), ec.designation_id)
+                FROM   employee e
+                WHERE  ec.employee_id = e.employee_id
+                  AND  e.workspace_id = :wid
+                  AND  ec.employee_id = ANY(CAST(:ids AS uuid[]))
+                  AND  ec.end_date IS NULL
+                  AND  ec.salary_definition_id IS NULL
+                RETURNING CAST(ec.employee_id AS text)
+            """),
+            {
+                "sd_id":          salary_definition_id,
+                "grade_id":       grade_id,
+                "designation_id": designation_id,
+                "ids":            to_enroll,
+                "wid":            workspace_id,
+            },
+        ).fetchall()
+        enrolled_ids = {row[0] for row in updated_rows}
+        failed_ids |= set(to_enroll) - enrolled_ids
+
+    details = (
+        [{"employee_id": i, "status": "enrolled"} for i in enrolled_ids]
+        + [{"employee_id": i, "status": "skipped"} for i in skipped_ids]
+        + [{"employee_id": i, "status": "failed", "reason": "no open unenrolled contract or not found"} for i in failed_ids]
+    )
+    return {
+        "enrolled": len(enrolled_ids),
+        "skipped":  len(skipped_ids),
+        "failed":   len(failed_ids),
+        "details":  details,
+    }
+
+
 def update_employee(
     db,
     workspace_id: str,

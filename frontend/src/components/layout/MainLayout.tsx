@@ -14,15 +14,17 @@ export function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [inputIssueCount, setInputIssueCount] = useState(0);
+  const [timesheetEnabled, setTimesheetEnabled] = useState(false);
 
   useEffect(() => {
     workspaceApi.list().then(setWorkspaces).catch(() => {});
   }, [workspaceId]);
 
   useEffect(() => {
-    if (!workspaceId) { setEmployees([]); setInputIssueCount(0); return; }
+    if (!workspaceId) { setEmployees([]); setInputIssueCount(0); setTimesheetEnabled(false); return; }
     workspaceApi.getEmployees(workspaceId).then(setEmployees).catch(() => {});
     payrollApi.getInputIssues(workspaceId).then((d) => setInputIssueCount(d.total)).catch(() => {});
+    workspaceApi.getPayrollConfig(workspaceId).then((cfg) => setTimesheetEnabled(cfg.timesheet_enabled ?? false)).catch(() => {});
   }, [workspaceId]);
 
   const currentWorkspace = workspaces.find(w => w.workspace_id === workspaceId) ?? null;
@@ -52,6 +54,7 @@ export function MainLayout() {
         onToggleSidebar={() => setCollapsed(v => !v)}
         unmatchedEmployeeCount={unmatchedEmployeeCount}
         inputIssueCount={inputIssueCount}
+        timesheetEnabled={timesheetEnabled}
       />
     </WorkspaceContext.Provider>
   );

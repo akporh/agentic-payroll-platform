@@ -73,11 +73,23 @@ Domain code must never import infrastructure. Routes must never contain business
 
 ---
 
+## Upload / Enroll Separation (Sprint 22)
+
+The employee lifecycle has two distinct operations — do not conflate them:
+
+| Operation | Purpose | Fields sent to API |
+|---|---|---|
+| **Upload** (`createEmployee`) | Register employee as HR record | HR data only: name, employee_number, TIN, RSA, bank, contract dates |
+| **Enroll** (`enrollEmployee`, `bulkEnrollEmployees`) | Assign to payroll | `salary_definition_code`, `grade_code`, `designation_code` |
+
+During bulk upload (`handleImport`), `grade_code` is **always null** — never the raw Excel grade. Grade is a payroll setup field; it is assigned only via the Enroll flow. The Excel grade column is informational (used for salary def auto-matching and the mapping panel) but must not be forwarded to `createEmployee`.
+
+---
+
 ## Sprint State
 
-- Sprints 1–5: closed
-- Sprint 6: in progress (medium/low priority gaps — G7, PC4, INP10, Trace, G12, SR9, RC5)
-- High priority items (F1, SR10, P0-3, P1-4, P1-5) deferred to a future sprint
+- Sprints 1–21: closed
+- Sprint 22: closed (EMP-BULK-1, EMP-BULK-2, EMP-BULK-3)
 
 ---
 

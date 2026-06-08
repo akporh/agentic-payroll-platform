@@ -208,9 +208,10 @@ export interface WorkspaceSidebarProps {
   onToggleCollapse?: () => void;
   unmatchedEmployeeCount?: number;
   inputIssueCount?: number;
+  timesheetEnabled?: boolean;
 }
 
-export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse, unmatchedEmployeeCount = 0, inputIssueCount = 0 }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, isLive = false, collapsed = false, onToggleCollapse, unmatchedEmployeeCount = 0, inputIssueCount = 0, timesheetEnabled = false }: WorkspaceSidebarProps) {
   const w = workspaceId;
 
   const sections: SidebarSection[] = [
@@ -233,7 +234,7 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
         { label: 'Configuration', to: `/workspaces/${w}/config`,            icon: 'config' },
         { label: 'Public Holidays', to: `/workspaces/${w}/public-holidays`, icon: 'calendar' },
         { label: 'Rate Codes',       to: `/workspaces/${w}/rate-codes`,                icon: 'tag' },
-        { label: 'Attendance Codes', to: `/workspaces/${w}/attendance-configuration`, icon: 'calendar' },
+        ...(timesheetEnabled ? [{ label: 'Attendance Codes', to: `/workspaces/${w}/attendance-configuration`, icon: 'calendar' as keyof typeof ICONS }] : []),
       ],
     },
     ...(!isLive ? [{

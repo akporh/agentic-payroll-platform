@@ -160,6 +160,21 @@ export const workspaceApi = {
     payload
   ),
 
+  bulkEnrollEmployees: (
+    workspaceId: string,
+    payload: {
+      employee_ids: string[];
+      salary_definition_code: string;
+      grade_code?: string | null;
+      designation_code?: string | null;
+    }
+  ) => api.post<{
+    enrolled: number;
+    skipped: number;
+    failed: number;
+    details: { employee_id: string; status: string; reason?: string }[];
+  }>(`/${workspaceId}/employees/bulk-enroll`, payload),
+
   getInputCodes: (workspaceId: string) =>
     api.get<{
       input_codes: {

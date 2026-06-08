@@ -38,6 +38,7 @@ export interface PageShellProps {
   onToggleSidebar?: () => void;
   unmatchedEmployeeCount?: number;
   inputIssueCount?: number;
+  timesheetEnabled?: boolean;
 }
 
 export function PageShell({
@@ -55,6 +56,7 @@ export function PageShell({
   onToggleSidebar,
   unmatchedEmployeeCount,
   inputIssueCount,
+  timesheetEnabled,
 }: PageShellProps) {
   const sidebarWidth = workspaceId
     ? sidebarCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-expanded)'
@@ -81,6 +83,7 @@ export function PageShell({
           onToggleCollapse={onToggleSidebar}
           unmatchedEmployeeCount={unmatchedEmployeeCount}
           inputIssueCount={inputIssueCount}
+          timesheetEnabled={timesheetEnabled}
         />
       )}
 

@@ -493,6 +493,72 @@ def enroll_employee(workspace_id: str, employee_id: str, payload: EnrollEmployee
         db.close()
 
 
+class BulkEnrollEmployeesSchema(BaseModel):
+    employee_ids: list[str]
+    salary_definition_code: str
+    grade_code: str | None = None
+    designation_code: str | None = None
+
+
+@router.post("/{workspace_id}/employees/bulk-enroll")
+def bulk_enroll_employees(workspace_id: str, payload: BulkEnrollEmployeesSchema):
+    """Enroll multiple not-enrolled employees in a single call.
+
+    Already-enrolled employees are skipped (not an error).
+    Returns {enrolled, skipped, failed, details}.
+    """
+    from backend.infra.repositories import employee_repo as _emp_repo
+
+    if not payload.employee_ids:
+        raise HTTPException(status_code=422, detail="employee_ids must not be empty")
+    if len(payload.employee_ids) > 500:
+        raise HTTPException(status_code=422, detail="Maximum 500 employees per bulk enroll request")
+
+    db = SessionLocal()
+    try:
+        sd_row = db.execute(
+            text("SELECT salary_definition_id FROM salary_definition WHERE workspace_id = :wid AND code = :code"),
+            {"wid": workspace_id, "code": payload.salary_definition_code},
+        ).fetchone()
+        if not sd_row:
+            raise HTTPException(status_code=400, detail=f"Salary definition '{payload.salary_definition_code}' not found")
+
+        grade_id = None
+        if payload.grade_code:
+            g = db.execute(
+                text("SELECT grade_id FROM grade WHERE workspace_id = :wid AND grade_code = :c"),
+                {"wid": workspace_id, "c": payload.grade_code},
+            ).fetchone()
+            if not g:
+                raise HTTPException(status_code=400, detail=f"Grade '{payload.grade_code}' not found")
+            grade_id = str(g[0])
+
+        designation_id = None
+        if payload.designation_code:
+            d = db.execute(
+                text("SELECT designation_id FROM designation WHERE workspace_id = :wid AND designation_code = :c"),
+                {"wid": workspace_id, "c": payload.designation_code},
+            ).fetchone()
+            if not d:
+                raise HTTPException(status_code=400, detail=f"Designation '{payload.designation_code}' not found")
+            designation_id = str(d[0])
+
+        result = _emp_repo.bulk_enroll_employee_contracts(
+            db, workspace_id, payload.employee_ids, str(sd_row[0]), grade_id, designation_id
+        )
+        db.commit()
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import logging as _logging
+        _logging.getLogger(__name__).error("bulk_enroll_employees failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to bulk enroll employees")
+    finally:
+        db.close()
+
+
 class EmployeeContractUpdateSchema(BaseModel):
     grade_code: str | None = None
     designation_code: str | None = None

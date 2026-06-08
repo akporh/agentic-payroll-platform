@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
 import { employeesApi } from '../api/employees';
+import { ApiError } from '../api/client';
 import type { ContractRecord } from '../api/employees';
 import type { Employee } from '../types/payroll';
 import {
@@ -36,6 +37,22 @@ import {
   type MappedEmployee,
   type SalaryDefinitionOption,
 } from '../components/employees/EmployeeUpload';
+
+// ── Option builders ───────────────────────────────────────────────────────────
+
+function salaryDefOptions(defs: SalaryDefinitionOption[], emptyLabel = '— select —') {
+  return [
+    { value: '', label: emptyLabel },
+    ...defs.map((sd) => ({ value: sd.code, label: sd.name ? `${sd.code} — ${sd.name}` : sd.code })),
+  ];
+}
+
+function codeOptions(codes: string[], emptyLabel = '— unassigned —') {
+  return [
+    { value: '', label: emptyLabel },
+    ...codes.map((c) => ({ value: c, label: c })),
+  ];
+}
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -139,29 +156,126 @@ function EnrollSlideOver({
           label="Salary Definition"
           value={salaryDefCode}
           onChange={setSalaryDefCode}
-          options={[
-            { value: '', label: '— select —' },
-            ...salaryDefinitions.map((sd) => ({ value: sd.code, label: sd.name ? `${sd.code} — ${sd.name}` : sd.code })),
-          ]}
+          options={salaryDefOptions(salaryDefinitions)}
           required
         />
         <SearchableSelect
           label="Grade"
           value={grade}
           onChange={setGrade}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...gradeOptions.map((g) => ({ value: g, label: g })),
-          ]}
+          options={codeOptions(gradeOptions)}
         />
         <SearchableSelect
           label="Designation"
           value={designation}
           onChange={setDesignation}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...designationOptions.map((d) => ({ value: d, label: d })),
-          ]}
+          options={codeOptions(designationOptions)}
+        />
+        {error && <AlertBanner variant="error" description={error} />}
+      </form>
+    </SlideOver>
+  );
+}
+
+// ── Bulk Enroll SlideOver ─────────────────────────────────────────────────────
+
+interface BulkEnrollSlideOverProps {
+  open: boolean;
+  employeeIds: string[];
+  salaryDefinitions: SalaryDefinitionOption[];
+  gradeOptions: string[];
+  designationOptions: string[];
+  onClose: () => void;
+  onSaved: () => void;
+  workspaceId: string;
+}
+
+function BulkEnrollSlideOver({
+  open, employeeIds, salaryDefinitions, gradeOptions, designationOptions, onClose, onSaved, workspaceId,
+}: BulkEnrollSlideOverProps) {
+  const toast = useToast();
+  const [salaryDefCode, setSalaryDefCode] = useState('');
+  const [grade, setGrade] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setSalaryDefCode('');
+      setGrade('');
+      setDesignation('');
+      setError(null);
+    }
+  }, [open]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!salaryDefCode) { setError('Salary definition is required.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await workspaceApi.bulkEnrollEmployees(workspaceId, {
+        employee_ids: employeeIds,
+        salary_definition_code: salaryDefCode,
+        grade_code: grade || null,
+        designation_code: designation || null,
+      });
+      const msg = result.skipped > 0
+        ? `${result.enrolled} enrolled — ${result.skipped} already enrolled (skipped)`
+        : `${result.enrolled} employee${result.enrolled !== 1 ? 's' : ''} enrolled — payroll eligible`;
+      toast.show('success', msg);
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to bulk enroll');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SlideOver
+      open={open}
+      onClose={onClose}
+      title="Enroll Employees"
+      description={`Enrolling ${employeeIds.length} employee${employeeIds.length !== 1 ? 's' : ''}`}
+      footer={
+        <div className="flex gap-3">
+          <Btn type="submit" form="bulk-enroll-form" variant="primary" size="md" loading={saving}>
+            Enroll {employeeIds.length} Employee{employeeIds.length !== 1 ? 's' : ''}
+          </Btn>
+          <Btn type="button" variant="secondary" size="md" onClick={onClose}>
+            Cancel
+          </Btn>
+        </div>
+      }
+    >
+      <form id="bulk-enroll-form" onSubmit={handleSave} className="space-y-5">
+        <SearchableSelect
+          label="Salary Definition"
+          value={salaryDefCode}
+          onChange={setSalaryDefCode}
+          options={salaryDefOptions(salaryDefinitions)}
+          required
+        />
+        <SearchableSelect
+          label="Grade (optional)"
+          value={grade}
+          onChange={setGrade}
+          options={codeOptions(gradeOptions)}
+        />
+        {grade && (
+          <AlertBanner
+            variant="warning"
+            description="This will overwrite any existing grade assignment on selected employees."
+          />
+        )}
+        <SearchableSelect
+          label="Designation (optional)"
+          value={designation}
+          onChange={setDesignation}
+          options={codeOptions(designationOptions)}
         />
         {error && <AlertBanner variant="error" description={error} />}
       </form>
@@ -369,19 +483,13 @@ function ChangeContractSlideOver({
           label="Grade"
           value={grade}
           onChange={setGrade}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...gradeOptions.map((g) => ({ value: g, label: g })),
-          ]}
+          options={codeOptions(gradeOptions)}
         />
         <SearchableSelect
           label="Designation"
           value={designation}
           onChange={setDesignation}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...designationOptions.map((d) => ({ value: d, label: d })),
-          ]}
+          options={codeOptions(designationOptions)}
         />
         <TextInput
           label="Reason for Change"
@@ -624,28 +732,19 @@ function AddEmployeeSlideOver({
           label="Salary Definition"
           value={salaryDefCode}
           onChange={setSalaryDefCode}
-          options={[
-            { value: '', label: '— none (register without enrolling) —' },
-            ...salaryDefinitions.map((sd) => ({ value: sd.code, label: sd.name ? `${sd.code} — ${sd.name}` : sd.code })),
-          ]}
+          options={salaryDefOptions(salaryDefinitions, '— none (register without enrolling) —')}
         />
         <SearchableSelect
           label="Grade"
           value={grade}
           onChange={setGrade}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...gradeOptions.map((g) => ({ value: g, label: g })),
-          ]}
+          options={codeOptions(gradeOptions)}
         />
         <SearchableSelect
           label="Designation"
           value={designation}
           onChange={setDesignation}
-          options={[
-            { value: '', label: '— unassigned —' },
-            ...designationOptions.map((d) => ({ value: d, label: d })),
-          ]}
+          options={codeOptions(designationOptions)}
         />
         <div className="grid grid-cols-2 gap-4">
           <DateInput
@@ -689,7 +788,7 @@ function AddEmployeeSlideOver({
 interface ImportResult {
   name: string;
   employee_number: string;
-  status: 'created' | 'failed';
+  status: 'created' | 'not-enrolled' | 'skipped' | 'failed';
   error?: string;
 }
 
@@ -717,55 +816,74 @@ function UploadSlideOver({
     onClose();
   }
 
-  const hasUnresolved = employees.some((e) => e.mapping_unresolved || e.designation_unresolved);
-  const readyCount = employees.filter((e) => !e.mapping_unresolved && !e.designation_unresolved).length;
+  const unresolvedCount = employees.filter((e) => e.mapping_unresolved).length;
+  const enrolledCount   = employees.filter((e) => !e.mapping_unresolved).length;
 
   async function handleImport() {
-    if (readyCount === 0) return;
+    if (employees.length === 0) return;
     setImporting(true);
-    const batch = employees.filter((e) => !e.mapping_unresolved && !e.designation_unresolved);
-    const importResults: ImportResult[] = [];
 
-    for (const emp of batch) {
-      const fullName = `${emp.first_name} ${emp.last_name}`;
-      try {
-        await workspaceApi.createEmployee(workspaceId, {
+    const settled = await Promise.allSettled(
+      employees.map((emp) => {
+        const salaryCode = emp.mapping_unresolved ? null : emp.salary_definition_code;
+        return workspaceApi.createEmployee(workspaceId, {
           first_name: emp.first_name,
           last_name: emp.last_name,
           employee_number: emp.employee_id,
-          salary_definition_code: emp.salary_definition_code,
-          grade_code: emp.grade || null,
-          designation_code: emp.designation || null,
+          salary_definition_code: salaryCode,
+          grade_code: null,
+          designation_code: emp.designation_unresolved ? null : emp.designation || null,
           contract_start: emp.contract_start || null,
           contract_end: emp.contract_end || null,
           tin: emp.tin || null,
           rsa: emp.rsa || null,
           bank: emp.bank || null,
           account_number: emp.account_number || null,
-        });
-        importResults.push({ name: fullName, employee_number: emp.employee_id, status: 'created' });
-      } catch (e: unknown) {
-        importResults.push({
-          name: fullName,
+        }).then((): ImportResult => ({
+          name: `${emp.first_name} ${emp.last_name}`,
           employee_number: emp.employee_id,
-          status: 'failed',
-          error: e instanceof Error ? e.message : 'Unknown error',
+          status: salaryCode ? 'created' : 'not-enrolled',
+        })).catch((e: unknown): ImportResult => {
+          if (e instanceof ApiError && e.response.status === 409) {
+            return { name: `${emp.first_name} ${emp.last_name}`, employee_number: emp.employee_id, status: 'skipped' };
+          }
+          return {
+            name: `${emp.first_name} ${emp.last_name}`,
+            employee_number: emp.employee_id,
+            status: 'failed',
+            error: e instanceof Error ? e.message : 'Unknown error',
+          };
         });
-      }
-    }
+      })
+    );
+    const importResults: ImportResult[] = settled.map((s) =>
+      s.status === 'fulfilled' ? s.value : { name: '', employee_number: '', status: 'failed' as const, error: 'Unexpected rejection' }
+    );
 
     setResults(importResults);
     setImporting(false);
 
-    const created = importResults.filter((r) => r.status === 'created').length;
-    if (created > 0) {
-      toast.show('success', `${created} employee${created !== 1 ? 's' : ''} imported`);
+    const newCount = importResults.filter((r) => r.status === 'created' || r.status === 'not-enrolled').length;
+    if (newCount > 0) {
+      toast.show('success', `${newCount} employee${newCount !== 1 ? 's' : ''} created`);
       onSaved();
     }
   }
 
-  const createdCount = results?.filter((r) => r.status === 'created').length ?? 0;
-  const failedCount = results?.filter((r) => r.status === 'failed').length ?? 0;
+  const createdCount    = results?.filter((r) => r.status === 'created').length ?? 0;
+  const notEnrolledResultCount = results?.filter((r) => r.status === 'not-enrolled').length ?? 0;
+  const skippedCount    = results?.filter((r) => r.status === 'skipped').length ?? 0;
+  const failedCount     = results?.filter((r) => r.status === 'failed').length ?? 0;
+
+  const importLabel = (() => {
+    if (importing) return 'Importing…';
+    const total = employees.length;
+    if (total === 0) return 'Import';
+    if (unresolvedCount > 0) {
+      return `Import ${total} employee${total !== 1 ? 's' : ''} (${enrolledCount} enrolled · ${unresolvedCount} not enrolled)`;
+    }
+    return `Import ${total} employee${total !== 1 ? 's' : ''}`;
+  })();
 
   return (
     <SlideOver
@@ -779,19 +897,19 @@ function UploadSlideOver({
             Close
           </Btn>
         ) : (
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Btn
               variant="primary"
               size="md"
               loading={importing}
-              disabled={readyCount === 0 || importing}
+              disabled={employees.length === 0 || importing}
               onClick={handleImport}
             >
-              {importing ? 'Importing…' : `Import ${readyCount} Employee${readyCount !== 1 ? 's' : ''}`}
+              {importLabel}
             </Btn>
-            {hasUnresolved && (
-              <span className="text-xs text-amber-600 self-center">
-                {employees.length - readyCount} row{employees.length - readyCount !== 1 ? 's' : ''} need mapping
+            {unresolvedCount > 0 && !importing && (
+              <span className="text-xs text-gray-500 self-center">
+                {unresolvedCount} will import as not enrolled
               </span>
             )}
             <Btn variant="secondary" size="md" onClick={handleClose} disabled={importing}>
@@ -803,12 +921,33 @@ function UploadSlideOver({
     >
       <div className="space-y-5">
         {results ? (
-          /* ── Import results summary ── */
           <div className="space-y-4">
+            {/* Summary line */}
+            <p className="text-sm text-gray-600">
+              {[
+                createdCount > 0 && `${createdCount} enrolled`,
+                notEnrolledResultCount > 0 && `${notEnrolledResultCount} not enrolled`,
+                skippedCount > 0 && `${skippedCount} already registered`,
+                failedCount > 0 && `${failedCount} failed`,
+              ].filter(Boolean).join(' · ')}
+            </p>
             {createdCount > 0 && (
               <AlertBanner
                 variant="success"
-                title={`${createdCount} employee${createdCount !== 1 ? 's' : ''} created successfully`}
+                title={`${createdCount} employee${createdCount !== 1 ? 's' : ''} enrolled`}
+              />
+            )}
+            {notEnrolledResultCount > 0 && (
+              <AlertBanner
+                variant="warning"
+                title={`${notEnrolledResultCount} employee${notEnrolledResultCount !== 1 ? 's' : ''} registered without salary — not enrolled`}
+                description="Assign a salary definition from the Not Enrolled section to make them payroll-eligible."
+              />
+            )}
+            {skippedCount > 0 && (
+              <AlertBanner
+                variant="info"
+                title={`${skippedCount} already registered — skipped`}
               />
             )}
             {failedCount > 0 && (
@@ -843,7 +982,6 @@ function UploadSlideOver({
             )}
           </div>
         ) : (
-          /* ── Upload + mapping UI ── */
           <EmployeeUpload
             employees={employees}
             salaryDefinitions={salaryDefinitions}
@@ -871,20 +1009,44 @@ interface TableProps {
   onViewContracts?: (emp: Employee) => void;
   onEnroll?: (emp: Employee) => void;
   canEnroll?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (id: string, checked: boolean) => void;
 }
 
-function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onViewContracts, onEnroll, canEnroll = true }: TableProps) {
+function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onViewContracts, onEnroll, canEnroll = true, selectedIds, onSelectionChange }: TableProps) {
   const isNotEnrolled = variant === 'not-enrolled';
-  const headers = isNotEnrolled
+  const showCheckboxes = isNotEnrolled && !!onSelectionChange;
+
+  const allSelected = showCheckboxes && rows.length > 0 && rows.every((r) => selectedIds?.has(r.employee_id));
+  const someSelected = showCheckboxes && rows.some((r) => selectedIds?.has(r.employee_id));
+
+  function handleHeaderCheck(e: React.ChangeEvent<HTMLInputElement>) {
+    rows.forEach((r) => onSelectionChange?.(r.employee_id, e.target.checked));
+  }
+
+  const baseHeaders = isNotEnrolled
     ? ['Name', 'Employee #', 'Start Date', 'Status', '']
     : ['Name', 'Employee #', 'Designation', 'Grade', 'Start Date', 'End Date', 'Status', ''];
+  const headers = showCheckboxes ? ['', ...baseHeaders] : baseHeaders;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            {headers.map((h, i) => (
+            {showCheckboxes && (
+              <th className="px-4 py-3 w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                  onChange={handleHeaderCheck}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+              </th>
+            )}
+            {baseHeaders.map((h, i) => (
               <th
                 key={i}
                 className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap"
@@ -902,6 +1064,17 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
                 variant === 'unmatched' ? 'border-l-4 border-amber-400' : ''
               } ${isNotEnrolled ? 'border-l-4 border-rose-400' : ''}`}
             >
+              {showCheckboxes && (
+                <td className="px-4 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    aria-label={emp.full_name}
+                    checked={selectedIds?.has(emp.employee_id) ?? false}
+                    onChange={(e) => onSelectionChange?.(emp.employee_id, e.target.checked)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                </td>
+              )}
               <td className="px-4 py-3 font-medium text-gray-800">{emp.full_name}</td>
               <td className="px-4 py-3 font-mono text-xs text-gray-500">{emp.employee_number}</td>
               {!isNotEnrolled && (
@@ -985,12 +1158,15 @@ export function Employees() {
   const [enrollingEmployee, setEnrollingEmployee] = useState<Employee | null>(null);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [selectedNotEnrolledIds, setSelectedNotEnrolledIds] = useState<Set<string>>(new Set());
+  const [showBulkEnroll, setShowBulkEnroll] = useState(false);
 
   const unmatchedRef = useRef<HTMLDivElement>(null);
   const notEnrolledRef = useRef<HTMLDivElement>(null);
 
   function loadEmployees() {
     if (!workspaceId) return;
+    setSelectedNotEnrolledIds(new Set());
     workspaceApi
       .getEmployees(workspaceId)
       .then(setEmployees)
@@ -1019,6 +1195,14 @@ export function Employees() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [workspaceId]);
+
+  function handleNotEnrolledSelectionChange(id: string, checked: boolean) {
+    setSelectedNotEnrolledIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
 
   const ended        = employees.filter((e) => e.is_ended);
   const active       = employees.filter((e) => !e.is_ended);
@@ -1132,12 +1316,37 @@ export function Employees() {
                   </p>
                   <p className="text-xs text-gray-400">No salary definition assigned</p>
                 </div>
+                {selectedNotEnrolledIds.size > 0 && (
+                  <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3 flex-wrap">
+                    <span className="text-xs text-indigo-700 font-medium">
+                      {selectedNotEnrolledIds.size} selected
+                    </span>
+                    <Btn
+                      variant="primary"
+                      size="sm"
+                      disabled={!canEnroll}
+                      title={canEnroll ? undefined : 'Configure salary definitions first'}
+                      onClick={() => setShowBulkEnroll(true)}
+                    >
+                      Enroll Selected
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedNotEnrolledIds(new Set())}
+                    >
+                      Clear selection
+                    </Btn>
+                  </div>
+                )}
                 <EmployeeTable
                   rows={notEnrolled}
                   variant="not-enrolled"
                   onEdit={setEditingEmployee}
                   onEnroll={setEnrollingEmployee}
                   canEnroll={canEnroll}
+                  selectedIds={selectedNotEnrolledIds}
+                  onSelectionChange={handleNotEnrolledSelectionChange}
                 />
               </Card>
             </div>
@@ -1192,6 +1401,17 @@ export function Employees() {
         designationOptions={designationOptions}
         workspaceId={workspaceId ?? ''}
         onClose={() => setEnrollingEmployee(null)}
+        onSaved={loadEmployees}
+      />
+
+      <BulkEnrollSlideOver
+        open={showBulkEnroll}
+        employeeIds={[...selectedNotEnrolledIds]}
+        salaryDefinitions={salaryDefinitions}
+        gradeOptions={gradeOptions}
+        designationOptions={designationOptions}
+        workspaceId={workspaceId ?? ''}
+        onClose={() => setShowBulkEnroll(false)}
         onSaved={loadEmployees}
       />
 
