@@ -230,6 +230,28 @@ def get_non_approved_employees(workspace_id: str, period_start: date) -> list[st
         db.close()
 
 
+def get_approved_employee_ids(workspace_id: str, period_start: date) -> set[str]:
+    """Return employee_ids with derivation_status = APPROVED for the period.
+
+    Used by upload_timesheet to block re-upload over approved evidence.
+    """
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT employee_id
+                FROM timesheet_entry
+                WHERE workspace_id      = :wid
+                  AND period_start      = :period_start
+                  AND derivation_status = 'APPROVED'
+            """),
+            {"wid": workspace_id, "period_start": period_start},
+        ).fetchall()
+        return {str(r[0]) for r in rows}
+    finally:
+        db.close()
+
+
 def get_approved_entries_for_period(workspace_id: str, period_start: date) -> list[dict]:
     """Return APPROVED entries with their grids for the approval write step."""
     db = SessionLocal()

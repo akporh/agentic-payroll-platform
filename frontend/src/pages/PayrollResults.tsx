@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { payrollApi } from '../api/payroll';
+import { workspaceApi } from '../api/workspace';
 import type {
   PayrollRun,
   PayrollResult,
@@ -630,6 +631,14 @@ export function PayrollResults() {
   const [showPayConfirm, setShowPayConfirm] = useState(false);
   const [payConfirmLoading, setPayConfirmLoading] = useState(false);
   const [showRetryBlockedModal, setShowRetryBlockedModal] = useState(false);
+  const [notEnrolledCount, setNotEnrolledCount] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    workspaceApi.getEmployees(workspaceId)
+      .then((emps) => setNotEnrolledCount(emps.filter((e: { is_ended: boolean; is_enrolled: boolean }) => !e.is_ended && !e.is_enrolled).length))
+      .catch(() => {});
+  }, [workspaceId]);
 
   const fetchRun = useCallback(() => {
     if (!workspaceId || !runId) return;
@@ -762,6 +771,15 @@ export function PayrollResults() {
         }
         action={run && <StatusBadge status={run.status} />}
       />
+
+      {notEnrolledCount > 0 && (
+        <AlertBanner
+          variant="warning"
+          description={`${notEnrolledCount} employee${notEnrolledCount !== 1 ? 's' : ''} were not included in this run — not enrolled in payroll.`}
+          action={{ label: 'View employees →', onClick: () => navigate(`/workspaces/${workspaceId}/employees`) }}
+          className="mb-4"
+        />
+      )}
 
       {/* DD-2: Tab bar — always visible, run header above it */}
       <TabBar

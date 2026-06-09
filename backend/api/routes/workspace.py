@@ -446,7 +446,7 @@ def enroll_employee(workspace_id: str, employee_id: str, payload: EnrollEmployee
             text("""
                 SELECT 1 FROM employee_contract
                 WHERE employee_id = CAST(:eid AS uuid)
-                  AND end_date IS NULL
+                  AND (end_date IS NULL OR end_date >= CURRENT_DATE)
                   AND salary_definition_id IS NOT NULL
             """),
             {"eid": employee_id},

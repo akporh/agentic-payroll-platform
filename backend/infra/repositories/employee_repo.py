@@ -277,7 +277,7 @@ def enroll_employee_contract(
                    grade_id       = COALESCE(CAST(:grade_id AS uuid), grade_id),
                    designation_id = COALESCE(CAST(:designation_id AS uuid), designation_id)
             WHERE  employee_id = CAST(:eid AS uuid)
-              AND  end_date IS NULL
+              AND  (end_date IS NULL OR end_date >= CURRENT_DATE)
               AND  salary_definition_id IS NULL
         """),
         {
@@ -330,7 +330,7 @@ def bulk_enroll_employee_contracts(
             FROM employee_contract ec
             JOIN employee e ON e.employee_id = ec.employee_id AND e.workspace_id = :wid
             WHERE ec.employee_id = ANY(CAST(:ids AS uuid[]))
-              AND ec.end_date IS NULL
+              AND (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
               AND ec.salary_definition_id IS NOT NULL
         """),
         {"ids": list(valid_ids), "wid": workspace_id},
@@ -350,7 +350,7 @@ def bulk_enroll_employee_contracts(
                 WHERE  ec.employee_id = e.employee_id
                   AND  e.workspace_id = :wid
                   AND  ec.employee_id = ANY(CAST(:ids AS uuid[]))
-                  AND  ec.end_date IS NULL
+                  AND  (ec.end_date IS NULL OR ec.end_date >= CURRENT_DATE)
                   AND  ec.salary_definition_id IS NULL
                 RETURNING CAST(ec.employee_id AS text)
             """),

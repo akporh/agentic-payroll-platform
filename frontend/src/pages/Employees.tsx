@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
 import { employeesApi } from '../api/employees';
 import { ApiError } from '../api/client';
@@ -1128,6 +1128,7 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
 
 export function Employees() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
   const { workspace } = useWorkspaceContext();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -1264,17 +1265,18 @@ export function Employees() {
       {/* Not Enrolled banner */}
       {!loading && notEnrolled.length > 0 && (
         <AlertBanner
-          variant="warning"
+          variant={canEnroll ? 'warning' : 'info'}
           title={`${notEnrolled.length} employee${notEnrolled.length !== 1 ? 's' : ''} not enrolled in payroll`}
           description={
             canEnroll
               ? 'These employees will not appear in payroll runs until a salary definition is assigned.'
-              : 'Salary definitions must be set up before employees can be enrolled.'
+              : 'To enroll these employees in payroll, set up a salary structure in Configuration.'
           }
-          action={{
-            label: 'View not enrolled →',
-            onClick: () => notEnrolledRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-          }}
+          action={
+            canEnroll
+              ? { label: 'View not enrolled →', onClick: () => notEnrolledRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+              : { label: 'Set up salary structure →', onClick: () => navigate(`/workspaces/${workspaceId}/config`) }
+          }
           className="mb-4"
         />
       )}

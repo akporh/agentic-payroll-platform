@@ -194,6 +194,9 @@ def upload_timesheet(
         for d in sorted(ph_header_mismatches):
             warnings.append(f"Column header '{d}*' is flagged as PH but this date is not in the workspace PH calendar.")
 
+    # Prefetch APPROVED employee IDs for this period — re-upload must not overwrite approved evidence.
+    approved_employee_ids = timesheet_repo.get_approved_employee_ids(workspace_id, period_start)
+
     rows_accepted = 0
     rows_rejected: list[dict] = []
     seen_employee_numbers: set[str] = set()
@@ -216,6 +219,10 @@ def upload_timesheet(
         seen_employee_numbers.add(emp_number)
 
         emp = employee_map.get(emp_number)
+        if emp is not None and emp["employee_id"] in approved_employee_ids:
+            rows_rejected.append({"employee_number": emp_number, "errors": ["Timesheet is APPROVED and cannot be overwritten."]})
+            continue
+
         if emp is None:
             rows_rejected.append({"employee_number": emp_number, "errors": ["Employee not found in workspace."]})
             continue

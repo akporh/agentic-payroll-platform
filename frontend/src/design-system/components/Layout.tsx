@@ -37,6 +37,7 @@ export interface PageShellProps {
   sidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   unmatchedEmployeeCount?: number;
+  notEnrolledEmployeeCount?: number;
   inputIssueCount?: number;
   timesheetEnabled?: boolean;
 }
@@ -55,6 +56,7 @@ export function PageShell({
   sidebarCollapsed = false,
   onToggleSidebar,
   unmatchedEmployeeCount,
+  notEnrolledEmployeeCount,
   inputIssueCount,
   timesheetEnabled,
 }: PageShellProps) {
@@ -82,6 +84,7 @@ export function PageShell({
           collapsed={sidebarCollapsed}
           onToggleCollapse={onToggleSidebar}
           unmatchedEmployeeCount={unmatchedEmployeeCount}
+          notEnrolledEmployeeCount={notEnrolledEmployeeCount}
           inputIssueCount={inputIssueCount}
           timesheetEnabled={timesheetEnabled}
         />

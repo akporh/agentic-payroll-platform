@@ -26,7 +26,7 @@
 | **Sprint 16** | 2✅ (employee page enhancements + contract edit fix) | 7✅ (TM-1→TM-7 complete) | 2✅ (C1 per-employee expected_hours; C2 readiness gate) | — | — | 1✅ (AUD-16-3 timesheet_source trace) |
 | **Sprint 17** | 6✅ (B0a–B4 employee lifecycle refactor + EMP-UX-1/UX-3/UX-4) | — | — | — | — | 2✅ (SEC-17-1 str(e) fix; SEC-17-2 max_length guard) |
 | **Track S — Security** | — | — | — | — | — | 5✅ closed; 3⬜ open (S6 DB constraint, S7 upload cap, S8 pin dep) |
-| **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 1✅ (Q5 AUD-16-3); 2⬜ new Sprint 16 (Q6/Q7); 1⬜ new Sprint 14 (Q8) | — | — | — |
+| **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 3✅ (Q5/Q6/Q8); 1⬜ open (Q7) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -397,9 +397,9 @@ Observations are logged here as they are identified by `/auditor` reviews. Full 
 | Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
 | Q4 | `salary_basis` + `shift_type` added as named fields in `_period_context` trace header in `sequential_executor.py` — per-employee context that gates calculations is now auditable ✅ | Resolved | `backend/domain/payroll/sequential_executor.py` | AUD-4 | Sprint 11 | ✅ |
 | Q5 | `timesheet_source` missing from `_period_context` trace header — auditor cannot determine from trace whether hours came from timesheet upload vs. manual entry ✅ | Resolved | `backend/domain/payroll/sequential_executor.py:718` | AUD-16-3 | Sprint 16 | ✅ |
-| Q6 | Re-upload overwrites APPROVED timesheet entries without guard — evidence destruction; APPROVED status must block upsert | Finding | `backend/application/timesheet_derivation_service.py` | AUD-16-2 | Sprint 16 | ⬜ |
+| Q6 | Re-upload overwrites APPROVED timesheet entries without guard — evidence destruction; APPROVED status must block upsert ✅ | Finding → Resolved | `backend/application/timesheet_derivation_service.py` | AUD-16-2 | Sprint 16 | ✅ Sprint 24 |
 | Q7 | No actor identity (`approved_by`) on timesheet state transitions — who approved cannot be determined from audit log | Observation | `backend/api/routes/payroll.py` (approve endpoint) + migration | AUD-16-1 | Sprint 16 | ⬜ |
-| Q8 | `proration_strategy` not captured in `rules_context_snapshot` at run start — retry may execute with different strategy than original run | Finding | `backend/application/payroll_run_service.py` (snapshot write) | AUD-14-1 | Sprint 14 | ⬜ |
+| Q8 | `proration_strategy` not captured in `rules_context_snapshot` — already frozen in `client_component_metadata_snapshot` at run start; retry reads from snapshot, not live table ✅ | Resolved | `backend/application/snapshot_service.py:47–91` | AUD-14-1 | Sprint 14 | ✅ Sprint 24 (no-code close) |
 
 > **Policy:** Observations are batched into the next available sprint. Any Observation rated "must fix before UAT/external audit" is escalated to Finding status and blocks the relevant sign-off gate. Full review narratives: `docs/audit/`.
 
@@ -711,6 +711,25 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 | Contract history showing multiple past rows | Sprint 20 (EMP-P3-1) |
 | External ID field | Sprint 20 |
 | "Final period" badge on payroll results | Sprint 20 (EMP-P3-2) |
+
+---
+
+## Sprint 24 — Enrollment UX Clarity + Audit Fixes
+
+**Sprint date:** 2026-06-09
+**Sprint goal:** Fix post-upload UX confusion (unenrolled employees look broken but aren't); close Q6 audit finding (APPROVED timesheet overwrite); close Q8 (already resolved via snapshot); surface excluded employees on PayrollResults.
+
+### Story Index
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| EMP-UX-5 | AlertBanner `info` + "Set up salary structure →" CTA when no salary defs; nav badge shows not-enrolled count (priority over unmatched) | ✅ |
+| EMP-RUN-1 | PayrollResults: warning banner when workspace has unenrolled employees ("N not included in this run") | ✅ |
+| Q6-FIX | Guard APPROVED timesheet re-upload: prefetch approved_ids before loop, reject per employee | ✅ |
+| Q8-FIX | CLOSED (no-code): `proration_strategy` already frozen in `client_component_metadata_snapshot` | ✅ |
+| EMP-VERIFY-1 | Browser verification of auto-suggest banner (Sprint 23) | 🔜 |
+
+**Files changed:** `Employees.tsx`, `MainLayout.tsx`, `Layout.tsx`, `Navigation.tsx`, `PayrollResults.tsx`, `timesheet_repo.py`, `timesheet_derivation_service.py`, `ROADMAP.md`
 
 ---
 
