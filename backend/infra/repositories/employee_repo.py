@@ -39,7 +39,9 @@ def get_employees_with_contracts(db, workspace_id: str) -> list[dict]:
                 ec.state_of_tax,
                 ec.skill_level,
                 ec.is_union_member,
-                ec.change_reason
+                ec.change_reason,
+                ec.imported_grade_label,
+                ec.imported_designation_label
             FROM employee e
             LEFT JOIN LATERAL (
                 SELECT ec2.*
@@ -192,6 +194,8 @@ def insert_employee_contract(
     change_reason: str | None = None,
     end_date: date | None = None,
     close_current: bool = False,
+    imported_grade_label: str | None = None,
+    imported_designation_label: str | None = None,
 ) -> str:
     """Insert a new contract row. Returns the new contract_id.
 
@@ -223,7 +227,7 @@ def insert_employee_contract(
                 contract_id, employee_id, salary_definition_id,
                 grade_id, designation_id, start_date, end_date,
                 shift_type, state_of_tax, skill_level, is_union_member,
-                change_reason
+                change_reason, imported_grade_label, imported_designation_label
             )
             VALUES (
                 CAST(:cid AS uuid), CAST(:eid AS uuid), CAST(:sd_id AS uuid),
@@ -231,22 +235,24 @@ def insert_employee_contract(
                 COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
                 CAST(:end_date AS DATE),
                 :shift_type, :state_of_tax, :skill_level, :is_union_member,
-                :change_reason
+                :change_reason, :imported_grade_label, :imported_designation_label
             )
         """),
         {
-            "cid":             contract_id,
-            "eid":             employee_id,
-            "sd_id":           salary_definition_id,
-            "grade_id":        grade_id,
-            "designation_id":  designation_id,
-            "start_date":      str(start_date) if start_date else None,
-            "end_date":        str(end_date) if end_date else None,
-            "shift_type":      shift_type,
-            "state_of_tax":    state_of_tax,
-            "skill_level":     skill_level,
-            "is_union_member": is_union_member,
-            "change_reason":   change_reason,
+            "cid":                       contract_id,
+            "eid":                       employee_id,
+            "sd_id":                     salary_definition_id,
+            "grade_id":                  grade_id,
+            "designation_id":            designation_id,
+            "start_date":                str(start_date) if start_date else None,
+            "end_date":                  str(end_date) if end_date else None,
+            "shift_type":                shift_type,
+            "state_of_tax":              state_of_tax,
+            "skill_level":               skill_level,
+            "is_union_member":           is_union_member,
+            "change_reason":             change_reason,
+            "imported_grade_label":      imported_grade_label,
+            "imported_designation_label": imported_designation_label,
         },
     )
     return contract_id
@@ -460,8 +466,10 @@ def _employee_row_to_dict(r) -> dict:
         "shift_type":             r[14],
         "state_of_tax":           r[15],
         "skill_level":            r[16],
-        "is_union_member":        r[17],
-        "change_reason":          r[18],
+        "is_union_member":              r[17],
+        "change_reason":               r[18],
+        "imported_grade_label":        r[19],
+        "imported_designation_label":  r[20],
     }
 
 

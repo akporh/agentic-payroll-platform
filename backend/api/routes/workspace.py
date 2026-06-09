@@ -204,7 +204,9 @@ def list_employees(workspace_id: str):
                     ec.shift_type,
                     ec.state_of_tax,
                     ec.skill_level,
-                    (ec.salary_definition_id IS NOT NULL) AS is_enrolled
+                    (ec.salary_definition_id IS NOT NULL) AS is_enrolled,
+                    ec.imported_grade_label,
+                    ec.imported_designation_label
                 FROM employee e
                 LEFT JOIN LATERAL (
                     SELECT ec2.*
@@ -236,7 +238,9 @@ def list_employees(workspace_id: str):
                 "shift_type":     row[9],
                 "state_of_tax":   row[10],
                 "skill_level":    row[11],
-                "is_enrolled":    bool(row[12]) if row[12] is not None else False,
+                "is_enrolled":               bool(row[12]) if row[12] is not None else False,
+                "imported_grade_label":       row[13],
+                "imported_designation_label": row[14],
             }
             for row in rows
         ]
@@ -260,6 +264,8 @@ class CreateEmployeeSchema(BaseModel):
     shift_type: str | None = None
     state_of_tax: str | None = Field(default=None, max_length=50)
     skill_level: str | None = Field(default=None, max_length=50)
+    imported_grade_label: str | None = Field(default=None, max_length=100)
+    imported_designation_label: str | None = Field(default=None, max_length=100)
 
 
 @router.post("/{workspace_id}/employees")
@@ -373,27 +379,31 @@ def create_employee(workspace_id: str, payload: CreateEmployeeSchema):
                 INSERT INTO employee_contract (
                     contract_id, employee_id, salary_definition_id,
                     grade_id, designation_id, start_date, end_date,
-                    shift_type, state_of_tax, skill_level, is_union_member
+                    shift_type, state_of_tax, skill_level, is_union_member,
+                    imported_grade_label, imported_designation_label
                 )
                 VALUES (
                     CAST(:cid AS uuid), CAST(:eid AS uuid), CAST(:sd_id AS uuid),
                     CAST(:grade_id AS uuid), CAST(:designation_id AS uuid),
                     COALESCE(CAST(:start_date AS DATE), CURRENT_DATE),
                     CAST(:end_date AS DATE),
-                    :shift_type, :state_of_tax, :skill_level, false
+                    :shift_type, :state_of_tax, :skill_level, false,
+                    :imported_grade_label, :imported_designation_label
                 )
             """),
             {
-                "cid": str(_uuid4()),
-                "eid": employee_id,
-                "sd_id": salary_definition_id,
-                "grade_id": grade_id,
-                "designation_id": designation_id,
-                "start_date": str(start_date) if start_date else None,
-                "end_date": str(end_date) if end_date else None,
-                "shift_type": payload.shift_type,
-                "state_of_tax": payload.state_of_tax,
-                "skill_level": payload.skill_level,
+                "cid":                       str(_uuid4()),
+                "eid":                       employee_id,
+                "sd_id":                     salary_definition_id,
+                "grade_id":                  grade_id,
+                "designation_id":            designation_id,
+                "start_date":                str(start_date) if start_date else None,
+                "end_date":                  str(end_date) if end_date else None,
+                "shift_type":                payload.shift_type,
+                "state_of_tax":              payload.state_of_tax,
+                "skill_level":               payload.skill_level,
+                "imported_grade_label":      payload.imported_grade_label,
+                "imported_designation_label": payload.imported_designation_label,
             },
         )
 

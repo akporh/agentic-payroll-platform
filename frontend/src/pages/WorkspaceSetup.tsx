@@ -9,7 +9,7 @@ import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
 import { ContentHeader, Card, Btn, AlertBanner, OnboardingStepper, Breadcrumb } from '../design-system';
 import type { Step } from '../design-system';
 import { EmployeeUpload } from '../components/employees/EmployeeUpload';
-import type { MappedEmployee, SalaryDefinitionOption } from '../components/employees/EmployeeUpload';
+import type { EmployeeRow, SalaryDefinitionOption } from '../components/employees/EmployeeUpload';
 import { WorkspaceExcelUpload } from '../components/onboarding/WorkspaceExcelUpload';
 import type { WorkspaceConfig } from '../components/onboarding/WorkspaceExcelUpload';
 import { saveDraft, loadDraft, clearDraft } from '../utils/onboardingDraft';
@@ -699,8 +699,7 @@ function ExistingConfigView({
   const workspaceId = workspace?.workspace_id;
 
   // ── Employee re-upload state ──────────────────────────────────────────────
-  const [uploadEmployees, setUploadEmployees] = useState<MappedEmployee[]>([]);
-  const [salaryDefOptions, setSalaryDefOptions] = useState<SalaryDefinitionOption[]>([]);
+  const [uploadEmployees, setUploadEmployees] = useState<EmployeeRow[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ updated: number; not_found: string[] } | null>(null);
@@ -735,7 +734,6 @@ function ExistingConfigView({
 
   useEffect(() => {
     if (!workspaceId) return;
-    workspaceApi.getSalaryDefinitions(workspaceId).then(setSalaryDefOptions).catch(() => {});
     workspaceApi.getDesignations(workspaceId)
       .then((rows) => setDesignationOptions(rows.map((r) => r.code)))
       .catch(() => {});
@@ -923,10 +921,7 @@ function ExistingConfigView({
 
           <EmployeeUpload
             employees={uploadEmployees}
-            salaryDefinitions={salaryDefOptions}
-            designationOptions={designationOptions}
             onEmployeesLoaded={setUploadEmployees}
-            onMappingChange={setUploadEmployees}
           />
 
           {uploadEmployees.length > 0 && (
@@ -1469,7 +1464,7 @@ function DetailsModal({
 }: {
   workspace: Workspace;
   configParsed: Record<string, unknown> | null;
-  employees: MappedEmployee[];
+  employees: EmployeeRow[];
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -1626,18 +1621,17 @@ function DetailsModal({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <Th>#</Th><Th>ID</Th><Th>Name</Th><Th>Grade</Th><Th>Designation</Th><Th>Salary Structure</Th><Th>Bank</Th><Th>Account</Th>
+                      <Th>#</Th><Th>ID</Th><Th>Name</Th><Th>Grade</Th><Th>Designation</Th><Th>Bank</Th><Th>Account</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {employees.map((emp, i) => (
-                      <tr key={emp.employee_id} className={`border-b border-slate-50 ${emp.mapping_unresolved ? 'bg-amber-50' : ''}`}>
+                      <tr key={emp.employee_id} className="border-b border-slate-50">
                         <Td>{i + 1}</Td>
                         <Td><span className="font-mono">{emp.employee_id}</span></Td>
                         <Td>{emp.first_name} {emp.last_name}</Td>
                         <Td>{emp.grade}</Td>
                         <Td>{emp.designation}</Td>
-                        <Td><span className={`font-mono ${emp.mapping_unresolved ? 'text-amber-600' : 'text-green-700'}`}>{emp.salary_definition_code}</span></Td>
                         <Td>{emp.bank}</Td>
                         <Td>{emp.account_number}</Td>
                       </tr>

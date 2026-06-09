@@ -55,6 +55,8 @@ export interface Employee {
   contract_end?: string;
   is_ended?: boolean;
   is_enrolled?: boolean;
+  imported_grade_label?: string | null;
+  imported_designation_label?: string | null;
 }
 
 export interface ReconciliationRecord {

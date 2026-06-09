@@ -53,7 +53,9 @@ def load_employee_contracts(workspace_id: str, path: str):
                 grade_id,
                 start_date,
                 end_date,
-                change_reason
+                change_reason,
+                imported_grade_label,
+                imported_designation_label
             )
             VALUES (
                 :id,
@@ -62,7 +64,9 @@ def load_employee_contracts(workspace_id: str, path: str):
                 :grade,
                 :start,
                 NULL,
-                'Initial ACME load'
+                'Initial ACME load',
+                NULL,
+                NULL
             )
             """),
             {

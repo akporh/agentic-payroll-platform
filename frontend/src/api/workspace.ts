@@ -141,6 +141,8 @@ export const workspaceApi = {
       rsa?: string | null;
       bank?: string | null;
       account_number?: string | null;
+      imported_grade_label?: string | null;
+      imported_designation_label?: string | null;
     }
   ) => api.post<{ status: string; employee_id: string; full_name: string }>(
     `/${workspaceId}/employees`,
