@@ -206,7 +206,8 @@ def list_employees(workspace_id: str):
                     ec.skill_level,
                     (ec.salary_definition_id IS NOT NULL) AS is_enrolled,
                     ec.imported_grade_label,
-                    ec.imported_designation_label
+                    ec.imported_designation_label,
+                    ec.contract_id
                 FROM employee e
                 LEFT JOIN LATERAL (
                     SELECT ec2.*
@@ -241,6 +242,7 @@ def list_employees(workspace_id: str):
                 "is_enrolled":               bool(row[12]) if row[12] is not None else False,
                 "imported_grade_label":       row[13],
                 "imported_designation_label": row[14],
+                "contract_id":               str(row[15]) if row[15] else None,
             }
             for row in rows
         ]

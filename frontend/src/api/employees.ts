@@ -30,6 +30,15 @@ export const employeesApi = {
     payload: { full_name?: string; status?: string }
   ) => api.patch<{ status: string }>(`/${workspaceId}/employees/${employeeId}`, payload),
 
+  patchContract: (
+    workspaceId: string,
+    contractId: string,
+    payload: { end_date: string }
+  ) => api.patch<{ status: string }>(
+    `/${workspaceId}/employee-contracts/${contractId}`,
+    payload
+  ),
+
   addContract: (
     workspaceId: string,
     employeeId: string,

@@ -21,7 +21,6 @@ import {
   ContentHeader,
   Card,
   Btn,
-  StatusBadge,
   AlertBanner,
   EmptyState,
   SlideOver,
@@ -107,11 +106,17 @@ function EnrollSlideOver({
   useEffect(() => {
     if (employee) {
       setSalaryDefCode('');
-      setGrade(employee.grade ?? '');
-      setDesignation(employee.designation ?? '');
+      const gradeMatch = gradeOptions.find(
+        g => g.toUpperCase() === (employee.imported_grade_label ?? '').toUpperCase()
+      ) ?? '';
+      const desgMatch = designationOptions.find(
+        d => d.toUpperCase() === (employee.imported_designation_label ?? '').toUpperCase()
+      ) ?? '';
+      setGrade(gradeMatch || employee.grade || '');
+      setDesignation(desgMatch || employee.designation || '');
       setError(null);
     }
-  }, [employee]);
+  }, [employee, gradeOptions, designationOptions]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -189,10 +194,13 @@ interface BulkEnrollSlideOverProps {
   onSaved: () => void;
   workspaceId: string;
   presetSalaryCode?: string;
+  presetGradeCode?: string;
+  presetDesignationCode?: string;
 }
 
 function BulkEnrollSlideOver({
-  open, employeeIds, salaryDefinitions, gradeOptions, designationOptions, onClose, onSaved, workspaceId, presetSalaryCode,
+  open, employeeIds, salaryDefinitions, gradeOptions, designationOptions, onClose, onSaved, workspaceId,
+  presetSalaryCode, presetGradeCode, presetDesignationCode,
 }: BulkEnrollSlideOverProps) {
   const toast = useToast();
   const [salaryDefCode, setSalaryDefCode] = useState('');
@@ -204,11 +212,11 @@ function BulkEnrollSlideOver({
   useEffect(() => {
     if (open) {
       setSalaryDefCode(presetSalaryCode ?? '');
-      setGrade('');
-      setDesignation('');
+      setGrade(presetGradeCode ?? '');
+      setDesignation(presetDesignationCode ?? '');
       setError(null);
     }
-  }, [open, presetSalaryCode]);
+  }, [open, presetSalaryCode, presetGradeCode, presetDesignationCode]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -261,22 +269,16 @@ function BulkEnrollSlideOver({
           required
         />
         <SearchableSelect
-          label="Grade (optional)"
-          value={grade}
-          onChange={setGrade}
-          options={codeOptions(gradeOptions)}
-        />
-        {grade && (
-          <AlertBanner
-            variant="warning"
-            description="This will overwrite any existing grade assignment on selected employees."
-          />
-        )}
-        <SearchableSelect
           label="Designation (optional)"
           value={designation}
           onChange={setDesignation}
           options={codeOptions(designationOptions)}
+        />
+        <SearchableSelect
+          label="Grade (optional)"
+          value={grade}
+          onChange={setGrade}
+          options={codeOptions(gradeOptions)}
         />
         {error && <AlertBanner variant="error" description={error} />}
       </form>
@@ -297,6 +299,7 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
   const toast = useToast();
   const [fullName, setFullName] = useState('');
   const [status, setStatus] = useState('ACTIVE');
+  const [contractEnd, setContractEnd] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -304,6 +307,7 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
     if (employee) {
       setFullName(employee.full_name ?? '');
       setStatus(employee.status ?? 'ACTIVE');
+      setContractEnd(employee.contract_end ?? '');
       setError(null);
     }
   }, [employee]);
@@ -319,6 +323,11 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
         full_name: fullName.trim(),
         status,
       });
+      if (contractEnd && contractEnd !== employee.contract_end && employee.contract_id) {
+        await employeesApi.patchContract(workspaceId, employee.contract_id, {
+          end_date: contractEnd,
+        });
+      }
       toast.show('success', 'Employee updated');
       onSaved();
       onClose();
@@ -364,6 +373,17 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
             <option value="INACTIVE">INACTIVE</option>
           </select>
         </div>
+        <DateInput
+          label="Contract End Date"
+          value={contractEnd}
+          onChange={setContractEnd}
+          hint={
+            !employee?.contract_id
+              ? 'No contract assigned — enroll this employee first'
+              : 'Inclusive last paid day. Leave unchanged to keep the current date.'
+          }
+          disabled={!employee?.contract_id}
+        />
         {error && <AlertBanner variant="error" description={error} />}
       </form>
     </SlideOver>
@@ -587,69 +607,39 @@ interface PayCycleSummary {
 
 interface AddEmployeeSlideOverProps {
   open: boolean;
-  gradeOptions: string[];
-  designationOptions: string[];
-  salaryDefinitions: SalaryDefinitionOption[];
-  payCycle: PayCycleSummary | null;
   onClose: () => void;
   onSaved: () => void;
   workspaceId: string;
 }
 
-function currentMonthPeriod(): { start: Date; end: Date; label: string } {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-  const end   = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const label = today.toLocaleString('default', { month: 'long', year: 'numeric' });
-  return { start, end, label };
-}
-
-function AddEmployeeSlideOver({
-  open, gradeOptions, designationOptions, salaryDefinitions, payCycle, onClose, onSaved, workspaceId
-}: AddEmployeeSlideOverProps) {
+function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmployeeSlideOverProps) {
   const toast = useToast();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [employeeNumber, setEmployeeNumber] = useState('');
-  const [salaryDefCode, setSalaryDefCode] = useState('');
-  const [grade, setGrade] = useState('');
-  const [designation, setDesignation] = useState('');
-  const [contractStart, setContractStart] = useState('');
-  const [contractEnd, setContractEnd] = useState('');
   const [tin, setTin] = useState('');
   const [rsa, setRsa] = useState('');
   const [bank, setBank] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [contractStart, setContractStart] = useState('');
+  const [contractEnd, setContractEnd] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const midPeriodWarning = (() => {
-    if (!payCycle || !contractStart) return null;
-    try {
-      const d = new Date(contractStart);
-      if (isNaN(d.getTime())) return null;
-      const { start, end, label } = currentMonthPeriod();
-      if (d >= start && d <= end) {
-        return `This start date falls within the current pay period (${label}). This employee will appear in payroll from the next period onwards.`;
-      }
-    } catch { /* ignore */ }
-    return null;
-  })();
+  const [addedCount, setAddedCount] = useState(0);
 
   function reset() {
     setFirstName(''); setLastName(''); setEmployeeNumber('');
-    setSalaryDefCode(''); setGrade(''); setDesignation('');
     setContractStart(''); setContractEnd('');
     setTin(''); setRsa(''); setBank(''); setAccountNumber('');
     setError(null);
   }
 
-  function handleClose() { reset(); onClose(); }
+  function handleClose() { reset(); setAddedCount(0); onClose(); }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !employeeNumber.trim()) {
-      setError('First name, last name, and employee number are required.');
+    if (!firstName.trim() || !lastName.trim() || !employeeNumber.trim() || !contractStart) {
+      setError('First name, last name, employee number, and contract start date are required.');
       return;
     }
     setSaving(true);
@@ -659,22 +649,23 @@ function AddEmployeeSlideOver({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         employee_number: employeeNumber.trim(),
-        salary_definition_code: salaryDefCode || null,
-        grade_code: grade || null,
-        designation_code: designation || null,
-        contract_start: contractStart || null,
+        salary_definition_code: null,
+        grade_code: null,
+        designation_code: null,
+        contract_start: contractStart,
         contract_end: contractEnd || null,
         tin: tin || null,
         rsa: rsa || null,
         bank: bank || null,
         account_number: accountNumber || null,
       });
-      toast.show('success', `${result.full_name} added`);
+      toast.show('success', `${result.full_name} registered`);
       reset();
+      setAddedCount(c => c + 1);
       onSaved();
-      onClose();
+      // stay open so the user can register the next employee
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to create employee');
+      setError(e instanceof Error ? e.message : 'Failed to register employee');
     } finally {
       setSaving(false);
     }
@@ -684,15 +675,15 @@ function AddEmployeeSlideOver({
     <SlideOver
       open={open}
       onClose={handleClose}
-      title="Add Employee"
-      description="Create a new employee and contract record"
+      title="Register Employee"
+      description="Add employees to HR. Enroll them in payroll from the list once done."
       footer={
         <div className="flex gap-3">
           <Btn type="submit" form="add-employee-form" variant="primary" size="md" loading={saving}>
-            Add Employee
+            Register
           </Btn>
           <Btn type="button" variant="secondary" size="md" onClick={handleClose}>
-            Cancel
+            {addedCount > 0 ? `Done (${addedCount} added)` : 'Cancel'}
           </Btn>
         </div>
       }
@@ -700,9 +691,6 @@ function AddEmployeeSlideOver({
       <form id="add-employee-form" onSubmit={handleSave} className="space-y-5">
 
         {/* Identity */}
-        <div className="space-y-1">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Identity</p>
-        </div>
         <div className="grid grid-cols-2 gap-4">
           <TextInput
             label="First Name"
@@ -725,45 +713,25 @@ function AddEmployeeSlideOver({
           required
         />
 
-        {/* Contract */}
+        {/* Contract dates */}
         <div className="pt-2 space-y-1 border-t border-gray-100">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider pt-2">Contract</p>
         </div>
-        <SearchableSelect
-          label="Salary Definition"
-          value={salaryDefCode}
-          onChange={setSalaryDefCode}
-          options={salaryDefOptions(salaryDefinitions, '— none (register without enrolling) —')}
-        />
-        <SearchableSelect
-          label="Grade"
-          value={grade}
-          onChange={setGrade}
-          options={codeOptions(gradeOptions)}
-        />
-        <SearchableSelect
-          label="Designation"
-          value={designation}
-          onChange={setDesignation}
-          options={codeOptions(designationOptions)}
-        />
         <div className="grid grid-cols-2 gap-4">
           <DateInput
-            label="Contract Start"
+            label="Start Date"
             value={contractStart}
             onChange={setContractStart}
-            hint="Defaults to today if blank"
+            hint="First day of employment"
+            required
           />
           <DateInput
-            label="Contract End"
+            label="End Date"
             value={contractEnd}
             onChange={setContractEnd}
-            hint="Leave blank for open-ended"
+            hint="Leave blank if open-ended"
           />
         </div>
-        {midPeriodWarning && (
-          <AlertBanner variant="warning" description={midPeriodWarning} />
-        )}
 
         {/* Bank / payroll details */}
         <div className="pt-2 space-y-1 border-t border-gray-100">
@@ -995,8 +963,8 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
   }
 
   const baseHeaders = isNotEnrolled
-    ? ['Name', 'Employee #', 'Grade', 'Designation', 'Start Date', 'Status', '']
-    : ['Name', 'Employee #', 'Designation', 'Grade', 'Start Date', 'End Date', 'Status', ''];
+    ? ['Name', 'Employee #', 'Grade', 'Designation', 'Start Date', '']
+    : ['Name', 'Employee #', 'Designation', 'Grade', 'Start Date', 'End Date', ''];
   const headers = showCheckboxes ? ['', ...baseHeaders] : baseHeaders;
 
   return (
@@ -1019,7 +987,11 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
             {baseHeaders.map((h, i) => (
               <th
                 key={i}
-                className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap"
+                className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap${
+                  i === baseHeaders.length - 1
+                    ? ' sticky right-0 bg-gray-50 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]'
+                    : ''
+                }`}
               >
                 {h}
               </th>
@@ -1030,7 +1002,7 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
           {rows.map((emp) => (
             <tr
               key={emp.employee_id}
-              className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${
+              className={`group border-b border-gray-100 hover:bg-slate-50 transition-colors ${
                 variant === 'unmatched' ? 'border-l-4 border-amber-400' : ''
               } ${isNotEnrolled ? 'border-l-4 border-rose-400' : ''}`}
             >
@@ -1077,10 +1049,7 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
                   }
                 </td>
               )}
-              <td className="px-4 py-3">
-                <StatusBadge status={emp.status ?? 'ACTIVE'} size="sm" />
-              </td>
-              <td className="px-4 py-3">
+              <td className="sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)] px-4 py-3">
                 <div className="flex gap-1">
                   {isNotEnrolled ? (
                     <>
@@ -1130,6 +1099,7 @@ export function Employees() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
   const { workspace } = useWorkspaceContext();
+  const toast = useToast();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1144,20 +1114,28 @@ export function Employees() {
   const [enrollingEmployee, setEnrollingEmployee] = useState<Employee | null>(null);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
-  const [selectedNotEnrolledIds, setSelectedNotEnrolledIds] = useState<Set<string>>(new Set());
   const [showBulkEnroll, setShowBulkEnroll] = useState(false);
   const [bulkEnrollPresetIds, setBulkEnrollPresetIds] = useState<string[]>([]);
   const [bulkEnrollPresetCode, setBulkEnrollPresetCode] = useState<string | undefined>(undefined);
+  const [bulkEnrollPresetGradeCode, setBulkEnrollPresetGradeCode] = useState<string | undefined>(undefined);
+  const [bulkEnrollPresetDesignationCode, setBulkEnrollPresetDesignationCode] = useState<string | undefined>(undefined);
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [enrollingGroupIdx, setEnrollingGroupIdx] = useState<number | null>(null);
+  const [showEnded, setShowEnded] = useState(false);
 
   const unmatchedRef = useRef<HTMLDivElement>(null);
   const notEnrolledRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  const endedRef = useRef<HTMLDivElement>(null);
 
   function loadEmployees() {
     if (!workspaceId) return;
-    setSelectedNotEnrolledIds(new Set());
     workspaceApi
       .getEmployees(workspaceId)
-      .then(setEmployees)
+      .then((data) => {
+        setEmployees(data);
+        window.dispatchEvent(new CustomEvent('employees-changed'));
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to reload'));
   }
 
@@ -1184,53 +1162,147 @@ export function Employees() {
       .finally(() => setLoading(false));
   }, [workspaceId]);
 
-  function handleNotEnrolledSelectionChange(id: string, checked: boolean) {
-    setSelectedNotEnrolledIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id); else next.delete(id);
-      return next;
-    });
+  async function handleDirectEnroll(idx: number, group: typeof suggestedGroups[0]) {
+    if (!workspaceId || !group.matchedDef) return;
+    setEnrollingGroupIdx(idx);
+    try {
+      const result = await workspaceApi.bulkEnrollEmployees(workspaceId, {
+        employee_ids: group.employeeIds,
+        salary_definition_code: group.matchedDef.code,
+        grade_code: group.matchedGrade ?? group.rawGradeLabel ?? null,
+        designation_code: group.matchedDesignation ?? group.rawDesigLabel ?? null,
+      });
+      const msg = result.skipped > 0
+        ? `${result.enrolled} enrolled — ${result.skipped} already enrolled (skipped)`
+        : `${result.enrolled} employee${result.enrolled !== 1 ? 's' : ''} enrolled`;
+      toast.show('success', msg);
+      loadEmployees();
+      setExpandedGroups(prev => { const s = new Set(prev); s.delete(idx); return s; });
+    } catch {
+      // Direct enroll failed (e.g. invalid designation/grade code) — open SlideOver so user can resolve
+      openBulkEnrollFromSuggestion(
+        group.employeeIds,
+        group.matchedDef?.code,
+        group.matchedGrade ?? group.rawGradeLabel ?? undefined,
+        group.matchedDesignation ?? group.rawDesigLabel ?? undefined,
+      );
+    } finally {
+      setEnrollingGroupIdx(null);
+    }
   }
 
-  const ended        = employees.filter((e) => e.is_ended);
-  const active       = employees.filter((e) => !e.is_ended);
-  const notEnrolled  = active.filter((e) => e.is_enrolled === false);
-  const enrolled     = active.filter((e) => e.is_enrolled !== false);
-  const unmatched    = enrolled.filter((e) => !e.grade || !e.designation);
-  const matched      = enrolled.filter((e) => e.grade && e.designation);
-  const canEnroll    = salaryDefinitions.length > 0;
+  const { ended, deactivated, live, notEnrolled, unmatched, matched, deactivatedEnrolled } = useMemo(() => {
+    const ended       = employees.filter((e) => e.is_ended);
+    const deactivated = employees.filter((e) => !e.is_ended && e.status === 'INACTIVE');
+    const live        = employees.filter((e) => !e.is_ended && e.status !== 'INACTIVE');
+    const notEnrolled = live.filter((e) => !e.is_enrolled);
+    const unmatched   = live.filter((e) => e.is_enrolled && (!e.grade || !e.designation));
+    const matched     = live.filter((e) => e.is_enrolled && e.grade && e.designation);
+    // Enrolled INACTIVE with live contract — valid HR state (suspension) but excluded from payroll
+    const deactivatedEnrolled = deactivated.filter((e) => e.is_enrolled);
+    return { ended, deactivated, live, notEnrolled, unmatched, matched, deactivatedEnrolled };
+  }, [employees]);
+  const canEnroll = salaryDefinitions.length > 0;
 
-  // Auto-suggest: group not-enrolled employees by imported grade label, find matching salary defs
+  // Auto-suggest: group not-enrolled employees by (designation + grade), find matching salary defs
   const suggestedGroups = useMemo(() => {
-    const grouped = new Map<string, { employees: typeof notEnrolled }>();
+    const grouped = new Map<string, { employees: typeof notEnrolled; desigLabel: string; gradeLabel: string }>();
     for (const emp of notEnrolled) {
-      if (!emp.imported_grade_label) continue;
-      const key = emp.imported_grade_label.toUpperCase();
+      const desigLabel = emp.imported_designation_label?.toUpperCase() ?? '';
+      const gradeLabel = emp.imported_grade_label?.toUpperCase() ?? '';
+      const key = `${desigLabel}|${gradeLabel}`;
       const existing = grouped.get(key);
       if (existing) existing.employees.push(emp);
-      else grouped.set(key, { employees: [emp] });
+      else grouped.set(key, { employees: [emp], desigLabel, gradeLabel });
     }
     return Array.from(grouped.entries())
-      .map(([key, { employees: emps }]) => ({
-        label: key,
-        count: emps.length,
-        employeeIds: emps.map((e) => e.employee_id),
-        matchedDef: salaryDefinitions.find((sd) => sd.code.toUpperCase() === key) ?? null,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [notEnrolled, salaryDefinitions]);
+      .map(([, { employees: emps, desigLabel, gradeLabel }]) => {
+        const matchedGrade = gradeOptions.find(g => g.toUpperCase() === gradeLabel) ?? null;
+        const matchedDesignation = designationOptions.find(d => d.toUpperCase() === desigLabel) ?? null;
+        // Raw labels from first employee — preserve original casing for API calls
+        const firstEmp = emps[0];
+        const rawGradeLabel = firstEmp?.imported_grade_label ?? null;
+        const rawDesigLabel = firstEmp?.imported_designation_label ?? null;
+        const tryMatch = (code: string) => salaryDefinitions.find(sd => sd.code.toUpperCase() === code) ?? null;
+        const matchedDef = tryMatch(`${desigLabel}_${gradeLabel}`)
+          ?? tryMatch(`${gradeLabel}_${desigLabel}`)
+          ?? (desigLabel ? tryMatch(desigLabel) : null)
+          ?? (gradeLabel ? tryMatch(gradeLabel) : null);
+        return {
+          desigLabel: desigLabel || null,
+          gradeLabel: gradeLabel || null,
+          rawGradeLabel,
+          rawDesigLabel,
+          count: emps.length,
+          employeeIds: emps.map((e) => e.employee_id),
+          matchedGrade,
+          matchedDesignation,
+          matchedDef,
+        };
+      })
+      .sort((a, b) => {
+        if (!!a.matchedDef !== !!b.matchedDef) return a.matchedDef ? -1 : 1;
+        return b.count - a.count;
+      });
+  }, [notEnrolled, salaryDefinitions, gradeOptions, designationOptions]);
 
-  function openBulkEnrollFromSuggestion(ids: string[], code?: string) {
+  function openBulkEnrollFromSuggestion(
+    ids: string[],
+    salaryCode?: string,
+    gradeCode?: string,
+    designationCode?: string,
+  ) {
     setBulkEnrollPresetIds(ids);
-    setBulkEnrollPresetCode(code);
+    setBulkEnrollPresetCode(salaryCode);
+    setBulkEnrollPresetGradeCode(gradeCode);
+    setBulkEnrollPresetDesignationCode(designationCode);
     setShowBulkEnroll(true);
+  }
+
+  function downloadEmployeeTemplate() {
+    const headers = [
+      'employee_id','first_name','last_name','grade','designation',
+      'tin','rsa','bank','account_number','contract_start','contract_end',
+    ];
+    const csv = headers.join(',') + '\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'employee_upload_template.csv'; a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
     <div className="max-w-5xl">
       <ContentHeader
         title="Employees"
-        subtitle={loading ? 'Loading…' : `${active.length} active · ${ended.length} ended${notEnrolled.length > 0 ? ` · ${notEnrolled.length} not enrolled` : ''}`}
+        subtitle={
+          loading ? 'Loading…' :
+          employees.length === 0 ? undefined :
+          <span className="flex gap-2 items-center flex-wrap">
+            {notEnrolled.length > 0 && (
+              <button className="text-amber-600 hover:underline cursor-pointer" onClick={() => notEnrolledRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                {notEnrolled.length} awaiting enrollment
+              </button>
+            )}
+            {unmatched.length > 0 && <><span className="text-gray-300">·</span>
+            <button className="text-rose-600 hover:underline cursor-pointer" onClick={() => unmatchedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+              {unmatched.length} incomplete
+            </button></>}
+            {matched.length > 0 && <><span className="text-gray-300">·</span>
+            <button className="text-green-700 hover:underline cursor-pointer" onClick={() => activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+              {matched.length} in payroll
+            </button></>}
+            {ended.length > 0 && <><span className="text-gray-300">·</span>
+            <button className="text-gray-500 hover:underline cursor-pointer" onClick={() => { setShowEnded(true); endedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
+              {ended.length} contract ended
+            </button></>}
+            {deactivated.length > 0 && <><span className="text-gray-300">·</span>
+            <button className="text-gray-500 hover:underline cursor-pointer" onClick={() => { setShowEnded(true); endedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
+              {deactivated.length} deactivated
+            </button></>}
+          </span>
+        }
         back={
           <Breadcrumb items={[
             { label: 'Bureau Dashboard', to: '/' },
@@ -1288,8 +1360,22 @@ export function Employees() {
           title={`${unmatched.length} employee${unmatched.length !== 1 ? 's' : ''} missing grade or designation`}
           description="These employees cannot be included in a payroll run until their contract is complete."
           action={{
-            label: 'View unmatched →',
+            label: 'View incomplete →',
             onClick: () => unmatchedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          }}
+          className="mb-4"
+        />
+      )}
+
+      {/* Suspended / deactivated with live contract banner */}
+      {!loading && deactivatedEnrolled.length > 0 && (
+        <AlertBanner
+          variant="info"
+          title={`${deactivatedEnrolled.length} employee${deactivatedEnrolled.length !== 1 ? 's' : ''} inactive with a live contract`}
+          description="These employees are enrolled and have an active contract but their HR status is Inactive — they will not appear in payroll runs until reactivated."
+          action={{
+            label: 'View inactive →',
+            onClick: () => endedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
           }}
           className="mb-4"
         />
@@ -1312,126 +1398,276 @@ export function Employees() {
           </table>
         </Card>
       ) : employees.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<PeopleIcon />}
-            headline="No employees yet"
-            body="Add employees one at a time or upload a spreadsheet using the buttons above."
-          />
-        </Card>
+        <div className="space-y-4">
+          {!canEnroll && (
+            <AlertBanner
+              variant="info"
+              title="Set up salary structure before enrolling"
+              description="Add salary definitions in Configuration so employees can be enrolled in payroll after upload."
+              action={{ label: 'Go to Configuration →', onClick: () => navigate(`/workspaces/${workspaceId}/config`) }}
+            />
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <Card padding="md">
+              <div className="flex flex-col h-full gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <UploadIcon className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 text-sm">Upload from Excel</h3>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                    Bulk import employees using a spreadsheet. Download the template to get the correct column format.
+                  </p>
+                  <p className="text-[10px] font-mono text-gray-400 mt-2 leading-relaxed">
+                    employee_id · first_name · last_name · grade · designation<br />
+                    tin · rsa · bank · account_number · contract_start
+                  </p>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Btn variant="ghost" size="sm" onClick={downloadEmployeeTemplate}>
+                    Download template
+                  </Btn>
+                  <Btn variant="primary" size="sm" icon={<UploadIcon />} onClick={() => setShowUpload(true)}>
+                    Upload spreadsheet
+                  </Btn>
+                </div>
+              </div>
+            </Card>
+            <Card padding="md">
+              <div className="flex flex-col h-full gap-3">
+                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                  <PlusIcon className="w-5 h-5 text-slate-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 text-sm">Add one at a time</h3>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                    Enter employee details manually. Best for individual additions or corrections after an initial upload.
+                  </p>
+                </div>
+                <div className="pt-1">
+                  <Btn variant="secondary" size="sm" icon={<PlusIcon />} onClick={() => setShowAddEmployee(true)}>
+                    Add Employee
+                  </Btn>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
       ) : (
         <div className="space-y-5">
-          {/* Not Enrolled section */}
+          {/* Awaiting Enrollment section — accordion groups */}
           {notEnrolled.length > 0 && (
             <div ref={notEnrolledRef}>
               <Card padding="sm">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-rose-700 uppercase tracking-wide">
-                    Not Enrolled — {notEnrolled.length} employee{notEnrolled.length !== 1 ? 's' : ''}
-                  </p>
-                  <p className="text-xs text-gray-400">No salary definition assigned</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-0.5 h-4 rounded-full bg-amber-500" aria-hidden="true" />
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      Awaiting Enrollment
+                    </span>
+                    <span className="text-xs text-gray-400 tabular-nums font-normal">
+                      {notEnrolled.length} employee{notEnrolled.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">No salary structure assigned</p>
                 </div>
-                {/* Auto-suggest banner */}
-                {suggestedGroups.length > 0 && (
-                  <div className="px-4 py-3 border-b border-blue-100 bg-blue-50">
-                    <p className="text-xs font-semibold text-blue-700 mb-2">Salary structure suggestions based on imported grades</p>
-                    <div className="space-y-1.5">
-                      {suggestedGroups.map((g) => (
-                        <div key={g.label} className="flex items-center gap-3 text-xs">
-                          <span className="font-mono text-slate-700 w-24 truncate">{g.label}</span>
-                          <span className="text-slate-400">{g.count} employee{g.count !== 1 ? 's' : ''}</span>
-                          <span className="text-slate-300">→</span>
-                          {g.matchedDef
-                            ? <span className="font-mono text-green-700">{g.matchedDef.code}</span>
-                            : <span className="text-amber-600">no match</span>
-                          }
+                {/* Group header row */}
+                <div className="grid text-[10px] uppercase tracking-wider text-gray-400 px-4 py-2 border-b border-gray-100 gap-x-3" style={{ gridTemplateColumns: 'auto 1fr 1fr auto 1fr auto' }}>
+                  <span />
+                  <span>Designation</span>
+                  <span>Grade</span>
+                  <span className="text-right">Count</span>
+                  <span>Salary Def</span>
+                  <span />
+                </div>
+                {suggestedGroups.map((g, i) => {
+                  const isExpanded = expandedGroups.has(i);
+                  const isFullyResolved = !!(g.matchedDef);
+                  const isEnrolling = enrollingGroupIdx === i;
+                  return (
+                    <div key={i} className="border-b border-gray-100 last:border-b-0">
+                      {/* Group row */}
+                      <div
+                        className="grid items-center gap-x-3 text-xs px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                        style={{ gridTemplateColumns: 'auto 1fr 1fr auto 1fr auto' }}
+                        onClick={() => setExpandedGroups(prev => {
+                          const s = new Set(prev);
+                          if (s.has(i)) s.delete(i); else s.add(i);
+                          return s;
+                        })}
+                      >
+                        <span className="text-gray-400 w-3 text-center select-none">{isExpanded ? '▾' : '▸'}</span>
+                        <span className="font-mono text-slate-700 truncate">{g.desigLabel ?? <span className="text-slate-400 italic">not set</span>}</span>
+                        <span className="font-mono text-slate-700 truncate">{g.gradeLabel ?? <span className="text-slate-400 italic">not set</span>}</span>
+                        <span className="text-slate-500 text-right tabular-nums">{g.count}</span>
+                        {g.matchedDef
+                          ? <span className="font-mono text-green-700 truncate">{g.matchedDef.code}</span>
+                          : <span className="text-amber-600">no match</span>
+                        }
+                        <span onClick={(e) => e.stopPropagation()}>
                           <Btn
                             variant={g.matchedDef ? 'primary' : 'secondary'}
                             size="sm"
                             disabled={!canEnroll}
-                            onClick={() => openBulkEnrollFromSuggestion(g.employeeIds, g.matchedDef?.code)}
+                            loading={isEnrolling}
+                            onClick={() => {
+                              if (isFullyResolved) {
+                                handleDirectEnroll(i, g);
+                              } else {
+                                openBulkEnrollFromSuggestion(
+                                  g.employeeIds,
+                                  g.matchedDef?.code,
+                                  g.matchedGrade ?? undefined,
+                                  g.matchedDesignation ?? undefined,
+                                );
+                              }
+                            }}
                           >
-                            {g.matchedDef ? 'Enroll' : 'Select'}
+                            {g.matchedDef ? `Enroll ${g.count}` : 'Select →'}
                           </Btn>
+                        </span>
+                      </div>
+                      {/* Expanded employee list */}
+                      {isExpanded && (
+                        <div className="bg-gray-50 border-t border-gray-100">
+                          {g.employeeIds.map((eid) => {
+                            const emp = notEnrolled.find(e => e.employee_id === eid);
+                            if (!emp) return null;
+                            return (
+                              <div key={eid} className="flex items-center justify-between px-8 py-1.5 text-xs border-b border-gray-100 last:border-b-0 hover:bg-gray-100 transition-colors">
+                                <span className="text-gray-800">{emp.full_name}</span>
+                                <span className="text-gray-400 font-mono ml-4 shrink-0">{emp.employee_number}</span>
+                                <button
+                                  className="ml-auto text-indigo-600 hover:underline shrink-0 pl-4"
+                                  onClick={() => setEnrollingEmployee(emp)}
+                                >
+                                  Enroll individually →
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                )}
-                {selectedNotEnrolledIds.size > 0 && (
-                  <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3 flex-wrap">
-                    <span className="text-xs text-indigo-700 font-medium">
-                      {selectedNotEnrolledIds.size} selected
-                    </span>
-                    <Btn
-                      variant="primary"
-                      size="sm"
-                      disabled={!canEnroll}
-                      title={canEnroll ? undefined : 'Configure salary definitions first'}
-                      onClick={() => { setBulkEnrollPresetIds([]); setBulkEnrollPresetCode(undefined); setShowBulkEnroll(true); }}
-                    >
-                      Enroll Selected
-                    </Btn>
-                    <Btn
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedNotEnrolledIds(new Set())}
-                    >
-                      Clear selection
-                    </Btn>
-                  </div>
-                )}
-                <EmployeeTable
-                  rows={notEnrolled}
-                  variant="not-enrolled"
-                  onEdit={setEditingEmployee}
-                  onEnroll={setEnrollingEmployee}
-                  canEnroll={canEnroll}
-                  selectedIds={selectedNotEnrolledIds}
-                  onSelectionChange={handleNotEnrolledSelectionChange}
-                />
+                  );
+                })}
               </Card>
             </div>
           )}
 
-          {/* Unmatched section */}
+          {/* Incomplete section */}
           {unmatched.length > 0 && (
             <div ref={unmatchedRef}>
               <Card padding="sm">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                    Unmatched — {unmatched.length} employee{unmatched.length !== 1 ? 's' : ''}
-                  </p>
-                  <p className="text-xs text-gray-400">Grade or designation is missing</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-0.5 h-4 rounded-full bg-rose-500" aria-hidden="true" />
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      Incomplete
+                    </span>
+                    <span className="text-xs text-gray-400 tabular-nums font-normal">
+                      {unmatched.length} employee{unmatched.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">Grade or designation missing</p>
                 </div>
                 <EmployeeTable rows={unmatched} variant="unmatched" onEdit={setEditingEmployee} onChangeContract={setChangingContractEmployee} onViewContracts={setViewingContractsEmployee} />
               </Card>
             </div>
           )}
 
-          {/* Matched section */}
+          {/* In Payroll section */}
           {matched.length > 0 && (
+            <div ref={activeRef}>
             <Card padding="sm">
               <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Active — {matched.length} employee{matched.length !== 1 ? 's' : ''}
-                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-0.5 h-4 rounded-full bg-green-500" aria-hidden="true" />
+                  <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    In Payroll
+                  </span>
+                  <span className="text-xs text-gray-400 tabular-nums font-normal">
+                    {matched.length} employee{matched.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
               <EmployeeTable rows={matched} variant="active" onEdit={setEditingEmployee} onChangeContract={setChangingContractEmployee} onViewContracts={setViewingContractsEmployee} />
             </Card>
+            </div>
           )}
 
-          {/* Contract Ended section */}
-          {ended.length > 0 && (
-            <Card padding="sm">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Contract Ended — {ended.length} employee{ended.length !== 1 ? 's' : ''}
-                </p>
-                <p className="text-xs text-gray-400">Contract end date has passed</p>
+          {/* No Longer Active section — collapsed by default */}
+          {(ended.length > 0 || deactivated.length > 0) && (
+            <div ref={endedRef}>
+              <div
+                style={{ borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)' }}
+                className="bg-white overflow-hidden"
+              >
+                <button
+                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowEnded(v => !v)}
+                  aria-expanded={showEnded}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-0.5 h-4 rounded-full bg-gray-300" aria-hidden="true" />
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      No Longer Active
+                    </span>
+                    <span className="text-xs text-gray-400 tabular-nums font-normal">
+                      {ended.length + deactivated.length} employee{(ended.length + deactivated.length) !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${showEnded ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showEnded && (
+                  <div className="border-t border-gray-100">
+                    {ended.length > 0 && (
+                      <>
+                        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
+                          <div className="w-0.5 h-3 rounded-full bg-gray-300" aria-hidden="true" />
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                            Contract Ended
+                          </span>
+                          <span className="text-[10px] text-gray-300 tabular-nums">
+                            {ended.length}
+                          </span>
+                        </div>
+                        <EmployeeTable
+                          rows={ended}
+                          variant="ended"
+                          onEdit={setEditingEmployee}
+                          onViewContracts={setViewingContractsEmployee}
+                        />
+                      </>
+                    )}
+                    {deactivated.length > 0 && (
+                      <>
+                        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
+                          <div className="w-0.5 h-3 rounded-full bg-gray-300" aria-hidden="true" />
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                            Manually Deactivated
+                          </span>
+                          <span className="text-[10px] text-gray-300 tabular-nums">
+                            {deactivated.length}
+                          </span>
+                        </div>
+                        <EmployeeTable
+                          rows={deactivated}
+                          variant="ended"
+                          onEdit={setEditingEmployee}
+                          onViewContracts={setViewingContractsEmployee}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-              <EmployeeTable rows={ended} variant="ended" onEdit={setEditingEmployee} onViewContracts={setViewingContractsEmployee} />
-            </Card>
+            </div>
           )}
         </div>
       )}
@@ -1448,13 +1684,21 @@ export function Employees() {
 
       <BulkEnrollSlideOver
         open={showBulkEnroll}
-        employeeIds={bulkEnrollPresetIds.length > 0 ? bulkEnrollPresetIds : [...selectedNotEnrolledIds]}
+        employeeIds={bulkEnrollPresetIds}
         salaryDefinitions={salaryDefinitions}
         gradeOptions={gradeOptions}
         designationOptions={designationOptions}
         workspaceId={workspaceId ?? ''}
         presetSalaryCode={bulkEnrollPresetCode}
-        onClose={() => { setShowBulkEnroll(false); setBulkEnrollPresetIds([]); setBulkEnrollPresetCode(undefined); }}
+        presetGradeCode={bulkEnrollPresetGradeCode}
+        presetDesignationCode={bulkEnrollPresetDesignationCode}
+        onClose={() => {
+          setShowBulkEnroll(false);
+          setBulkEnrollPresetIds([]);
+          setBulkEnrollPresetCode(undefined);
+          setBulkEnrollPresetGradeCode(undefined);
+          setBulkEnrollPresetDesignationCode(undefined);
+        }}
         onSaved={loadEmployees}
       />
 
@@ -1483,10 +1727,6 @@ export function Employees() {
 
       <AddEmployeeSlideOver
         open={showAddEmployee}
-        gradeOptions={gradeOptions}
-        designationOptions={designationOptions}
-        salaryDefinitions={salaryDefinitions}
-        payCycle={payCycle}
         workspaceId={workspaceId ?? ''}
         onClose={() => setShowAddEmployee(false)}
         onSaved={loadEmployees}

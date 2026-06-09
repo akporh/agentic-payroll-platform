@@ -108,7 +108,7 @@ export function PageShell({
 
 export interface ContentHeaderProps {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   action?: React.ReactNode;
   back?: React.ReactNode;
   className?: string;

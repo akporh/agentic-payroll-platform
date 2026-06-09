@@ -49,6 +49,7 @@ export interface Employee {
   full_name: string;
   employee_number: string;
   status: string;
+  contract_id?: string;
   designation?: string;
   grade?: string;
   contract_start?: string;

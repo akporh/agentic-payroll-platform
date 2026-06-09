@@ -81,9 +81,16 @@ const BADGE_CONFIG: Record<string, BadgeConfig> = {
   MISMATCH:             { dot: 'bg-red-500',     bg: 'bg-red-100',     text: 'text-red-800' },
   RESOLVED:             { dot: 'bg-gray-400',    bg: 'bg-gray-100',    text: 'text-gray-700' },
 
-  /* Employee */
+  /* Employee HR status */
   ACTIVE:               { dot: 'bg-green-500',   bg: 'bg-green-100',   text: 'text-green-800' },
   INACTIVE:             { dot: 'bg-gray-400',    bg: 'bg-gray-100',    text: 'text-gray-600' },
+
+  /* Employee lifecycle — Employees page */
+  IN_PAYROLL:          { dot: 'bg-green-500',  bg: 'bg-green-100',  text: 'text-green-800',  label: 'In Payroll' },
+  AWAITING_ENROLLMENT: { dot: 'bg-amber-500',  bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Awaiting Enrollment' },
+  INCOMPLETE:          { dot: 'bg-rose-500',   bg: 'bg-rose-100',   text: 'text-rose-800',   label: 'Incomplete' },
+  CONTRACT_ENDED:      { dot: 'bg-gray-400',   bg: 'bg-gray-100',   text: 'text-gray-600',   label: 'Contract Ended' },
+  DEACTIVATED:         { dot: 'bg-gray-300',   bg: 'bg-gray-50',    text: 'text-gray-500',   label: 'Deactivated' },
 
   /* Result */
   SUCCESS:              { dot: 'bg-green-500',   bg: 'bg-green-100',   text: 'text-green-800' },

@@ -63,6 +63,8 @@ Domain code must never import infrastructure. Routes must never contain business
 | `payroll_input.input_category` | Allowed values: EARNING, DEDUCTION, STANDARD, PAYE_ONLY (all uppercase). PAYE_ONLY inputs enter TAXABLE_INCOME only — never GROSS_PAY or NET_PAY. Must use standard link_inputs_to_run claiming path so retry reproduces the same TAXABLE_INCOME. |
 | `payroll_run.run_type` | Allowed values: REGULAR, ADJUSTMENT, CORRECTION. No DB CHECK constraint — API allowlist is the only enforcement. Do not add new values without a matching API allowlist update. |
 | `payroll_retry_request.retry_strategy` | Allowed values: PER_EMPLOYEE only. FULL_RUN is disabled by migration. API allowlist must match the migration-disabled set. |
+| `employee_contract.end_date` | Inclusive last paid day — the payroll engine prorates to this date (`active_to = min(period_end, end_date)`). Must never be set to "last physical day worked" if different from the last paid day. Garden leave, notice buyout, and suspension-before-exit scenarios are NOT yet modelled; in those cases `end_date` must be set to the last date the employer pays salary, not the last date the employee is physically present. A separate `termination_reason` field is deferred to a future sprint. |
+| `employee.status = 'INACTIVE'` + live contract | Valid HR state (suspension, maternity leave, etc.). The employee is excluded from payroll runs by the engine (`e.status = 'ACTIVE'` guard). This is intentional — payroll ineligibility is a consequence of INACTIVE status, not a data error. The UI surfaces an AlertBanner warning when enrolled INACTIVE employees have a live contract, so the operator is aware they will not appear in the next run. Do NOT add a hard PATCH guard that rejects this state. |
 
 ---
 

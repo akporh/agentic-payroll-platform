@@ -22,9 +22,12 @@ export function MainLayout() {
 
   useEffect(() => {
     if (!workspaceId) { setEmployees([]); setInputIssueCount(0); setTimesheetEnabled(false); return; }
-    workspaceApi.getEmployees(workspaceId).then(setEmployees).catch(() => {});
+    const fetchEmployees = () => workspaceApi.getEmployees(workspaceId).then(setEmployees).catch(() => {});
+    fetchEmployees();
     payrollApi.getInputIssues(workspaceId).then((d) => setInputIssueCount(d.total)).catch(() => {});
     workspaceApi.getPayrollConfig(workspaceId).then((cfg) => setTimesheetEnabled(cfg.timesheet_enabled ?? false)).catch(() => {});
+    window.addEventListener('employees-changed', fetchEmployees);
+    return () => window.removeEventListener('employees-changed', fetchEmployees);
   }, [workspaceId]);
 
   const currentWorkspace = workspaces.find(w => w.workspace_id === workspaceId) ?? null;
