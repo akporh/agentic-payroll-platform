@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Payroll Execution Pipeline — System Reference</title>
+<style>
+  :root {
+    --brand: #4f46e5;
+    --brand-light: #eef2ff;
+    --brand-mid: #818cf8;;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --green-100: #dcfce7; --green-700: #15803d; --green-800: #166534;
+    --amber-100: #fef3c7; --amber-700: #b45309; --amber-800: #92400e;
+    --red-100: #fee2e2; --red-700: #b91c1c;
+    --blue-100: #dbeafe; --blue-700: #1d4ed8;
+    --violet-100: #ede9fe; --violet-700: #6d28d9;
+    --rose-100: #ffe4e6; --rose-700: #be123c;
+    --teal-100: #ccfbf1; --teal-700: #0f766e;
+    --sidebar-w: 220px;
+    --topbar-h: 56px;
+    --radius: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--gray-800); background: var(--gray-50); line-height: 1.6; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; }
+
+  /* ── Layout ── */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h);
+    background: var(--gray-900); color: white; display: flex; align-items: center;
+    padding: 0 24px; gap: 16px; z-index: 100; border-bottom: 1px solid #374151;
+  }
+  #topbar .logo { font-weight: 700; font-size: 16px; color: white; letter-spacing: -0.3px; }
+  #topbar .logo span { color: var(--brand-mid); }
+  #topbar .subtitle { font-size: 12px; color: var(--gray-400); margin-left: 4px; }
+  #topbar .spacer { flex: 1; }
+  #topbar .back-link { font-size: 12px; color: var(--gray-400); display: flex; align-items: center; gap: 6px; }
+  #topbar .back-link:hover { color: white; text-decoration: none; }
+
+  /* Persona filter */
+  #persona-bar {
+    position: fixed; top: var(--topbar-h); left: 0; right: 0; height: 44px;
+    background: white; border-bottom: 1px solid var(--gray-200);
+    display: flex; align-items: center; padding: 0 24px; gap: 8px; z-index: 99;
+  }
+  #persona-bar .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); margin-right: 4px; }
+  .persona-btn {
+    padding: 3px 12px; border-radius: 20px; border: 1px solid var(--gray-200);
+    font-size: 11px; font-weight: 600; cursor: pointer; background: white;
+    color: var(--gray-600); transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .persona-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .persona-btn.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .persona-btn[data-p="all"].active { background: var(--gray-800); border-color: var(--gray-800); }
+
+  /* Sidebar nav */
+  #sidebar {
+    position: fixed; top: calc(var(--topbar-h) + 44px); left: 0; bottom: 0;
+    width: var(--sidebar-w); background: white; border-right: 1px solid var(--gray-200);
+    overflow-y: auto; padding: 16px 0;
+  }
+  .nav-section { padding: 8px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); }
+  .nav-link {
+    display: flex; align-items: center; gap: 8px; padding: 7px 16px;
+    font-size: 13px; color: var(--gray-600); cursor: pointer; border-left: 3px solid transparent;
+    transition: all 0.12s;
+  }
+  .nav-link:hover { background: var(--gray-50); color: var(--gray-800); }
+  .nav-link.active { background: var(--brand-light); color: var(--brand); border-left-color: var(--brand); font-weight: 600; }
+  .nav-link .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; shrink: 0; opacity: 0.6; }
+
+  /* Main content */
+  #main {
+    margin-left: var(--sidebar-w);
+    margin-top: calc(var(--topbar-h) + 44px);
+    padding: 32px 40px 80px;
+    max-width: 900px;
+  }
+
+  /* Sections */
+  .section { display: none; }
+  .section.visible { display: block; }
+
+  /* Cards and blocks */
+  .card { background: white; border: 1px solid var(--gray-200); border-radius: var(--radius); margin-bottom: 16px; }
+  .card-header { padding: 14px 18px; border-bottom: 1px solid var(--gray-100); display: flex; justify-content: space-between; align-items: center; }
+  .card-body { padding: 16px 18px; }
+  h1 { font-size: 22px; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
+  h2 { font-size: 17px; font-weight: 700; color: var(--gray-900); margin-bottom: 12px; margin-top: 28px; }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; }
+  p { margin-bottom: 12px; color: var(--gray-700); }
+  ul { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; color: var(--gray-700); }
+  .lead { font-size: 15px; color: var(--gray-600); margin-bottom: 20px; line-height: 1.7; }
+  .section-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--brand); background: var(--brand-light); padding: 3px 10px; border-radius: 20px;
+    margin-bottom: 16px;
+  }
+
+  /* Persona tags */
+  .persona-tag {
+    display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px;
+  }
+  .pt-operator { background: var(--green-100); color: var(--green-800); }
+  .pt-architect { background: var(--blue-100); color: var(--blue-700); }
+  .pt-auditor { background: var(--amber-100); color: var(--amber-800); }
+  .pt-security { background: var(--red-100); color: var(--red-700); }
+  .pt-pm { background: var(--violet-100); color: var(--violet-700); }
+
+  /* Persona-gated blocks */
+  .for-operator, .for-architect, .for-auditor, .for-security, .for-pm { transition: opacity 0.2s; }
+  body.filter-operator .for-architect, body.filter-operator .for-auditor, body.filter-operator .for-security, body.filter-operator .for-pm { opacity: 0.25; }
+  body.filter-architect .for-operator, body.filter-architect .for-auditor, body.filter-architect .for-security, body.filter-architect .for-pm { opacity: 0.25; }
+  body.filter-auditor .for-operator, body.filter-auditor .for-architect, body.filter-auditor .for-security, body.filter-auditor .for-pm { opacity: 0.25; }
+  body.filter-security .for-operator, body.filter-security .for-architect, body.filter-security .for-auditor, body.filter-security .for-pm { opacity: 0.25; }
+  body.filter-pm .for-operator, body.filter-pm .for-architect, body.filter-pm .for-auditor, body.filter-pm .for-security { opacity: 0.25; }
+
+  /* Tables */
+  .tbl { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+  .tbl th { background: var(--gray-50); padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); border-bottom: 1px solid var(--gray-200); }
+  .tbl td { padding: 9px 12px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tr:hover td { background: var(--gray-50); }
+  .tbl .mono { font-family: monospace; font-size: 12px; color: var(--brand); }
+  .tbl .required { color: var(--red-700); font-size: 11px; font-weight: 700; }
+  .tbl .optional { color: var(--gray-400); font-size: 11px; }
+
+  /* Severity badges */
+  .sev { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .sev-critical { background: var(--red-100); color: var(--red-700); }
+  .sev-high { background: var(--amber-100); color: var(--amber-700); }
+  .sev-low { background: var(--gray-100); color: var(--gray-600); }
+  .sev-info { background: var(--blue-100); color: var(--blue-700); }
+
+  /* Code blocks */
+  .code-block {
+    background: var(--gray-900); color: #e5e7eb; border-radius: 6px;
+    padding: 14px 16px; margin: 10px 0 14px; overflow-x: auto;
+    font-size: 12px; line-height: 1.6;
+  }
+  .code-block .comment { color: #6b7280; }
+  .code-block .keyword { color: #93c5fd; }
+  .code-block .string { color: #86efac; }
+  .code-block .number { color: #fca5a5; }
+  .code-block .fn { color: #c4b5fd; }
+  .code-file { font-size: 11px; color: var(--gray-400); margin-bottom: 4px; font-family: monospace; }
+
+  /* Edge case cards */
+  .ec-card { border: 1px solid var(--gray-200); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+  .ec-header {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    cursor: pointer; user-select: none; background: white;
+    transition: background 0.12s;
+  }
+  .ec-header:hover { background: var(--gray-50); }
+  .ec-num { width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: white; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; shrink: 0; flex-shrink: 0; }
+  .ec-title { font-weight: 600; font-size: 13px; color: var(--gray-800); flex: 1; }
+  .ec-risk { font-size: 11px; }
+  .ec-chevron { color: var(--gray-400); transition: transform 0.2s; font-size: 12px; }
+  .ec-card.open .ec-chevron { transform: rotate(180deg); }
+  .ec-body { display: none; border-top: 1px solid var(--gray-100); }
+  .ec-card.open .ec-body { display: block; }
+  .ec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .ec-cell { padding: 14px 16px; border-right: 1px solid var(--gray-100); }
+  .ec-cell:last-child { border-right: none; }
+  .ec-cell-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-400); margin-bottom: 8px; }
+  .ec-cell-full { padding: 14px 16px; border-top: 1px solid var(--gray-100); }
+
+  /* State machine */
+  .state-machine { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+  .state-node {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.03em; border: 2px solid; display: flex; align-items: center; gap: 6px;
+  }
+  .state-arrow { color: var(--gray-400); font-size: 18px; font-weight: 300; }
+  .state-terminal { border-style: dashed; }
+  .s-draft { background: var(--gray-100); border-color: var(--gray-400); color: var(--gray-700); }
+  .s-calculating { background: var(--blue-100); border-color: #93c5fd; color: var(--blue-700); }
+  .s-partial { background: var(--amber-100); border-color: #fcd34d; color: var(--amber-700); }
+  .s-calculated { background: var(--teal-100); border-color: #5eead4; color: var(--teal-700); }
+  .s-approved { background: var(--violet-100); border-color: #c4b5fd; color: var(--violet-700); }
+  .s-locked { background: #e0e7ff; border-color: #a5b4fc; color: #4338ca; }
+  .s-paid { background: var(--green-100); border-color: #86efac; color: var(--green-700); }
+
+  /* Flow diagram */
+  .flow-diagram { width: 100%; overflow-x: auto; margin: 16px 0; }
+  .flow-diagram svg { min-width: 700px; }
+
+  /* Callout boxes */
+  .callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid; }
+  .callout-warn { background: var(--amber-100); border-color: #fcd34d; }
+  .callout-info { background: var(--blue-100); border-color: #93c5fd; }
+  .callout-danger { background: var(--red-100); border-color: #fca5a5; }
+  .callout-ok { background: var(--green-100); border-color: #86efac; }
+  .callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .callout-text { font-size: 13px; line-height: 1.6; color: var(--gray-700); }
+  .callout-text strong { color: var(--gray-900); }
+
+  /* Invariant table sortable */
+  .sort-btn { cursor: pointer; user-select: none; }
+  .sort-btn:hover { color: var(--brand); }
+
+  /* Highlight for current section in sidebar */
+  .section-anchor { scroll-margin-top: 120px; }
+
+  /* Search bar */
+  #search-wrap {
+    position: relative; display: flex; align-items: center; gap: 8px; margin-left: auto;
+  }
+  #search-input {
+    width: 220px; padding: 5px 32px 5px 10px; border-radius: 6px; border: 1px solid #374151;
+    background: #1f2937; color: white; font-size: 12px; outline: none;
+    transition: border-color 0.15s, width 0.2s;
+  }
+  #search-input::placeholder { color: #6b7280; }
+  #search-input:focus { border-color: var(--brand-mid); width: 280px; }
+  #search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #6b7280; cursor: pointer; font-size: 14px; line-height: 1; display: none; }
+  #search-clear.visible { display: block; }
+  #search-count { font-size: 11px; color: var(--gray-400); white-space: nowrap; }
+  #search-nav { display: flex; gap: 4px; }
+  #search-nav button { background: #374151; border: none; color: #9ca3af; cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
+  #search-nav button:hover { background: #4b5563; color: white; }
+
+  /* Search highlight */
+  mark { background: #fbbf24; color: #1f2937; border-radius: 2px; padding: 0 1px; }
+  mark.current { background: #f59e0b; outline: 2px solid #f59e0b; }
+
+  /* Nav persona filtering */
+  .nav-link { position: relative; }
+  .nav-link .persona-dot {
+    width: 5px; height: 5px; border-radius: 50%; position: absolute; right: 10px; top: 50%;
+    transform: translateY(-50%); opacity: 0; transition: opacity 0.15s;
+  }
+  body.filter-operator .nav-link[data-personas~="operator"] .persona-dot,
+  body.filter-pm .nav-link[data-personas~="pm"] .persona-dot,
+  body.filter-architect .nav-link[data-personas~="architect"] .persona-dot,
+  body.filter-auditor .nav-link[data-personas~="auditor"] .persona-dot,
+  body.filter-security .nav-link[data-personas~="security"] .persona-dot { opacity: 1; background: var(--brand); }
+
+  body.filter-operator .nav-link:not([data-personas~="operator"]):not([data-personas~="all"]),
+  body.filter-pm .nav-link:not([data-personas~="pm"]):not([data-personas~="all"]),
+  body.filter-architect .nav-link:not([data-personas~="architect"]):not([data-personas~="all"]),
+  body.filter-auditor .nav-link:not([data-personas~="auditor"]):not([data-personas~="all"]),
+  body.filter-security .nav-link:not([data-personas~="security"]):not([data-personas~="all"]) {
+    opacity: 0.4;
+  }
+
+  body.filter-operator .nav-link[data-personas~="operator"],
+  body.filter-pm .nav-link[data-personas~="pm"],
+  body.filter-architect .nav-link[data-personas~="architect"],
+  body.filter-auditor .nav-link[data-personas~="auditor"],
+  body.filter-security .nav-link[data-personas~="security"] {
+    opacity: 1; font-weight: 600;
+  }
+
+  /* Persona role card */
+  .role-card {
+    border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 16px 18px;
+    margin-bottom: 12px; display: none;
+  }
+  .role-card.visible { display: block; }
+  .role-card h3 { margin-bottom: 6px; font-size: 13px; }
+  .role-card ul { margin-bottom: 0; }
+
+  /* Worked example */
+  .we-step {
+    display: flex; gap: 0; margin-bottom: 8px;
+  }
+  .we-num { width: 28px; flex-shrink: 0; display: flex; justify-content: center; }
+  .we-num-inner { width: 20px; height: 20px; border-radius: 50%; background: var(--brand); color: white; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .we-content { flex: 1; padding-left: 10px; padding-bottom: 12px; border-left: 2px solid var(--gray-100); }
+  .we-step:last-child .we-content { border-left-color: transparent; }
+  .we-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-400); margin-bottom: 4px; }
+  .we-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 10px; border-radius: 4px; font-size: 13px; }
+  .we-row:hover { background: var(--gray-50); }
+  .we-row .we-item { color: var(--gray-700); }
+  .we-row .we-val { font-family: monospace; font-weight: 700; color: var(--gray-900); }
+  .we-row.total { background: var(--brand-light); }
+  .we-row.total .we-item { font-weight: 700; color: var(--brand); }
+  .we-row.total .we-val { color: var(--brand); }
+  .we-row.deduct .we-val { color: var(--red-700); }
+  .we-row.net { background: var(--green-100); }
+  .we-row.net .we-item { font-weight: 700; color: var(--green-700); }
+  .we-row.net .we-val { color: var(--green-700); font-size: 15px; }
+  .we-divider { height: 1px; background: var(--gray-100); margin: 4px 10px; }
+
+  /* Priority chain diagram */
+  .priority-chain { display: flex; flex-direction: column; gap: 0; margin: 16px 0; }
+  .pc-row { display: flex; align-items: stretch; gap: 0; }
+  .pc-priority { width: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--gray-400); font-family: monospace; }
+  .pc-box {
+    flex: 1; padding: 10px 14px; border-radius: 6px; margin: 3px 0; border: 1.5px solid;
+    font-size: 12px; font-weight: 600;
+  }
+  .pc-items { font-size: 11px; font-weight: 400; color: var(--gray-500); margin-top: 2px; }
+  .pc-arrow { width: 24px; display: flex; align-items: center; justify-content: center; color: var(--gray-300); font-size: 16px; flex-shrink: 0; }
+  .pc-earnings { background: #f0fdf4; border-color: #86efac; color: var(--green-700); }
+  .pc-rules { background: var(--blue-100); border-color: #93c5fd; color: var(--blue-700); }
+  .pc-gross { background: var(--teal-100); border-color: #5eead4; color: var(--teal-700); }
+  .pc-deduct { background: var(--amber-100); border-color: #fcd34d; color: var(--amber-700); }
+  .pc-paye { background: var(--red-100); border-color: #fca5a5; color: var(--red-700); }
+  .pc-net { background: var(--green-100); border-color: #86efac; color: var(--green-800); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    #sidebar { display: none; }
+    #main { margin-left: 0; padding: 16px; }
+    .ec-grid { grid-template-columns: 1fr; }
+    #search-input { width: 140px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<header id="topbar">
+  <div class="logo">Sandy<span>Pay</span></div>
+  <div class="subtitle">/ System Reference</div>
+  <div class="spacer"></div>
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="Search keywords…" oninput="doSearch(this.value)" onkeydown="searchNav(event)" autocomplete="off" />
+    <button id="search-clear" onclick="clearSearch()" title="Clear search">✕</button>
+    <span id="search-count"></span>
+    <div id="search-nav">
+      <button onclick="jumpMatch(-1)" title="Previous match">↑</button>
+      <button onclick="jumpMatch(1)" title="Next match">↓</button>
+    </div>
+  </div>
+  <a href="/" class="back-link" style="margin-left:16px;">← Back to app</a>
+</header>
+
+<!-- Persona filter bar -->
+<div id="persona-bar">
+  <span class="label">View as:</span>
+  <button class="persona-btn active" data-p="all" onclick="setPersona('all')">All</button>
+  <button class="persona-btn" data-p="operator" onclick="setPersona('operator')">Operator</button>
+  <button class="persona-btn" data-p="pm" onclick="setPersona('pm')">Product Manager</button>
+  <button class="persona-btn" data-p="architect" onclick="setPersona('architect')">Architect</button>
+  <button class="persona-btn" data-p="auditor" onclick="setPersona('auditor')">Auditor</button>
+  <button class="persona-btn" data-p="security" onclick="setPersona('security')">Security</button>
+</div>
+
+<!-- Sidebar -->
+<nav id="sidebar">
+  <div class="nav-section">Payroll Execution Pipeline</div>
+  <div class="nav-link active" data-section="overview" data-personas="all" onclick="showSection('overview')"><span class="dot"></span> Overview<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="examples" data-personas="operator pm auditor" onclick="showSection('examples')"><span class="dot"></span> Worked Examples<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="inputs" data-personas="architect pm" onclick="showSection('inputs')"><span class="dot"></span> Inputs<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="outputs" data-personas="architect pm auditor" onclick="showSection('outputs')"><span class="dot"></span> Outputs<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="flow" data-personas="architect" onclick="showSection('flow')"><span class="dot"></span> Execution Flow<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="statemachine" data-personas="operator pm architect" onclick="showSection('statemachine')"><span class="dot"></span> State Machine<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="invariants" data-personas="architect auditor security" onclick="showSection('invariants')"><span class="dot"></span> Invariants<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="edgecases" data-personas="operator architect auditor security" onclick="showSection('edgecases')"><span class="dot"></span> Edge Cases<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="failuremodes" data-personas="operator" onclick="showSection('failuremodes')"><span class="dot"></span> Failure Modes<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="datacontracts" data-personas="architect auditor security" onclick="showSection('datacontracts')"><span class="dot"></span> Data Contracts<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="audit" data-personas="auditor security" onclick="showSection('audit')"><span class="dot"></span> Audit Trail<span class="persona-dot"></span></div>
+  <div class="nav-link" data-section="related" data-personas="architect" onclick="showSection('related')"><span class="dot"></span> Related Functions<span class="persona-dot"></span></div>
+</nav>
+
+<!-- Main content -->
+<main id="main">
+
+  <!-- ── OVERVIEW ── -->
+  <section id="sec-overview" class="section visible">
+    <div class="section-label">01 — Overview</div>
+    <h1>Payroll Execution Pipeline</h1>
+    <p class="lead">
+      The payroll execution pipeline transforms an employee's salary definition, workspace-configured rules, and statutory requirements
+      into a final payslip — calculating gross pay, overtime, deductions, PAYE, pension, NHF, and net pay in a deterministic,
+      auditable sequence. Every run is frozen at creation and can be reproduced exactly from the stored snapshot.
+    </p>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ️</div>
+      <div class="callout-text">
+        <strong>Three layers work together.</strong> The application layer (<code>payroll_run_service.py</code>) orchestrates.
+        The domain layer (<code>rule_evaluator.py</code> + <code>sequential_executor.py</code>) calculates.
+        The infrastructure layer persists results. Domain code never touches the database — all DB access is in the infra layer.
+      </div>
+    </div>
+
+    <h2>The Three Components</h2>
+    <table class="tbl">
+      <thead><tr><th>Component</th><th>Layer</th><th>Responsibility</th><th>Source file</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>payroll_run_service</strong></td>
+          <td>Application</td>
+          <td>Orchestrates the full run: validates, calls domain, persists, traces</td>
+          <td class="mono">backend/application/payroll_run_service.py</td>
+        </tr>
+        <tr>
+          <td><strong>rule_evaluator</strong></td>
+          <td>Domain</td>
+          <td>Applies workspace rules (OT, absences, bonuses) to base salary before statutory deductions</td>
+          <td class="mono">backend/domain/payroll/rule_evaluator.py</td>
+        </tr>
+        <tr>
+          <td><strong>sequential_executor</strong></td>
+          <td>Domain</td>
+          <td>Applies statutory deductions (PAYE, pension, NHF, rent relief) in strict priority order</td>
+          <td class="mono">backend/domain/payroll/sequential_executor.py</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Personas</h2>
+    <p>Different personas need different sections of this document.</p>
+    <table class="tbl">
+      <thead><tr><th>Persona</th><th>Most relevant sections</th></tr></thead>
+      <tbody>
+        <tr><td><span class="persona-tag pt-operator">Operator</span></td><td>Worked Examples, State Machine, Edge Cases (EC-1, EC-2, EC-8), Failure Modes</td></tr>
+        <tr><td><span class="persona-tag pt-pm">PM</span></td><td>Worked Examples, Inputs, Outputs, State Machine</td></tr>
+        <tr><td><span class="persona-tag pt-architect">Architect</span></td><td>Execution Flow, Invariants, Edge Cases (all), Data Contracts, Related Functions</td></tr>
+        <tr><td><span class="persona-tag pt-auditor">Auditor</span></td><td>Worked Examples, Invariants, Edge Cases (EC-4, EC-8), Data Contracts, Audit Trail</td></tr>
+        <tr><td><span class="persona-tag pt-security">Security</span></td><td>Invariants, Edge Cases (EC-3, EC-10), Data Contracts, Audit Trail</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Start here for your role</h2>
+    <p>Select your persona above — the sidebar highlights your sections and expands the detail card below.</p>
+
+    <div class="role-card visible" id="role-all" style="background:var(--gray-50);">
+      <h3>📋 All roles — what's in this reference</h3>
+      <ul>
+        <li><strong>Worked Examples</strong> — full ₦ calculation walkthrough, proration, PAYE annualisation</li>
+        <li><strong>State Machine</strong> — every run state, who can advance it, what's blocked at each stage</li>
+        <li><strong>Edge Cases</strong> — 10 verified hidden scenarios with risk and mitigation</li>
+        <li><strong>Invariants</strong> — 8 rules that must never be broken, with consequence of each</li>
+        <li><strong>Data Contracts</strong> — semantic promises carried by key field values</li>
+      </ul>
+    </div>
+
+    <div class="role-card" id="role-operator" style="border-color:#86efac; background:#f0fdf4;">
+      <h3>🟢 Operator — your key sections</h3>
+      <ul>
+        <li><strong>Worked Examples</strong> → see exactly what the numbers mean before and after a run</li>
+        <li><strong>State Machine</strong> → understand what you can and can't do at each run stage</li>
+        <li><strong>Edge Cases EC-1, EC-2, EC-8</strong> → inactive employees, orphaned inputs, PAYE_ONLY lines</li>
+        <li><strong>Failure Modes</strong> → what to do when a run gets stuck or an employee shows FAILED</li>
+      </ul>
+    </div>
+
+    <div class="role-card" id="role-pm" style="border-color:#c4b5fd; background:#f5f3ff;">
+      <h3>🟣 Product Manager — your key sections</h3>
+      <ul>
+        <li><strong>Worked Examples</strong> → understand the full calculation sequence in plain terms</li>
+        <li><strong>Outputs</strong> → what the system produces and what each field promises</li>
+        <li><strong>State Machine</strong> → the full lifecycle a run moves through, including PARTIAL</li>
+        <li><strong>Failure Modes</strong> → how the system surfaces problems to users</li>
+      </ul>
+    </div>
+
+    <div class="role-card" id="role-architect" style="border-color:#93c5fd; background:#eff6ff;">
+      <h3>🔵 Architect — your key sections</h3>
+      <ul>
+        <li><strong>Execution Flow</strong> → layer handoffs, component priority chain diagram</li>
+        <li><strong>Invariants</strong> → all 8 invariants with enforcement mechanisms</li>
+        <li><strong>Edge Cases EC-3, EC-5, EC-9, EC-10</strong> → guard gaps and snapshot semantics</li>
+        <li><strong>Data Contracts</strong> → semantic promises on key fields — never break these</li>
+        <li><strong>Related Functions</strong> → how this pipeline connects to retry, snapshot, reconciliation</li>
+      </ul>
+    </div>
+
+    <div class="role-card" id="role-auditor" style="border-color:#fcd34d; background:#fffbeb;">
+      <h3>🟡 Auditor — your key sections</h3>
+      <ul>
+        <li><strong>Worked Examples</strong> → trace the exact PAYE annualisation formula with figures</li>
+        <li><strong>Invariants</strong> → what rules the system must always satisfy</li>
+        <li><strong>Edge Cases EC-4, EC-8</strong> → ITF year-boundary gap; PAYE_ONLY lines on payslips</li>
+        <li><strong>Audit Trail</strong> → what is logged, where, known gaps (rule_trace not persisted)</li>
+        <li><strong>Data Contracts</strong> → MATCHED invariant, RESOLVED semantics</li>
+      </ul>
+    </div>
+
+    <div class="role-card" id="role-security" style="border-color:#fca5a5; background:#fef2f2;">
+      <h3>🔴 Security — your key sections</h3>
+      <ul>
+        <li><strong>Invariants</strong> → workspace scoping rule, APPROVED immutability enforcement</li>
+        <li><strong>Edge Cases EC-3, EC-10</strong> → guard gaps at API boundary and CALCULATING state</li>
+        <li><strong>Data Contracts</strong> → fields with downstream semantic promises</li>
+        <li><strong>Audit Trail</strong> → what gets logged; known gaps in approval trail</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── WORKED EXAMPLES ── -->
+  <section id="sec-examples" class="section">
+    <div class="section-label">02 — Worked Examples</div>
+    <h1>Worked Examples</h1>
+    <p class="lead">Full calculations with real ₦ figures. Follow a single employee from salary definition to net pay, then see how mid-period proration and PAYE annualisation work.</p>
+
+    <h2>Example 1 — Full-period employee, standard month</h2>
+    <p><strong>Employee:</strong> Amaka Osei · <strong>Period:</strong> March 2026 (22 working days, 31 calendar days) · <strong>State of tax:</strong> Lagos</p>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">1</div></div>
+      <div class="we-content">
+        <div class="we-label">Salary definition (frozen in snapshot at run creation)</div>
+        <div class="we-row"><span class="we-item">Basic</span><span class="we-val">₦200,000</span></div>
+        <div class="we-row"><span class="we-item">Housing Allowance</span><span class="we-val">₦80,000</span></div>
+        <div class="we-row"><span class="we-item">Transport Allowance</span><span class="we-val">₦40,000</span></div>
+        <div class="we-row"><span class="we-item">Meal Allowance <span style="color:var(--teal-700);font-size:10px;font-weight:700;">NON_TAXABLE</span></span><span class="we-val">₦20,000</span></div>
+        <div class="we-divider"></div>
+        <div class="we-row total"><span class="we-item">Proration factor (full period)</span><span class="we-val">1.0000</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">2</div></div>
+      <div class="we-content">
+        <div class="we-label">Rule evaluation — workspace rules (priority 50)</div>
+        <div class="we-row"><span class="we-item">OT input: 4 hours × ₦1,136.36/hr (basic_hourly)</span><span class="we-val">+₦4,545</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-400);padding:2px 10px;"><span>basic_hourly = basic / (22 days × 8 hrs) = 200,000 / 176 = ₦1,136.36</span></div>
+        <div class="we-divider"></div>
+        <div class="we-row total"><span class="we-item">Earnings after rules</span><span class="we-val">₦344,545</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">3</div></div>
+      <div class="we-content">
+        <div class="we-label">Priority 100 — GROSS_PAY (earning components only, excl. non_taxable)</div>
+        <div class="we-row"><span class="we-item">Basic + Housing + Transport + OT</span><span class="we-val">₦324,545</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-400);padding:2px 10px;"><span>Meal Allowance (non_taxable) excluded from gross — correct legal treatment</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">4</div></div>
+      <div class="we-content">
+        <div class="we-label">Priority 200 — Statutory deductions</div>
+        <div class="we-row deduct"><span class="we-item">Pension (employee) = 8% × Basic+Housing+Transport = 8% × 320,000</span><span class="we-val">−₦25,600</span></div>
+        <div class="we-row deduct"><span class="we-item">NHF = 2.5% × Basic = 2.5% × 200,000</span><span class="we-val">−₦5,000</span></div>
+        <div class="we-row deduct"><span class="we-item">Health Insurance (fixed workspace config)</span><span class="we-val">−₦3,000</span></div>
+        <div class="we-row deduct"><span class="we-item">Development Levy (annual ÷ 12)</span><span class="we-val">−₦200</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">5</div></div>
+      <div class="we-content">
+        <div class="we-label">Priority 400 — PAYE (cumulative annual method, Lagos rates)</div>
+        <div class="we-row" style="font-size:12px;color:var(--gray-600);padding:4px 10px;background:var(--gray-50);border-radius:4px;margin-bottom:6px;">
+          <span>Taxable income = Gross − Pension − NHF − Rent relief</span>
+          <span style="font-family:monospace;">₦324,545 − ₦25,600 − ₦5,000 = ₦293,945</span>
+        </div>
+        <div class="we-row" style="font-size:12px;color:var(--gray-600);padding:4px 10px;background:var(--gray-50);border-radius:4px;margin-bottom:6px;">
+          <span>Annualised = ₦293,945 × 12 = ₦3,527,340</span>
+        </div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 1: first ₦300,000 @ 7% = ₦21,000</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 2: next ₦300,000 @ 11% = ₦33,000</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 3: next ₦500,000 @ 15% = ₦75,000</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 4: next ₦500,000 @ 19% = ₦95,000</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 5: next ₦1,600,000 @ 21% = ₦335,999</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Band 6: remaining ₦327,340 @ 24% = ₦78,562</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-500);padding:2px 10px;"><span>Annual PAYE = ₦638,561 → Monthly = ₦638,561 ÷ 12</span></div>
+        <div class="we-row deduct"><span class="we-item">PAYE (this month)</span><span class="we-val">−₦53,213</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">6</div></div>
+      <div class="we-content">
+        <div class="we-label">Priority 500 — NET_PAY</div>
+        <div class="we-row"><span class="we-item">Gross Pay</span><span class="we-val">₦324,545</span></div>
+        <div class="we-row"><span class="we-item">+ Meal Allowance (non_taxable)</span><span class="we-val">+₦20,000</span></div>
+        <div class="we-row deduct"><span class="we-item">− All deductions (pension + NHF + health + levy + PAYE)</span><span class="we-val">−₦87,013</span></div>
+        <div class="we-divider"></div>
+        <div class="we-row net"><span class="we-item">NET PAY</span><span class="we-val">₦257,532</span></div>
+      </div>
+    </div>
+
+    <hr style="margin:32px 0; border:none; border-top:1px solid var(--gray-200);" />
+
+    <h2>Example 2 — Mid-period hire (proration)</h2>
+    <p><strong>Employee:</strong> Emeka Bello · <strong>Joined:</strong> 17 March 2026 · <strong>Period:</strong> March 2026 (22 working days total; active from 17 Mar = 12 working days)</p>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">1</div></div>
+      <div class="we-content">
+        <div class="we-label">Proration factor</div>
+        <div class="we-row" style="background:var(--brand-light);border-radius:4px;padding:8px 10px;">
+          <span class="we-item" style="font-family:monospace;font-size:13px;">factor = working_days_active / period_working_days = 12 / 22 = 0.5455</span>
+        </div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-400);padding:4px 10px;"><span>Uses work_days proration strategy (not calendar_days). Configured per component in client_component_metadata.</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">2</div></div>
+      <div class="we-content">
+        <div class="we-label">Prorated salary components (applied BEFORE rule evaluation)</div>
+        <div class="we-row"><span class="we-item">Basic: ₦200,000 × 0.5455</span><span class="we-val">₦109,091</span></div>
+        <div class="we-row"><span class="we-item">Housing: ₦80,000 × 0.5455</span><span class="we-val">₦43,636</span></div>
+        <div class="we-row"><span class="we-item">Transport: ₦40,000 × 0.5455</span><span class="we-val">₦21,818</span></div>
+        <div class="we-row total"><span class="we-item">Prorated Gross</span><span class="we-val">₦174,545</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--amber-700);padding:4px 10px;background:var(--amber-100);border-radius:4px;margin-top:4px;">
+          <span>⚠️ OT daily rate is now computed from the PRORATED basic (₦109,091), not the full monthly basic. This is correct but will look lower than expected if compared to a non-prorated employee's daily rate.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">3</div></div>
+      <div class="we-content">
+        <div class="we-label">Pension base for mid-period hire</div>
+        <div class="we-row"><span class="we-item">Pension (employee) = 8% × prorated pensionable components</span><span class="we-val">−₦13,949</span></div>
+        <div class="we-row" style="font-size:11px;color:var(--gray-400);padding:2px 10px;"><span>Pensionable components = Basic + Housing + Transport (prorated). OT is non-pensionable by default.</span></div>
+      </div>
+    </div>
+
+    <div class="we-step">
+      <div class="we-num"><div class="we-num-inner">4</div></div>
+      <div class="we-content">
+        <div class="we-label">PAYE annualisation for partial month</div>
+        <div class="we-row" style="font-size:12px;color:var(--gray-600);padding:4px 10px;background:var(--gray-50);border-radius:4px;margin-bottom:4px;">
+          <span>Annualised = prorated_taxable ÷ period_fraction where period_fraction = 12 / 22 × 12 active days ÷ 31...</span>
+        </div>
+        <div class="we-row" style="font-size:11px;color:var(--blue-700);padding:4px 10px;background:var(--blue-100);border-radius:4px;">
+          <span>ℹ️ period_context.py computes annualisation_factor = calendar_days_in_period / active_calendar_days. For a partial-month hire, this factor ensures PAYE isn't over-stated relative to a full year's income.</span>
+        </div>
+      </div>
+    </div>
+
+    <hr style="margin:32px 0; border:none; border-top:1px solid var(--gray-200);" />
+
+    <h2>Example 3 — PAYE_ONLY benefit in kind</h2>
+    <p><strong>Scenario:</strong> Employee receives a company car valued at ₦50,000/month as a taxable benefit in kind. This is entered as a PAYE_ONLY payroll input — it increases tax liability but does not increase take-home pay.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Line</th><th>Value</th><th>In GROSS?</th><th>In TAXABLE INCOME?</th><th>In NET?</th></tr></thead>
+      <tbody>
+        <tr><td>Gross Pay (salary)</td><td>₦324,545</td><td>✅</td><td>✅</td><td>✅ (basis)</td></tr>
+        <tr><td>Car benefit (PAYE_ONLY input)</td><td>₦50,000</td><td>❌</td><td>✅ added at priority 95</td><td>❌</td></tr>
+        <tr><td>Taxable income used for PAYE</td><td>₦343,945</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>PAYE (on higher taxable income)</td><td>−₦57,350</td><td>—</td><td>—</td><td>deducted</td></tr>
+        <tr><td><strong>Net Pay</strong></td><td><strong>₦253,395</strong></td><td>—</td><td>—</td><td>✅</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--amber-700);">⚠️ The employee pays more PAYE but receives the same gross salary as if the benefit didn't exist. Auditors and operators comparing gross + deductions may see an apparent mismatch — this is by design and legally correct for benefits in kind.</p>
+  </section>
+
+  <!-- ── INPUTS ── -->
+  <section id="sec-inputs" class="section">
+    <div class="section-label">02 — Inputs</div>
+    <h1>Inputs</h1>
+    <p class="lead">Every field the execution pipeline depends on, its source, and what happens if it is absent or malformed.</p>
+
+    <h2>Run-level inputs (provided by API handler)</h2>
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Type</th><th>Req</th><th>Source</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">payroll_run_id</td><td>UUID</td><td class="required">R</td><td>Generated at DRAFT creation</td><td>Frozen at creation; all subsequent operations use this ID</td></tr>
+        <tr><td class="mono">workspace_id</td><td>UUID</td><td class="required">R</td><td>Route parameter</td><td>All DB queries scoped to this; cross-tenant guard</td></tr>
+        <tr><td class="mono">period_start / period_end</td><td>ISO date string</td><td class="required">R</td><td>Pay cycle + operator selection</td><td>Frozen in run snapshot. Determines annualization factor and working day count</td></tr>
+        <tr><td class="mono">tax_bands</td><td>list[{lower, upper, rate}]</td><td class="required">R</td><td>statutory_rule table, effective at period</td><td>Must be sorted ascending before use. If empty list, PAYE = 0</td></tr>
+        <tr><td class="mono">component_metadata</td><td>list[ComponentMeta]</td><td class="required">R</td><td>client_component_metadata snapshot</td><td>Determines execution_priority, calculation_method, proration_strategy per component. Frozen at run start — live table changes do not affect running run</td></tr>
+        <tr><td class="mono">payroll_rules</td><td>list[PayrollRule]</td><td class="optional">O</td><td>payroll_rule table, workspace-scoped</td><td>Only active rules included. Absence = no OT/bonus/absence rules applied</td></tr>
+        <tr><td class="mono">rules_context_snapshot</td><td>dict</td><td class="optional">O</td><td>Frozen at DRAFT creation</td><td>Contains historical_rule_sets and historical_period_contexts for temporal resolution. Absence disables cross-period rate lookup</td></tr>
+        <tr><td class="mono">public_holidays_snapshot</td><td>list[date]</td><td class="optional">O</td><td>Snapshot at run approval</td><td>Used for expected_hours/expected_days calculation. Absence = no PH adjustment to working days</td></tr>
+        <tr><td class="mono">performed_by</td><td>string</td><td class="required">R</td><td>X-Performed-By header (defaults to "admin@internal")</td><td class="sev sev-high">⚠ Frontend does not send this header yet — all audit logs show "admin@internal"</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Per-employee inputs (resolved at run time)</h2>
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Source</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">salary_components</td><td>salary_definition.components_jsonb, frozen at run start</td><td>BASIC, HOUSING, TRANSPORT, UTILITY, etc. All Decimal. Prorated for mid-period hires before rule evaluation</td></tr>
+        <tr><td class="mono">employee_inputs</td><td>payroll_input rows claimed at run start</td><td>Keyed by input_code. Values are lists of {quantity, reference_date} events. Used by rule_evaluator for OT, absences, bonuses, rent relief</td></tr>
+        <tr><td class="mono">proration_factor</td><td>Computed from contract start/end vs period</td><td>1.0 for full-period employees. &lt;1.0 for mid-period hires/terminations. Applied to salary_components BEFORE rule evaluation</td></tr>
+        <tr><td class="mono">shift_type</td><td>employee_contract.shift_type</td><td>Gates shift-based OT rules. NULL or "DAY" = no shift allowance. Must be "2_SHIFT" or "4_SHIFT" to activate shift rules</td></tr>
+        <tr><td class="mono">is_union_member</td><td>employee_contract.is_union_member</td><td>Gates check-off dues deduction (percentage_of_sum rule). Must be true for deduction to apply</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn for-architect">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-text">
+        <strong>Two employee list SQL queries exist.</strong> <code>workspace.py::list_employees</code> has its own inline SQL
+        separate from <code>employee_repo.py::get_employees_with_contracts</code>. When adding fields to the employee response,
+        both must be updated. A field added to only one will return <code>null</code> from the other.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── OUTPUTS ── -->
+  <section id="sec-outputs" class="section">
+    <div class="section-label">03 — Outputs</div>
+    <h1>Outputs</h1>
+    <p class="lead">What the pipeline produces, where it goes, and what each field promises to downstream consumers.</p>
+
+    <h2>Per-employee result</h2>
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">gross_pay</td><td>Decimal</td><td>Sum of all earning components with class "earning". Does NOT include non_taxable or paye_addition components</td></tr>
+        <tr><td class="mono">taxable_income</td><td>Decimal</td><td>gross_pay + paye_only_additions − pension_employee − rent_relief. Base for PAYE calculation</td></tr>
+        <tr><td class="mono">total_deductions</td><td>Decimal</td><td>Sum of all statutory_deduction components (PAYE, pension, NHF, health, dev levy, check-off)</td></tr>
+        <tr><td class="mono">net_pay</td><td>Decimal</td><td>gross_pay + non_taxable_components − total_deductions. What the employee receives</td></tr>
+        <tr><td class="mono">component_trace_jsonb</td><td>JSON array</td><td>Ordered list of {component, method, result} for every component executed. Used for payslip detail and audit</td></tr>
+        <tr><td class="mono">status</td><td>SUCCESS | FAILED</td><td>SUCCESS guarantees net_pay and component_trace_jsonb are populated. FAILED means an exception was caught — employee can be retried</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Run-level aggregates</h2>
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">total_gross</td><td>Sum of gross_pay across all SUCCESS employees</td></tr>
+        <tr><td class="mono">total_deductions</td><td>Sum of deductions across all SUCCESS employees</td></tr>
+        <tr><td class="mono">total_net</td><td>Sum of net_pay across all SUCCESS employees. Used in reconciliation</td></tr>
+        <tr><td class="mono">employee_count</td><td>Count of employees with status = SUCCESS</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info for-auditor">
+      <div class="callout-icon">🔍</div>
+      <div class="callout-text">
+        <strong>Auditor note:</strong> <code>component_trace_jsonb</code> records every calculation step. However,
+        the <code>_rule_trace</code> from <code>apply_payroll_rules()</code> is currently discarded (not merged into
+        <code>component_trace_jsonb</code>). Rule evaluation outcomes — which OT rules fired, why they were skipped —
+        are unverifiable from the DB. This is Track N item N1, pending arch-council.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FLOW ── -->
+  <section id="sec-flow" class="section">
+    <div class="section-label">04 — Execution Flow</div>
+    <h1>Execution Flow</h1>
+    <p class="lead">The complete sequence from API call to persisted result, showing where each layer hands off to the next.</p>
+
+    <div class="flow-diagram">
+      <svg viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <!-- Lane backgrounds -->
+        <rect x="0" y="40" width="760" height="80" fill="#f9fafb" rx="0"/>
+        <rect x="0" y="120" width="760" height="80" fill="#eef2ff" rx="0"/>
+        <rect x="0" y="200" width="760" height="80" fill="#f0fdf4" rx="0"/>
+        <rect x="0" y="280" width="760" height="80" fill="#fffbeb" rx="0"/>
+        <rect x="0" y="360" width="760" height="60" fill="#fef2f2" rx="0"/>
+
+        <!-- Lane labels -->
+        <text x="8" y="85" font-size="10" font-weight="700" fill="#6b7280" font-family="sans-serif">API LAYER</text>
+        <text x="8" y="165" font-size="10" font-weight="700" fill="#4f46e5" font-family="sans-serif">APP SERVICE</text>
+        <text x="8" y="245" font-size="10" font-weight="700" fill="#15803d" font-family="sans-serif">RULE EVALUATOR</text>
+        <text x="8" y="325" font-size="10" font-weight="700" fill="#b45309" font-family="sans-serif">SEQ EXECUTOR</text>
+        <text x="8" y="395" font-size="10" font-weight="700" fill="#b91c1c" font-family="sans-serif">INFRA / DB</text>
+
+        <!-- Nodes -->
+        <!-- API Handler -->
+        <rect x="90" y="52" width="130" height="52" rx="6" fill="white" stroke="#e5e7eb" stroke-width="1.5"/>
+        <text x="155" y="73" text-anchor="middle" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">POST /run-payroll</text>
+        <text x="155" y="88" text-anchor="middle" font-size="10" fill="#6b7280" font-family="sans-serif">Validates + fetches context</text>
+        <text x="155" y="100" text-anchor="middle" font-size="9" fill="#4f46e5" font-family="sans-serif">payroll.py</text>
+
+        <!-- Run Service -->
+        <rect x="270" y="132" width="130" height="52" rx="6" fill="white" stroke="#c7d2fe" stroke-width="1.5"/>
+        <text x="335" y="153" text-anchor="middle" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">run_service</text>
+        <text x="335" y="168" text-anchor="middle" font-size="10" fill="#6b7280" font-family="sans-serif">Orchestrates + traces</text>
+        <text x="335" y="180" text-anchor="middle" font-size="9" fill="#4f46e5" font-family="sans-serif">payroll_run_service.py</text>
+
+        <!-- Rule Evaluator -->
+        <rect x="450" y="212" width="130" height="52" rx="6" fill="white" stroke="#86efac" stroke-width="1.5"/>
+        <text x="515" y="233" text-anchor="middle" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">rule_evaluator</text>
+        <text x="515" y="248" text-anchor="middle" font-size="10" fill="#6b7280" font-family="sans-serif">OT · absence · bonus</text>
+        <text x="515" y="260" text-anchor="middle" font-size="9" fill="#4f46e5" font-family="sans-serif">rule_evaluator.py</text>
+
+        <!-- Sequential Executor -->
+        <rect x="450" y="292" width="130" height="52" rx="6" fill="white" stroke="#fcd34d" stroke-width="1.5"/>
+        <text x="515" y="313" text-anchor="middle" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">seq_executor</text>
+        <text x="515" y="328" text-anchor="middle" font-size="10" fill="#6b7280" font-family="sans-serif">PAYE · pension · NHF</text>
+        <text x="515" y="340" text-anchor="middle" font-size="9" fill="#4f46e5" font-family="sans-serif">sequential_executor.py</text>
+
+        <!-- Persister -->
+        <rect x="630" y="372" width="115" height="40" rx="6" fill="white" stroke="#fca5a5" stroke-width="1.5"/>
+        <text x="687" y="388" text-anchor="middle" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">persist results</text>
+        <text x="687" y="403" text-anchor="middle" font-size="9" fill="#4f46e5" font-family="sans-serif">payroll_run_persister.py</text>
+
+        <!-- Arrows -->
+        <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#9ca3af"/></marker></defs>
+
+        <!-- API → Run Service -->
+        <path d="M155,104 L155,120 L335,120 L335,132" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="245" y="117" font-size="9" fill="#6b7280" font-family="sans-serif">snapshot context</text>
+
+        <!-- Run Service → Rule Evaluator -->
+        <path d="M400,158 L400,238 L450,238" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="405" y="208" font-size="9" fill="#6b7280" font-family="sans-serif">salary_components</text>
+
+        <!-- Rule Evaluator → Sequential Executor -->
+        <path d="M515,264 L515,292" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="520" y="283" font-size="9" fill="#6b7280" font-family="sans-serif">modified components</text>
+
+        <!-- Sequential Executor → Persister -->
+        <path d="M580,318 L630,318 L630,372 L630,392" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="595" y="360" font-size="9" fill="#6b7280" font-family="sans-serif">results + trace</text>
+
+        <!-- Steps callout -->
+        <text x="90" y="30" font-size="11" font-weight="700" fill="#374151" font-family="sans-serif">Execution sequence (per employee):</text>
+        <text x="90" y="16" font-size="10" fill="#9ca3af" font-family="sans-serif">① Prorate salary → ② Apply workspace rules → ③ Run statutory pipeline → ④ Persist</text>
+      </svg>
+    </div>
+
+    <h2>Component execution priority chain</h2>
+    <p>The sequential executor runs components in this strict order. Each stage can only read values set by earlier stages.</p>
+
+    <div class="priority-chain">
+      <div class="pc-row">
+        <div class="pc-priority">10–40</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-earnings">
+          Base Salary Components
+          <div class="pc-items">BASIC · HOUSING · TRANSPORT · UTILITY (prorated before this stage)</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">50</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-rules">
+          Workspace Rule Injections
+          <div class="pc-items">OT earnings · absence deductions · bonuses · shift allowances (from rule_evaluator output)</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">95</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-rules" style="background:#eff6ff;border-color:#bfdbfe;">
+          PAYE_ONLY Additions
+          <div class="pc-items">Benefits in kind · notional taxable benefits (car, housing BIK) — adds to TAXABLE_INCOME only</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">100</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-gross">
+          GROSS_PAY aggregation
+          <div class="pc-items">Sum of all 'earning' class components (10–50). Excludes non_taxable and paye_addition components.</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">200–300</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-deduct">
+          Statutory Deductions
+          <div class="pc-items">Pension employee (8%) · NHF (2.5% of basic) · Health Insurance · Development Levy · Check-off Dues</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">400</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-paye">
+          PAYE (cumulative annual method)
+          <div class="pc-items">taxable_income = GROSS − pension − NHF − rent_relief; annualised; tax bands applied; ÷ 12</div>
+        </div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority"></div>
+        <div class="pc-arrow" style="color:var(--gray-200);">↓</div>
+        <div style="flex:1;"></div>
+      </div>
+      <div class="pc-row">
+        <div class="pc-priority">500</div>
+        <div class="pc-arrow"></div>
+        <div class="pc-box pc-net">
+          NET_PAY
+          <div class="pc-items">GROSS + non_taxable_components − total_deductions (pension + NHF + health + levy + PAYE)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn for-architect">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-text">
+        <strong>Order is load-bearing.</strong> Deductions at priority 200–300 read <code>GROSS_PAY</code> (set at 100). PAYE at priority 400 reads <code>pension</code> (set at 200). Any change to component priorities or evaluation order can silently produce wrong net pay with no exception thrown.
+      </div>
+    </div>
+
+    <h2>Step-by-step sequence</h2>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Step</th><th>Where</th><th>Key behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Create DRAFT run + freeze snapshot</td><td>API handler → DB</td><td>Snapshot (rules, statutory rates, component metadata) written once. DB trigger makes it immutable immediately</td></tr>
+        <tr><td>2</td><td>Compute period context</td><td>Run service</td><td>Working days, calendar days, annualization factor, PH dates calculated. Stored in run trace header</td></tr>
+        <tr><td>3</td><td>Prorate salary components</td><td>Run service (per employee)</td><td>factor = working_days_active / period_working_days. Applied to each component individually using configured proration_strategy (work_days / calendar_days / fixed_30)</td></tr>
+        <tr><td>4</td><td>Apply workspace rules</td><td>rule_evaluator (per employee)</td><td>OT, absence deductions, bonuses computed from employee_inputs. Modifies salary_components before statutory deductions. Returns modified components + _rule_trace</td></tr>
+        <tr><td>5</td><td>Run statutory pipeline</td><td>sequential_executor (per employee)</td><td>Components executed in priority order: 10–40 (base earnings), 50 (rule-injected), 100 (GROSS_PAY), 200–500 (deductions/PAYE/net)</td></tr>
+        <tr><td>6</td><td>Collect results + trace</td><td>Run service</td><td>Per-employee results aggregated. component_trace_jsonb stored. Run totals computed</td></tr>
+        <tr><td>7</td><td>Persist to DB</td><td>payroll_run_persister</td><td>Results written transactionally. Audit log + event store entries created. Run status advances to CALCULATED or PARTIAL</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn for-architect">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-text">
+        <strong>Proration fires BEFORE rule evaluation.</strong> This means OT and absence rules in rule_evaluator
+        receive already-prorated salary_components. For mid-period hires: the daily rate used in absence deductions
+        is computed from the prorated base, not the full monthly salary. This is the correct sequencing (fixed in
+        Sprint 14) but it means daily rates for partial-month employees are lower than expected if you compare to
+        a non-prorated reference.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STATE MACHINE ── -->
+  <section id="sec-statemachine" class="section">
+    <div class="section-label">05 — State Machine</div>
+    <h1>Payroll Run State Machine</h1>
+    <p class="lead">A payroll run moves through 7 states in strict linear order. No skipping, no reversal.</p>
+
+    <div class="state-machine">
+      <div class="state-node s-draft">DRAFT</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-calculating">CALCULATING</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-partial">PARTIAL ⇌</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-calculated">CALCULATED</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-approved">APPROVED</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-locked">LOCKED</div>
+      <div class="state-arrow">→</div>
+      <div class="state-node s-paid state-terminal">PAID ⛔</div>
+    </div>
+    <p style="font-size:12px;color:var(--gray-400);margin-top:-4px;">⛔ = terminal state. DB trigger prevents any UPDATE after PAID.</p>
+
+    <h2>State semantics and guards</h2>
+    <table class="tbl">
+      <thead><tr><th>State</th><th>What it means</th><th>Allowed next</th><th>Guard</th><th>Exports available</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="state-node s-draft" style="padding:3px 10px;font-size:11px;">DRAFT</span></td>
+          <td>Run created; context snapshot frozen; no execution started</td>
+          <td>CALCULATING</td>
+          <td>—</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-calculating" style="padding:3px 10px;font-size:11px;">CALCULATING</span></td>
+          <td>Engine processing employees; may fail for some</td>
+          <td>CALCULATED, PARTIAL</td>
+          <td>—</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-partial" style="padding:3px 10px;font-size:11px;">PARTIAL</span></td>
+          <td>≥1 employee FAILED; retryable</td>
+          <td>CALCULATED (after retry)</td>
+          <td>Only FAILED employees reprocessed; SUCCESS results never touched</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-calculated" style="padding:3px 10px;font-size:11px;">CALCULATED</span></td>
+          <td>All employees passed; awaiting human approval</td>
+          <td>APPROVED</td>
+          <td>—</td>
+          <td>Payroll detail export</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-approved" style="padding:3px 10px;font-size:11px;">APPROVED</span></td>
+          <td>Authorised; no retry or recalculation possible</td>
+          <td>LOCKED</td>
+          <td>Retry blocked (Python guard). Contract changes blocked (D-ARCH-1)</td>
+          <td>Payroll detail export</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-locked" style="padding:3px 10px;font-size:11px;">LOCKED</span></td>
+          <td>Immutable at Python layer; ready for disbursement</td>
+          <td>PAID</td>
+          <td>Python guard on all mutation routes</td>
+          <td>Bank upload, PAYE remittance, pension schedule</td>
+        </tr>
+        <tr>
+          <td><span class="state-node s-paid state-terminal" style="padding:3px 10px;font-size:11px;">PAID</span></td>
+          <td>Terminal. Disbursed.</td>
+          <td>None</td>
+          <td><strong>DB trigger</strong> <code>trg_prevent_paid_run_update</code> raises exception on any UPDATE</td>
+          <td>All exports</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger for-security">
+      <div class="callout-icon">🔒</div>
+      <div class="callout-text">
+        <strong>Security note:</strong> APPROVED → immutable is enforced at the Python layer (not DB). A direct DB UPDATE
+        bypasses this guard. Only the DB trigger on PAID provides true DB-level immutability. For APPROVED, the Python guard
+        is the only enforcement. Recommend adding a DB CHECK or trigger for APPROVED state in a future hardening sprint.
+      </div>
+    </div>
+
+    <h2>Employee lifecycle states</h2>
+    <table class="tbl">
+      <thead><tr><th>State</th><th>Derivation</th><th>Payroll eligibility</th></tr></thead>
+      <tbody>
+        <tr><td><strong>IN_PAYROLL</strong></td><td>status=ACTIVE + is_enrolled=true + is_ended=false + grade + designation</td><td>✅ Included</td></tr>
+        <tr><td><strong>AWAITING_ENROLLMENT</strong></td><td>status=ACTIVE + is_enrolled=false + is_ended=false</td><td>❌ Excluded (no salary definition)</td></tr>
+        <tr><td><strong>INCOMPLETE</strong></td><td>status=ACTIVE + is_enrolled=true + is_ended=false + missing grade OR designation</td><td>⚠️ Engine may attempt run but key lookup fields absent</td></tr>
+        <tr><td><strong>CONTRACT_ENDED</strong></td><td>is_ended=true (end_date &lt; CURRENT_DATE)</td><td>❌ Excluded</td></tr>
+        <tr><td><strong>DEACTIVATED</strong></td><td>status=INACTIVE + is_ended=false</td><td>❌ Excluded (status guard)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── INVARIANTS ── -->
+  <section id="sec-invariants" class="section">
+    <div class="section-label">06 — Invariants</div>
+    <h1>Invariants</h1>
+    <p class="lead">Rules that must always be true. Breaking any of these produces incorrect financial output, data corruption, or security exposure.</p>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ️</div>
+      <div class="callout-text">Click any column header to sort. <strong>Critical</strong> invariants have no compensating control if broken.</div>
+    </div>
+
+    <table class="tbl" id="inv-table">
+      <thead>
+        <tr>
+          <th class="sort-btn" onclick="sortTable('inv-table',0)">Severity ↕</th>
+          <th class="sort-btn" onclick="sortTable('inv-table',1)">Invariant ↕</th>
+          <th>Consequence if broken</th>
+          <th>Enforced by</th>
+          <th>Verified in</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td>All monetary values use <code>Decimal</code>, never <code>float</code></td>
+          <td>Float rounding drift accumulates across 100+ employees → PAYE remittance wrong by ₦100s–₦1000s per run. Silent — no error thrown.</td>
+          <td>Code convention + CLAUDE.md standing rule</td>
+          <td>All calculation files</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td>Execution priority order: 10–40 (base) → 50 (rules) → 100 (GROSS) → 200–500 (deductions)</td>
+          <td>Deductions computed before GROSS_PAY exists → wrong net. Or OT injected after GROSS already aggregated → OT excluded from gross.</td>
+          <td>sequential_executor component registry</td>
+          <td>sequential_executor.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td>Run snapshot frozen at DRAFT creation; never updated</td>
+          <td>Rule changes after run start affect in-flight calculation → non-deterministic results. Retry produces different output from original run.</td>
+          <td>DB trigger <code>trg_run_snapshot_immutable</code></td>
+          <td>payroll_run_repo.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td><code>payroll_run.status = APPROVED</code> → results immutable</td>
+          <td>Mutation of approved results = financial fraud vector. Approved amounts must match disbursed amounts.</td>
+          <td>Python guard on all mutation routes</td>
+          <td>payroll_approval_service.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-high">High</span></td>
+          <td><code>payroll_reconciliation.status = MATCHED</code> ↔ actual_total == expected_total</td>
+          <td>MATCHED shown to operator when totals differ → false assurance that disbursement is correct.</td>
+          <td>Application convention only (no DB CHECK)</td>
+          <td>reconciliation_repo.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-high">High</span></td>
+          <td><code>employee_contract</code> has no workspace_id — always scope via <code>employee.workspace_id</code> JOIN</td>
+          <td>Contract query without workspace scope can read another tenant's contract data.</td>
+          <td>Repository convention; verified in all repo functions</td>
+          <td>employee_repo.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-high">High</span></td>
+          <td>Proration applied BEFORE rule evaluation (not after)</td>
+          <td>Daily rate deduction uses full-month base → overstates deduction for mid-period hires. Fixed in Sprint 14; any reordering re-introduces the bug.</td>
+          <td>Sequential ordering in run_executor.py</td>
+          <td>run_executor.py</td>
+        </tr>
+        <tr>
+          <td><span class="sev sev-low">Low</span></td>
+          <td>Input events without reference_date treated as current period</td>
+          <td>Historical rate NOT applied for the event → uses current rate regardless of when the event occurred. Acceptable for current-period events; incorrect for retroactive inputs.</td>
+          <td>rule_evaluator._to_events() convention</td>
+          <td>rule_evaluator.py</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── EDGE CASES ── -->
+  <section id="sec-edgecases" class="section">
+    <div class="section-label">07 — Edge Cases</div>
+    <h1>Edge Cases</h1>
+    <p class="lead">Hidden scenarios that produce unexpected behaviour. Each case is verified against the actual source code.</p>
+
+    <!-- EC-1 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">1</div>
+        <div class="ec-title">INACTIVE employee with live enrolled contract</div>
+        <span class="persona-tag pt-operator">Operator</span>
+        <span class="sev sev-high ec-risk">High</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Employee manually set to INACTIVE</span>
+employee.status = <span class="string">'INACTIVE'</span>
+employee_contract.end_date = <span class="keyword">NULL</span>  <span class="comment"># still open</span>
+employee_contract.salary_definition_id = <span class="string">'&lt;uuid&gt;'</span>  <span class="comment"># enrolled</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>Employee is <strong>excluded from payroll runs</strong> — the engine checks <code>WHERE status = 'ACTIVE'</code>. The contract row exists but is unused.</p>
+            <p>On the Employees page, this employee appears in the "Deactivated" sub-section (not in payroll groups). An AlertBanner warns the operator if they have a live contract.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> An operator on suspension/maternity leave may be INACTIVE intentionally. If the operator re-activates the employee mid-period without adjusting contract dates, the employee enters payroll immediately with a full-month salary (no proration for the INACTIVE period). Payroll for the weeks they were inactive is unintentionally included.</p>
+          <p><strong>Mitigation:</strong> The AlertBanner on the Employees page surfaces this state. The operator must manually set the correct contract_start or end the current contract and create a new one when re-activating. <em>Garden leave and suspension scenarios are not yet modelled — end_date must be set to the last date salary is paid.</em></p>
+          <div class="code-file">Enforced at: backend/api/routes/payroll.py:735 (status = 'ACTIVE' guard)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-2 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">2</div>
+        <div class="ec-title">Ended contract with orphaned payroll_input rows</div>
+        <span class="persona-tag pt-operator">Operator</span>
+        <span class="sev sev-high ec-risk">High</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block">contract.end_date = <span class="string">'2026-02-28'</span>
+payroll_input rows exist for March 2026
+period_start = <span class="string">'2026-03-01'</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>Employee excluded from the run (contract end &lt; period_start). The payroll_input rows remain in the database, unclaimed.</p>
+            <p>They are surfaced in the "deactivated_with_inputs" count visible on the PayrollResults page banner.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> OT hours, bonuses, or manually entered amounts for the employee are silently ignored. Operator may not notice until they compare payslips to the timesheet.</p>
+          <p><strong>Mitigation:</strong> The readiness check surfaces a count. The operator should delete the orphaned inputs manually before closing the period. No automatic cleanup exists.</p>
+          <div class="code-file">Surfaced at: backend/api/routes/payroll_input.py:270–317</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-3 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">3</div>
+        <div class="ec-title">contract_start before salary_definition.effective_from</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="persona-tag pt-security">Security</span>
+        <span class="sev sev-info ec-risk">Guarded</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block">salary_definition.effective_from = <span class="string">'2026-02-01'</span>
+payload.contract_start = <span class="string">'2026-01-15'</span>  <span class="comment"># before effective_from</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>422 error returned: <em>"Salary definition 'X' is not effective until 2026-02-01 — cannot use for a contract starting 2026-01-15"</em></p>
+            <p>Guard exists at the API boundary in both <code>workspace.py::create_employee</code> and <code>employees.py::add_contract</code>.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Remaining risk:</strong> The guard is only at the API layer. If salary_definitions are created retroactively in the DB (direct INSERT), the payroll engine will encounter a contract whose period precedes the salary definition — the engine's behaviour is undefined in this case (it uses whatever is in the frozen snapshot, which may be empty).</p>
+          <p><strong>Mitigation:</strong> API guard covers all legitimate paths. DB-level CHECK constraint (effective_from on salary_definition as a partial index) would close the direct-DB path — not yet implemented.</p>
+          <div class="code-file">Guard at: backend/api/routes/workspace.py:304–314, employees.py:54–74</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-4 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">4</div>
+        <div class="ec-title">ITF threshold races the year boundary</div>
+        <span class="persona-tag pt-auditor">Auditor</span>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="sev sev-high ec-risk">High</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Running January payroll on Dec 31</span>
+period_end = <span class="string">'2027-01-31'</span>  <span class="comment"># new year</span>
+<span class="comment"># ITF YTD query uses EXTRACT(YEAR FROM period_end)</span>
+<span class="comment"># Returns 2027 — YTD sum = ₦0 (no 2027 APPROVED runs yet)</span>
+<span class="comment"># ITF threshold not met → employer skips ITF this run</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>ITF YTD query filters <code>EXTRACT(YEAR FROM period_end) = EXTRACT(YEAR FROM :period_end)</code>. On the first run of a new calendar year, YTD = ₦0 and employee count from the prior year is not included.</p>
+            <p>ITF threshold check may fail even if the organisation was well above ₦50M annual payroll in the prior year.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> ITF employer cost (1% of BASIC + HOUSING + TRANSPORT) is incorrectly skipped in the first payroll run of a new calendar year, understating employer cost obligations. Auditors checking ITF contributions will see a January gap.</p>
+          <p><strong>Mitigation:</strong> Currently unmitigated. Fix: use a rolling 12-month window rather than calendar year, or seed a YTD carry-forward record at year-start. Logged as a future improvement item.</p>
+          <div class="code-file">Query at: backend/api/routes/payroll.py:739–753</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-5 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">5</div>
+        <div class="ec-title">Two workspace rules injecting the same component name</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="persona-tag pt-auditor">Auditor</span>
+        <span class="sev sev-high ec-risk">High</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Two active payroll rules, same rule_name</span>
+rule_1 = {<span class="string">"rule_name"</span>: <span class="string">"OVERTIME_HOURS"</span>, ...}
+rule_2 = {<span class="string">"rule_name"</span>: <span class="string">"OVERTIME_HOURS"</span>, ...}
+<span class="comment"># Both apply_payroll_rules() and sequential_executor</span>
+<span class="comment"># use dict — last write wins, no error, no warning</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>The second rule silently overwrites the first in <code>salary_components</code> dict. No exception is thrown. The trace will show both rules as "applied" but only the second amount persists.</p>
+            <p>The first rule's amount is lost with no indication in the output.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> OT or bonus amounts silently halved or replaced. An operator configuring rules via the UI could accidentally create two rules with the same output code. There is no uniqueness constraint on <code>rule_name</code> in the payroll_rule table.</p>
+          <p><strong>Mitigation:</strong> Currently no DB-level guard. Mitigation: add UNIQUE constraint on <code>(workspace_id, rule_name)</code> in payroll_rule table (future sprint). The UI should also warn if a duplicate rule_name is detected during rule creation.</p>
+          <div class="code-file">Behaviour in: backend/domain/payroll/rule_evaluator.py (dict overwrite pattern)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-6 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">6</div>
+        <div class="ec-title">Legacy scalar input bypasses temporal rate resolution</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="sev sev-info ec-risk">Low (legacy path)</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Old callers pass a bare number, not a list of events</span>
+employee_inputs = {<span class="string">"OT_HOURS"</span>: <span class="number">8.0</span>}  <span class="comment"># scalar</span>
+<span class="comment"># _to_events() normalises to:</span>
+<span class="comment"># [{quantity: 8.0, reference_date: None}]</span>
+<span class="comment"># reference_date=None → uses CURRENT rule, not historical</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>The scalar is normalised into a single event with <code>reference_date=None</code>. The temporal resolution logic skips historical lookup for null reference dates and uses the current rule set.</p>
+            <p>If the OT rate changed mid-period, this input gets the current rate, not the rate that was effective when the OT occurred.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> Only affects retroactive or mid-period inputs passed via old code paths (bulk upload legacy format, simulation scripts). The production API path always sends events with reference_date. Low risk for live runs; high risk for back-pay calculations using the simulate script.</p>
+          <p><strong>Mitigation:</strong> Migrate all callers to the event format <code>[{quantity, reference_date}]</code>. Simulation script still uses the legacy format — see Track Q item Q3.</p>
+          <div class="code-file">Normalisation at: backend/domain/payroll/rule_evaluator.py::_to_events()</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-7 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">7</div>
+        <div class="ec-title">Daily rate deduction on a zero-working-day period</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="sev sev-info ec-risk">Handled (silent skip)</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Pay period with zero working days</span>
+<span class="comment"># (suspension, all-PH month, misconfiguration)</span>
+working_days = <span class="number">0</span>
+proration_strategy = <span class="string">"work_days"</span>
+<span class="comment"># divisor = 0 → would cause ZeroDivisionError</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>The rule_evaluator's daily_rate_deduction handler detects the zero divisor and silently skips the deduction for affected components. No exception is raised. A trace entry is written with <code>status="not_applied"</code> and <code>note="zero divisor for strategy work_days"</code>.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> If a period genuinely has 0 working days (e.g. a national holiday falls on every working day), absence deductions are skipped and employees receive full pay. This is arguably correct for a zero-working-day period, but if it's a data error (wrong working_days_override), the operator gets no visible warning that deductions were skipped.</p>
+          <p><strong>Mitigation:</strong> The trace entry is visible in the component trace. A pre-flight check warning for zero working_days would surface this earlier. Not yet implemented.</p>
+          <div class="code-file">Guard at: backend/domain/payroll/rule_evaluator.py (daily_rate_deduction handler)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-8 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">8</div>
+        <div class="ec-title">PAYE_ONLY input adds to taxable income but not gross or net</div>
+        <span class="persona-tag pt-operator">Operator</span>
+        <span class="persona-tag pt-auditor">Auditor</span>
+        <span class="sev sev-info ec-risk">By design — confusing</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># LTA, non-cash benefit, notional benefit in kind</span>
+payroll_input.input_category = <span class="string">'PAYE_ONLY'</span>
+<span class="comment"># Flows into TAXABLE_INCOME only</span>
+<span class="comment"># Does NOT increase GROSS_PAY</span>
+<span class="comment"># Does NOT increase NET_PAY</span>
+<span class="comment"># DOES increase PAYE deduction</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>The amount is added to TAXABLE_INCOME at priority 95 (PAYE_ONLY_ADDITIONS component). GROSS_PAY and NET_PAY are not affected. PAYE is computed on the higher taxable income, so the employee pays more PAYE but receives the same net pay.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> Operators and auditors comparing the payslip may notice that gross + deductions ≠ net in the expected way. The PAYE_ONLY amount increases PAYE but the "income" that caused it is not visible in gross pay. Payslips need a dedicated line for PAYE_ONLY additions to make this transparent.</p>
+          <p><strong>This is correct legal treatment</strong> for non-cash benefits in Nigeria (e.g. LTA, housing allowance classified as benefit-in-kind). The confusion is a communication problem, not a calculation bug.</p>
+          <p><strong>Mitigation:</strong> Payslip template (when built) must include a "Benefits in Kind" section showing PAYE_ONLY amounts separately from gross earnings.</p>
+          <div class="code-file">Handled at: sequential_executor.py priority 95 (_handle_paye_only_additions)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-9 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">9</div>
+        <div class="ec-title">PARTIAL run retried after salary definition change</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="persona-tag pt-auditor">Auditor</span>
+        <span class="sev sev-info ec-risk">By design — safe</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Run created (snapshot frozen)</span>
+<span class="comment"># 3 employees FAILED → PARTIAL</span>
+<span class="comment"># Operator edits salary definition components</span>
+<span class="comment"># Operator retries FAILED employees</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p>The retry uses the <strong>frozen snapshot</strong> from the original DRAFT creation, not the live salary definition. The edited salary definition has no effect on this run. The 3 failed employees are retried with the original component amounts.</p>
+            <p>The edit-lock (D-ARCH-1) also blocks salary definition changes while the run is in APPROVED or later states.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>This is the correct and safe behaviour.</strong> The snapshot freeze guarantees that all employees in the same run use the same component definitions, regardless of how many retries are needed. Without this invariant, employees processed in the first pass and employees retried later could use different salary amounts within the same run.</p>
+          <p><strong>Operator communication:</strong> If the operator genuinely needs the salary definition change to take effect, they must cancel the current run and create a new DRAFT. The UI should make this clear.</p>
+          <div class="code-file">Snapshot frozen at: payroll_run_repo.py::create_draft_payroll_run()</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EC-10 -->
+    <div class="ec-card" onclick="toggleEc(this)">
+      <div class="ec-header">
+        <div class="ec-num">10</div>
+        <div class="ec-title">Contract amendment while run is in CALCULATING state</div>
+        <span class="persona-tag pt-architect">Architect</span>
+        <span class="persona-tag pt-security">Security</span>
+        <span class="sev sev-high ec-risk">Gap — not fully guarded</span>
+        <div class="ec-chevron">▼</div>
+      </div>
+      <div class="ec-body">
+        <div class="ec-grid">
+          <div class="ec-cell">
+            <div class="ec-cell-label">Setup</div>
+            <div class="code-block"><span class="comment"># Run transitions to CALCULATING</span>
+<span class="comment"># D-ARCH-1 active run guard checks:</span>
+status IN (<span class="string">'SUBMITTED'</span>, <span class="string">'PROCESSING'</span>,
+           <span class="string">'CALCULATED'</span>, <span class="string">'PARTIAL'</span>, <span class="string">'APPROVED'</span>)
+<span class="comment"># CALCULATING is NOT in this list</span>
+<span class="comment"># → contract amendment may be possible mid-run</span></div>
+          </div>
+          <div class="ec-cell">
+            <div class="ec-cell-label">Current Behaviour</div>
+            <p><code>CALCULATING</code> is not in the D-ARCH-1 guard list. <code>SUBMITTED</code> and <code>PROCESSING</code> appear to be legacy state names not present in the current state machine enum. In practice, the CALCULATING window is very short (&lt;10s for most runs), but the gap exists.</p>
+          </div>
+        </div>
+        <div class="ec-cell-full">
+          <div class="ec-cell-label">Risk &amp; Mitigation</div>
+          <p><strong>Risk:</strong> An operator could theoretically change a contract (grade, salary definition) while a run is mid-calculation. Since the snapshot is frozen, the calculation itself is unaffected — but the DB state after the run completes will show the amended contract alongside the run that used the previous values, creating an audit mismatch.</p>
+          <p><strong>Mitigation:</strong> Add <code>'CALCULATING'</code> to the D-ARCH-1 guard list in <code>employees.py:46</code>. Also verify whether <code>SUBMITTED</code> and <code>PROCESSING</code> are live states or legacy references that can be removed.</p>
+          <div class="code-file">Guard at: backend/api/routes/employees.py:46</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FAILURE MODES ── -->
+  <section id="sec-failuremodes" class="section">
+    <div class="section-label">08 — Failure Modes</div>
+    <h1>Failure Modes</h1>
+    <p class="lead">What breaks, what the operator sees, and how to recover.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Failure</th><th>Operator sees</th><th>Root cause</th><th>Recovery</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Employee status = FAILED in run</strong></td>
+          <td>Run moves to PARTIAL state. Failed employees shown with error icon in PayrollResults.</td>
+          <td>Exception raised in domain pipeline for that employee (missing statutory rate, invalid component, divide-by-zero)</td>
+          <td>Fix root cause (check employee contract, inputs, salary definition). Retry via Retry button — only FAILED employees reprocessed.</td>
+        </tr>
+        <tr>
+          <td><strong>Run stuck in CALCULATING</strong></td>
+          <td>Run stays in CALCULATING indefinitely. No progress indicator after several minutes.</td>
+          <td>Unhandled exception in batch processor crashed the thread before status was updated</td>
+          <td>Check server logs for traceback. Manually advance run status or cancel and re-run. Requires DB access.</td>
+        </tr>
+        <tr>
+          <td><strong>PAYE remittance total doesn't match bank upload</strong></td>
+          <td>Reconciliation shows MISMATCH</td>
+          <td>Non-cash benefit (PAYE_ONLY) increases PAYE without increasing net. Bank upload uses net_pay; remittance uses PAYE. Both are correct but the maths looks inconsistent to an external reviewer.</td>
+          <td>Explain PAYE_ONLY additions to the reviewer. Both figures are correct. Close as RESOLVED with a note.</td>
+        </tr>
+        <tr>
+          <td><strong>Employee missing from run results</strong></td>
+          <td>Employee not in PayrollResults list</td>
+          <td>Employee INACTIVE, contract ended before period_start, or not enrolled (salary_definition_id NULL)</td>
+          <td>Check employee lifecycle state on Employees page. Enroll employee or restore contract dates, then create a new run.</td>
+        </tr>
+        <tr>
+          <td><strong>Net pay negative for an employee</strong></td>
+          <td>net_pay shows negative number in results</td>
+          <td>Deductions exceed gross (large absence deduction + all statutory deductions) for a low-salary employee with many absent days. No floor guard on net_pay.</td>
+          <td>Review the employee's absence inputs. Absence quantity may be data entry error. Correct inputs and retry.</td>
+        </tr>
+        <tr>
+          <td><strong>Exports not available (buttons greyed)</strong></td>
+          <td>"Export" buttons disabled on PayrollResults</td>
+          <td>Run has not reached LOCKED or PAID state. Bank upload / PAYE / pension exports only available after LOCKED.</td>
+          <td>Approve the run and then lock it to enable exports.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── DATA CONTRACTS ── -->
+  <section id="sec-datacontracts" class="section">
+    <div class="section-label">09 — Data Contracts</div>
+    <h1>Data Contracts</h1>
+    <p class="lead">Fields whose value carries a semantic promise that downstream code relies on. Changing the meaning of these values breaks consumers silently.</p>
+
+    <div class="callout callout-danger for-architect">
+      <div class="callout-icon">⛔</div>
+      <div class="callout-text">
+        <strong>Never overload an existing value with new meaning.</strong> New behaviour requires a new enum value.
+        The RC5 lesson: changing MATCHED to include operator-resolved mismatches would have silently broken all
+        reconciliation consumers. A new RESOLVED status was introduced instead.
+      </div>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Table</th><th>Value</th><th>Semantic promise</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">status = 'MATCHED'</td><td>payroll_reconciliation</td><td>MATCHED</td><td>actual_total == expected_total. Always. If they differ, status must be MISMATCH or RESOLVED, never MATCHED.</td></tr>
+        <tr><td class="mono">status = 'RESOLVED'</td><td>payroll_reconciliation</td><td>RESOLVED</td><td>Operator closed a MISMATCH. Totals may differ. This is the only case where a non-matching reconciliation can be closed.</td></tr>
+        <tr><td class="mono">status = 'SUCCESS'</td><td>payroll_result</td><td>SUCCESS</td><td>net_pay and component_trace_jsonb are populated and correct. Any consumer of these fields must first check status = 'SUCCESS'.</td></tr>
+        <tr><td class="mono">status = 'APPROVED'</td><td>payroll_run</td><td>APPROVED</td><td>Results are immutable. No employee result can be modified after this state. Financial audit relies on this.</td></tr>
+        <tr><td class="mono">salary_definition_id IS NOT NULL</td><td>employee_contract</td><td>non-null</td><td>Employee is enrolled in payroll. is_enrolled=true is derived from this. Engine includes employee in runs only when this is non-null.</td></tr>
+        <tr><td class="mono">end_date</td><td>employee_contract</td><td>date</td><td>Inclusive last paid day. Payroll engine prorates to this date: active_to = min(period_end, end_date). Must NOT be set to last physical working day if different from last paid day (garden leave, notice buy-out).</td></tr>
+        <tr><td class="mono">input_category = 'PAYE_ONLY'</td><td>payroll_input</td><td>PAYE_ONLY</td><td>Amount flows into TAXABLE_INCOME only. Never into GROSS_PAY or NET_PAY. Never claimed by standard link_inputs_to_run path (uses separate accumulator at priority 95).</td></tr>
+        <tr><td class="mono">component_class = 'non_taxable'</td><td>client_component_metadata</td><td>non_taxable</td><td>Excluded from GROSS_PAY and taxable income. Included in NET_PAY. Cannot have is_pensionable=true. Cannot be injected via payroll rules.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── AUDIT TRAIL ── -->
+  <section id="sec-audit" class="section">
+    <div class="section-label">10 — Audit Trail</div>
+    <h1>Audit Trail</h1>
+    <p class="lead">What gets logged, where it lives, and what questions each log answers.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Log entry</th><th>Table / Location</th><th>Written when</th><th>Answers</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>State transition</strong></td>
+          <td>audit_log</td>
+          <td>Every DRAFT→CALCULATING→APPROVED→LOCKED→PAID transition</td>
+          <td>Who moved this run from state X to Y, and when?</td>
+        </tr>
+        <tr>
+          <td><strong>State event</strong></td>
+          <td>event_store</td>
+          <td>Same as state transition</td>
+          <td>Event stream for downstream integrations (reporting, notifications)</td>
+        </tr>
+        <tr>
+          <td><strong>Execution trace steps</strong></td>
+          <td>execution_trace_step</td>
+          <td>Each named step in ExecutionTracer (pre-warnings, engine start, persist)</td>
+          <td>How long did payroll take? Which step failed? Were there pre-warnings?</td>
+        </tr>
+        <tr>
+          <td><strong>Component trace</strong></td>
+          <td>payroll_result.component_trace_jsonb</td>
+          <td>After each successful employee calculation</td>
+          <td>How was each line on this payslip computed? What was the input and method?</td>
+        </tr>
+        <tr>
+          <td><strong>Run trace header</strong></td>
+          <td>payroll_run.execution_trace_header_jsonb</td>
+          <td>At run creation and execution</td>
+          <td>What period context (working days, PH dates, statutory rule version) was used?</td>
+        </tr>
+        <tr>
+          <td><strong>Rules context snapshot</strong></td>
+          <td>payroll_run.rules_context_snapshot_jsonb</td>
+          <td>At DRAFT creation (frozen)</td>
+          <td>What exact salary definitions, rates, and rules were in effect when this run was created? Can we reproduce this run?</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn for-auditor">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-text">
+        <strong>Known audit gap (Track N — N1):</strong> The <code>_rule_trace</code> from <code>apply_payroll_rules()</code>
+        is currently discarded. Rule evaluation outcomes — which OT rules fired, which were skipped and why — are
+        not persisted to <code>component_trace_jsonb</code>. An auditor cannot verify from the DB whether a specific
+        OT rule was applied to a specific employee. This is on the roadmap pending arch-council (N1).
+      </div>
+    </div>
+
+    <div class="callout callout-warn for-auditor">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-text">
+        <strong>Known audit gap (Track Q — Q7):</strong> Timesheet state transitions (PENDING → DERIVED → APPROVED)
+        do not record <code>approved_by</code>. Who approved a timesheet cannot be determined from the audit log.
+        Pending a migration to add the field.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── RELATED FUNCTIONS ── -->
+  <section id="sec-related" class="section">
+    <div class="section-label">11 — Related Functions</div>
+    <h1>Related Functions</h1>
+    <p class="lead">Other system components that interact with the payroll execution pipeline.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Function</th><th>File</th><th>Relationship</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>payroll_readiness_service</strong></td>
+          <td class="mono">backend/application/payroll_readiness_service.py</td>
+          <td>Pre-flight check. Runs before execution. Validates: all enrolled employees have grade, no deactivated employees with inputs, timesheet completeness if enabled. Failures surface as warnings, not hard blocks (except timesheet completeness).</td>
+        </tr>
+        <tr>
+          <td><strong>payroll_retry_service</strong></td>
+          <td class="mono">backend/application/payroll_retry_service.py</td>
+          <td>Handles PARTIAL → CALCULATED transitions. Re-runs only FAILED employees using the frozen snapshot. Must receive identical context to the original run (expected_hours, period_type, ph_dates_used all sourced from snapshot).</td>
+        </tr>
+        <tr>
+          <td><strong>snapshot_service</strong></td>
+          <td class="mono">backend/application/snapshot_service.py</td>
+          <td>Builds rules_context_snapshot at DRAFT creation. Captures: salary definitions, component metadata, payroll rules, effective statutory rule. This is what makes retries deterministic.</td>
+        </tr>
+        <tr>
+          <td><strong>timesheet_derivation_service</strong></td>
+          <td class="mono">backend/application/timesheet_derivation_service.py</td>
+          <td>Upstream of execution. Derives payroll_input rows (OT, absences) from uploaded timesheet grids. These become the employee_inputs consumed by rule_evaluator. Approved timesheets are immutable — re-upload is blocked.</td>
+        </tr>
+        <tr>
+          <td><strong>reconciliation_service</strong></td>
+          <td class="mono">backend/application/reconciliation_service.py</td>
+          <td>Downstream of execution. Compares actual bank disbursement total against expected_total from the run. Creates MATCHED/MISMATCH record. Only operates on LOCKED or PAID runs.</td>
+        </tr>
+        <tr>
+          <td><strong>period_context</strong></td>
+          <td class="mono">backend/domain/payroll/period_context.py</td>
+          <td>Provides working_days, calendar_days, annualization_factor, period_fraction. Used by sequential_executor for PAYE annualization and rent relief prorating. PH-adjusted when public_holidays_snapshot is provided.</td>
+        </tr>
+        <tr>
+          <td><strong>export routes</strong></td>
+          <td class="mono">backend/api/routes/payroll.py (export endpoints)</td>
+          <td>Read-only consumers of run results. Bank upload CSV, PAYE remittance schedule, pension contribution schedule. Gated to LOCKED/PAID state. Export format driven by payroll_result rows — no recalculation.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<script>
+  // ── Section navigation ──
+  function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('visible'));
+    document.getElementById('sec-' + id).classList.add('visible');
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    document.querySelector('[data-section="' + id + '"]').classList.add('active');
+    window.scrollTo({ top: 0 });
+    // Re-apply highlights if search is active
+    const q = document.getElementById('search-input').value.trim();
+    if (q.length >= 2) highlightInSection(id, q);
+  }
+
+  // ── Persona filter ──
+  function setPersona(p) {
+    document.querySelectorAll('.persona-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-p="' + p + '"]').classList.add('active');
+    document.body.className = p === 'all' ? '' : 'filter-' + p;
+    // Show/hide persona role cards in overview
+    document.querySelectorAll('.role-card').forEach(c => c.classList.remove('visible'));
+    const card = document.getElementById('role-' + p);
+    if (card) card.classList.add('visible');
+  }
+
+  // ── Edge case expand/collapse ──
+  function toggleEc(card) {
+    card.classList.toggle('open');
+  }
+
+  // ── Table sort ──
+  function sortTable(tableId, col) {
+    const table = document.getElementById(tableId);
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const dir = table.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+    table.dataset.sortDir = dir;
+    rows.sort((a, b) => {
+      const aT = a.cells[col].textContent.trim();
+      const bT = b.cells[col].textContent.trim();
+      return dir === 'asc' ? aT.localeCompare(bT) : bT.localeCompare(aT);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+
+  // ── Search ──
+  let _matchEls = [];
+  let _matchIdx = -1;
+
+  function doSearch(q) {
+    clearHighlights();
+    document.getElementById('search-clear').classList.toggle('visible', q.length > 0);
+    if (q.trim().length < 2) {
+      document.getElementById('search-count').textContent = '';
+      document.getElementById('search-nav').style.display = 'none';
+      _matchEls = []; _matchIdx = -1;
+      return;
+    }
+    const hits = highlightAll(q.trim());
+    _matchEls = hits;
+    _matchIdx = hits.length > 0 ? 0 : -1;
+    if (hits.length > 0) {
+      hits[0].classList.add('current');
+      jumpToMark(hits[0]);
+    }
+    document.getElementById('search-count').textContent =
+      hits.length === 0 ? 'No results' : hits.length + ' match' + (hits.length > 1 ? 'es' : '');
+    document.getElementById('search-nav').style.display = hits.length > 1 ? 'flex' : 'none';
+  }
+
+  function highlightAll(q) {
+    const sections = document.querySelectorAll('.section');
+    const re = new RegExp('(' + escRe(q) + ')', 'gi');
+    const hits = [];
+    sections.forEach(sec => {
+      walkText(sec, re, hits);
+    });
+    return hits;
+  }
+
+  function highlightInSection(id, q) {
+    const sec = document.getElementById('sec-' + id);
+    if (!sec) return;
+    const re = new RegExp('(' + escRe(q) + ')', 'gi');
+    const hits = [];
+    walkText(sec, re, hits);
+    return hits;
+  }
+
+  function walkText(node, re, hits) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const txt = node.nodeValue;
+      if (!re.test(txt)) return;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      re.lastIndex = 0;
+      while ((m = re.exec(txt)) !== null) {
+        frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+        const mark = document.createElement('mark');
+        mark.textContent = m[1];
+        frag.appendChild(mark);
+        hits.push(mark);
+        last = re.lastIndex;
+      }
+      frag.appendChild(document.createTextNode(txt.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === Node.ELEMENT_NODE &&
+               !['SCRIPT','STYLE','MARK'].includes(node.tagName) &&
+               !node.classList.contains('code-block')) {
+      Array.from(node.childNodes).forEach(c => walkText(c, re, hits));
+    }
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll('mark').forEach(m => {
+      m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+    });
+    document.querySelectorAll('mark').forEach(m => m.replaceWith(m.textContent));
+    // Normalise text nodes
+    document.getElementById('main').normalize();
+    _matchEls = []; _matchIdx = -1;
+  }
+
+  function jumpToMark(el) {
+    // Find which section this mark is in, switch to it
+    const sec = el.closest('.section');
+    if (sec) {
+      const id = sec.id.replace('sec-', '');
+      const cur = document.querySelector('.section.visible');
+      if (!cur || cur.id !== sec.id) showSection(id);
+    }
+    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  }
+
+  function jumpMatch(dir) {
+    if (_matchEls.length === 0) return;
+    if (_matchIdx >= 0) _matchEls[_matchIdx].classList.remove('current');
+    _matchIdx = (_matchIdx + dir + _matchEls.length) % _matchEls.length;
+    _matchEls[_matchIdx].classList.add('current');
+    document.getElementById('search-count').textContent =
+      (_matchIdx + 1) + ' / ' + _matchEls.length;
+    jumpToMark(_matchEls[_matchIdx]);
+  }
+
+  function searchNav(e) {
+    if (e.key === 'Enter') jumpMatch(e.shiftKey ? -1 : 1);
+    if (e.key === 'Escape') clearSearch();
+  }
+
+  function clearSearch() {
+    document.getElementById('search-input').value = '';
+    clearHighlights();
+    document.getElementById('search-clear').classList.remove('visible');
+    document.getElementById('search-count').textContent = '';
+    document.getElementById('search-nav').style.display = 'none';
+  }
+
+  function escRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Init
+  document.getElementById('search-nav').style.display = 'none';
+</script>
+</body>
+</html>

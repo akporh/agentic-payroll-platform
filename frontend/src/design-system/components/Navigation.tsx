@@ -176,6 +176,14 @@ export function TopBar({
             className="absolute top-full mt-1 right-0 bg-white border border-gray-200 py-1 z-50"
           >
             {userName && <p className="px-4 py-2 text-xs text-gray-500 border-b border-gray-100">{userName}</p>}
+            <a
+              href="/system-reference/payroll-execution.html"
+              target="_blank"
+              rel="noreferrer"
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100"
+            >
+              System Reference ↗
+            </a>
             <button className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Sign out</button>
           </div>
         )}
