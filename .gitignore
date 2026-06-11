@@ -52,3 +52,13 @@ uat/
 download.html
 docs/combined sessions*.txt
 docs/reality-report-analysis.txt
+
+# Internal working docs and tooling (not part of the codebase)
+claude-code-history-viewer/
+free-claude-code/
+docs/Employee Refactor Master Document*.md
+docs/schema_dump.sql
+docs/terminal benefits.xlsx
+scripts/export_linear_csv.py
+scripts/import_linear.py
+frontend/.vite/
