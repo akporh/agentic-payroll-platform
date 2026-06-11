@@ -36,8 +36,9 @@ export function MainLayout() {
   }, [workspaceId]);
 
   const currentWorkspace = workspaces.find(w => w.workspace_id === workspaceId) ?? null;
-  const unmatchedEmployeeCount = employees.filter(e => !e.is_ended && (!e.grade || !e.designation)).length;
-  const notEnrolledEmployeeCount = employees.filter(e => !e.is_ended && !e.is_enrolled).length;
+  const notEnrolledEmployeeCount = employees.filter(e => !e.is_ended && !e.is_enrolled && e.status !== 'INACTIVE').length;
+  // Only enrolled employees with missing grade/designation — not-enrolled are already in notEnrolledEmployeeCount
+  const unmatchedEmployeeCount = employees.filter(e => !e.is_ended && e.is_enrolled && (!e.grade || !e.designation)).length;
   const recentWorkspaces = workspaces.slice(0, 5).map(w => ({
     id: w.workspace_id,
     name: w.name,

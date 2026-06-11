@@ -227,7 +227,7 @@ export function WorkspaceSidebar({ workspaceId, workspaceName, workspaceStatus, 
     {
       heading: 'People',
       items: [
-        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees', badge: (notEnrolledEmployeeCount || unmatchedEmployeeCount) || undefined },
+        { label: 'Employees', to: `/workspaces/${w}/employees`, icon: 'employees', badge: (notEnrolledEmployeeCount + unmatchedEmployeeCount) || undefined },
       ],
     },
     {

@@ -21,6 +21,7 @@ import {
   ContentHeader,
   Card,
   Btn,
+  IconBtn,
   AlertBanner,
   EmptyState,
   SlideOver,
@@ -81,7 +82,29 @@ function PlusIcon() {
   );
 }
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function codeLabel(code: string, description: string | null | undefined): string {
+  return description ? `${code} — ${description}` : code;
+}
+
 // ── Enroll Employee SlideOver ─────────────────────────────────────────────────
+
+function autoMatchSalaryDef(
+  gradeLabel: string | null | undefined,
+  desigLabel: string | null | undefined,
+  salaryDefinitions: SalaryDefinitionOption[]
+): string {
+  const g = (gradeLabel ?? '').toUpperCase();
+  const d = (desigLabel ?? '').toUpperCase();
+  if (!g && !d) return '';
+  const tryMatch = (code: string) => salaryDefinitions.find(sd => sd.code.toUpperCase() === code) ?? null;
+  return (
+    (g && d ? tryMatch(`${d}_${g}`) ?? tryMatch(`${g}_${d}`) : null)
+    ?? (d ? tryMatch(d) : null)
+    ?? (g ? tryMatch(g) : null)
+  )?.code ?? '';
+}
 
 interface EnrollSlideOverProps {
   employee: Employee | null;
@@ -105,18 +128,21 @@ function EnrollSlideOver({
 
   useEffect(() => {
     if (employee) {
-      setSalaryDefCode('');
       const gradeMatch = gradeOptions.find(
         g => g.toUpperCase() === (employee.imported_grade_label ?? '').toUpperCase()
       ) ?? '';
       const desgMatch = designationOptions.find(
         d => d.toUpperCase() === (employee.imported_designation_label ?? '').toUpperCase()
       ) ?? '';
-      setGrade(gradeMatch || employee.grade || '');
-      setDesignation(desgMatch || employee.designation || '');
+      const resolvedGrade = gradeMatch || employee.grade || '';
+      const resolvedDesig = desgMatch || employee.designation || '';
+      setGrade(resolvedGrade);
+      setDesignation(resolvedDesig);
+      const matched = autoMatchSalaryDef(resolvedGrade, resolvedDesig, salaryDefinitions);
+      setSalaryDefCode(matched);
       setError(null);
     }
-  }, [employee, gradeOptions, designationOptions]);
+  }, [employee, gradeOptions, designationOptions, salaryDefinitions]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -286,31 +312,47 @@ function BulkEnrollSlideOver({
   );
 }
 
-// ── Edit Employee SlideOver (name + status only) ──────────────────────────────
+// ── Edit Employee SlideOver ───────────────────────────────────────────────────
 
 interface EditSlideOverProps {
   employee: Employee | null;
   onClose: () => void;
   onSaved: () => void;
   workspaceId: string;
+  grades: { code: string; description: string | null }[];
+  designations: { code: string; description: string | null }[];
+  salaryDefinitions: SalaryDefinitionOption[];
 }
 
-function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOverProps) {
+function EditSlideOver({ employee, onClose, onSaved, workspaceId, grades, designations, salaryDefinitions }: EditSlideOverProps) {
   const toast = useToast();
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState('');
   const [status, setStatus] = useState('ACTIVE');
   const [contractEnd, setContractEnd] = useState('');
+  const [gradeCode, setGradeCode] = useState('');
+  const [designationCode, setDesignationCode] = useState('');
+  const [autoMatchedSalaryDef, setAutoMatchedSalaryDef] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const goToConfig = () => { onClose(); navigate(`/workspaces/${workspaceId}/config`); };
+
   useEffect(() => {
-    if (employee) {
-      setFullName(employee.full_name ?? '');
-      setStatus(employee.status ?? 'ACTIVE');
-      setContractEnd(employee.contract_end ?? '');
-      setError(null);
-    }
+    if (!employee) return;
+    setFullName(employee.full_name ?? '');
+    setStatus(employee.status ?? 'ACTIVE');
+    setContractEnd(employee.contract_end ?? '');
+    setGradeCode(employee.grade ?? '');
+    setDesignationCode(employee.designation ?? '');
+    setError(null);
   }, [employee]);
+
+  useEffect(() => {
+    if (!employee?.is_enrolled) {
+      setAutoMatchedSalaryDef(autoMatchSalaryDef(gradeCode, designationCode, salaryDefinitions));
+    }
+  }, [gradeCode, designationCode, salaryDefinitions, employee?.is_enrolled]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -323,10 +365,17 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
         full_name: fullName.trim(),
         status,
       });
-      if (contractEnd && contractEnd !== employee.contract_end && employee.contract_id) {
-        await employeesApi.patchContract(workspaceId, employee.contract_id, {
-          end_date: contractEnd,
-        });
+      if (employee.contract_id) {
+        const gradeChanged = gradeCode !== (employee.grade ?? '');
+        const desigChanged = designationCode !== (employee.designation ?? '');
+        const endChanged = contractEnd !== (employee.contract_end ?? '');
+        if (gradeChanged || desigChanged || endChanged) {
+          await workspaceApi.updateEmployeeContract(workspaceId, employee.employee_id, {
+            ...(gradeChanged ? { grade_code: gradeCode || null } : {}),
+            ...(desigChanged ? { designation_code: designationCode || null } : {}),
+            ...(endChanged ? { contract_end: contractEnd || null, set_contract_end: true } : {}),
+          });
+        }
       }
       toast.show('success', 'Employee updated');
       onSaved();
@@ -362,28 +411,79 @@ function EditSlideOver({ employee, onClose, onSaved, workspaceId }: EditSlideOve
           onChange={(e) => setFullName(e.target.value)}
           required
         />
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
-          </select>
-        </div>
-        <DateInput
-          label="Contract End Date"
-          value={contractEnd}
-          onChange={setContractEnd}
-          hint={
-            !employee?.contract_id
-              ? 'No contract assigned — enroll this employee first'
-              : 'Inclusive last paid day. Leave unchanged to keep the current date.'
-          }
-          disabled={!employee?.contract_id}
+        <SearchableSelect
+          label="Status"
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: 'ACTIVE', label: 'Active' },
+            { value: 'INACTIVE', label: 'Inactive' },
+          ]}
         />
+
+        {/* Classification */}
+        <div className="pt-2 space-y-1 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider pt-2">Classification</p>
+        </div>
+        <div className="space-y-1">
+          <SearchableSelect
+            label="Grade"
+            value={gradeCode}
+            onChange={setGradeCode}
+            options={[
+              { value: '', label: '— unassigned —' },
+              ...grades.map(g => ({ value: g.code, label: codeLabel(g.code, g.description) })),
+            ]}
+          />
+          <button
+            type="button"
+            className="text-xs text-indigo-600 hover:underline pl-0.5 mb-4"
+            onClick={goToConfig}
+          >
+            + Add new grade in Configuration
+          </button>
+        </div>
+        <div className="space-y-1">
+          <SearchableSelect
+            label="Designation"
+            value={designationCode}
+            onChange={setDesignationCode}
+            options={[
+              { value: '', label: '— unassigned —' },
+              ...designations.map(d => ({ value: d.code, label: codeLabel(d.code, d.description) })),
+            ]}
+          />
+          <button
+            type="button"
+            className="text-xs text-indigo-600 hover:underline pl-0.5 mb-4"
+            onClick={goToConfig}
+          >
+            + Add new designation in Configuration
+          </button>
+        </div>
+
+        {/* Auto-matched salary def — shown only for not-enrolled employees when grade matches */}
+        {!employee?.is_enrolled && autoMatchedSalaryDef && (
+          <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2.5">
+            <p className="text-xs font-medium text-indigo-700">Salary definition at enrolment</p>
+            <p className="text-sm font-mono text-indigo-900 mt-0.5">{autoMatchedSalaryDef}</p>
+            <p className="text-xs text-indigo-400 mt-0.5">Auto-matched from grade — assigned when you enrol this employee</p>
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-gray-100">
+          <DateInput
+            label="Contract End Date"
+            value={contractEnd}
+            onChange={setContractEnd}
+            hint={
+              !employee?.contract_id
+                ? 'No contract assigned — enroll this employee first'
+                : 'Inclusive last paid day. Leave unchanged to keep the current date.'
+            }
+            disabled={!employee?.contract_id}
+          />
+        </div>
         {error && <AlertBanner variant="error" description={error} />}
       </form>
     </SlideOver>
@@ -407,6 +507,7 @@ function ChangeContractSlideOver({
 }: ChangeContractSlideOverProps) {
   const toast = useToast();
   const [salaryDefId, setSalaryDefId] = useState('');
+  const [salaryDefAutoMatched, setSalaryDefAutoMatched] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [grade, setGrade] = useState('');
   const [designation, setDesignation] = useState('');
@@ -417,6 +518,7 @@ function ChangeContractSlideOver({
   useEffect(() => {
     if (employee) {
       setSalaryDefId('');
+      setSalaryDefAutoMatched(false);
       setStartDate('');
       setGrade(employee.grade ?? '');
       setDesignation(employee.designation ?? '');
@@ -424,6 +526,20 @@ function ChangeContractSlideOver({
       setError(null);
     }
   }, [employee]);
+
+  useEffect(() => {
+    if (!grade) { setSalaryDefAutoMatched(false); return; }
+    const matchedCode = autoMatchSalaryDef(grade, designation, salaryDefinitions);
+    if (matchedCode) {
+      const matchedDef = salaryDefinitions.find(sd => sd.code === matchedCode);
+      if (matchedDef) {
+        setSalaryDefId(matchedDef.salary_definition_id);
+        setSalaryDefAutoMatched(true);
+        return;
+      }
+    }
+    setSalaryDefAutoMatched(false);
+  }, [grade, designation, salaryDefinitions]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -480,19 +596,29 @@ function ChangeContractSlideOver({
           variant="warning"
           description="This will close the current contract and open a new one from the selected start date."
         />
-        <SearchableSelect
-          label="New Salary Definition"
-          value={salaryDefId}
-          onChange={setSalaryDefId}
-          options={[
-            { value: '', label: '— select —' },
-            ...salaryDefinitions.map((sd) => ({
-              value: sd.salary_definition_id,
-              label: sd.name ? `${sd.code} — ${sd.name}` : sd.code,
-            })),
-          ]}
-          required
-        />
+        {salaryDefAutoMatched ? (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-gray-700">New Salary Definition</p>
+            <p className="text-sm text-gray-900 font-mono">
+              {salaryDefinitions.find(sd => sd.salary_definition_id === salaryDefId)?.code ?? salaryDefId}
+            </p>
+            <p className="text-xs text-gray-400">Auto-matched from grade — change grade to update</p>
+          </div>
+        ) : (
+          <SearchableSelect
+            label="New Salary Definition"
+            value={salaryDefId}
+            onChange={setSalaryDefId}
+            options={[
+              { value: '', label: '— select —' },
+              ...salaryDefinitions.map((sd) => ({
+                value: sd.salary_definition_id,
+                label: sd.name ? `${sd.code} — ${sd.name}` : sd.code,
+              })),
+            ]}
+            required
+          />
+        )}
         <DateInput
           label="New Contract Start Date"
           value={startDate}
@@ -525,7 +651,7 @@ function ChangeContractSlideOver({
   );
 }
 
-// ── View Contracts SlideOver (read-only, Sprint 17: current contract only) ─────
+// ── View Contracts SlideOver ──────────────────────────────────────────────────
 
 interface ViewContractsSlideOverProps {
   employee: Employee | null;
@@ -534,15 +660,24 @@ interface ViewContractsSlideOverProps {
 }
 
 function ViewContractsSlideOver({ employee, onClose, workspaceId }: ViewContractsSlideOverProps) {
+  const toast = useToast();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localStatus, setLocalStatus] = useState<string>('ACTIVE');
+  const [toggling, setToggling] = useState(false);
+  const [endContractOpen, setEndContractOpen] = useState(false);
+  const [endContractDate, setEndContractDate] = useState('');
+  const [endingSaving, setEndingSaving] = useState(false);
 
   useEffect(() => {
     if (!employee || !workspaceId) return;
+    setLocalStatus(employee.status ?? 'ACTIVE');
     setLoading(true);
     setContract(null);
     setError(null);
+    setEndContractOpen(false);
+    setEndContractDate('');
     employeesApi
       .getEmployee(workspaceId, employee.employee_id)
       .then((detail) => setContract(detail.contracts[0] ?? null))
@@ -550,11 +685,45 @@ function ViewContractsSlideOver({ employee, onClose, workspaceId }: ViewContract
       .finally(() => setLoading(false));
   }, [employee, workspaceId]);
 
+  async function handleToggleStatus() {
+    if (!employee) return;
+    const newStatus = localStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    setToggling(true);
+    try {
+      await workspaceApi.patchEmployee(workspaceId, employee.employee_id, { status: newStatus });
+      setLocalStatus(newStatus);
+      window.dispatchEvent(new Event('employees-changed'));
+      toast.show('success', newStatus === 'INACTIVE' ? 'Employee deactivated' : 'Employee activated');
+    } catch {
+      toast.show('error', 'Failed to update status');
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function handleEndContract() {
+    if (!employee || !endContractDate) return;
+    setEndingSaving(true);
+    try {
+      await workspaceApi.updateEmployeeContract(workspaceId, employee.employee_id, {
+        contract_end: endContractDate,
+        set_contract_end: true,
+      });
+      window.dispatchEvent(new Event('employees-changed'));
+      toast.show('success', 'Contract ended');
+      onClose();
+    } catch (e: unknown) {
+      toast.show('error', e instanceof Error ? e.message : 'Failed to end contract');
+    } finally {
+      setEndingSaving(false);
+    }
+  }
+
   return (
     <SlideOver
       open={!!employee}
       onClose={onClose}
-      title="Current Contract"
+      title="Contract Management"
       description={employee ? `${employee.full_name} · ${employee.employee_number}` : ''}
       footer={
         <Btn variant="secondary" size="md" onClick={onClose}>
@@ -562,14 +731,83 @@ function ViewContractsSlideOver({ employee, onClose, workspaceId }: ViewContract
         </Btn>
       }
     >
-      {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
-      ) : error ? (
-        <AlertBanner variant="error" description={error} />
-      ) : !contract ? (
-        <p className="text-sm text-gray-400">No contract on record.</p>
-      ) : (
-        <div className="space-y-4">
+      <div className="space-y-5">
+        {/* Status management */}
+        <div className="rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</span>
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+              localStatus === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {localStatus}
+            </span>
+            <Btn
+              variant="secondary"
+              size="sm"
+              loading={toggling}
+              onClick={handleToggleStatus}
+            >
+              {localStatus === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+            </Btn>
+          </div>
+        </div>
+
+        {/* End contract */}
+        {contract && !contract.end_date && (
+          <div className="rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">End Contract</span>
+            </div>
+            <div className="px-4 py-3">
+              {endContractOpen ? (
+                <div className="space-y-3">
+                  <DateInput
+                    label="Contract End Date"
+                    value={endContractDate}
+                    onChange={setEndContractDate}
+                    hint="Last paid day — inclusive"
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <Btn
+                      variant="primary"
+                      size="sm"
+                      loading={endingSaving}
+                      onClick={handleEndContract}
+                    >
+                      Confirm
+                    </Btn>
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => { setEndContractOpen(false); setEndContractDate(''); }}
+                    >
+                      Cancel
+                    </Btn>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="text-xs text-rose-600 hover:text-rose-800 hover:underline"
+                  onClick={() => setEndContractOpen(true)}
+                >
+                  End Contract…
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Contract details */}
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : error ? (
+          <AlertBanner variant="error" description={error} />
+        ) : !contract ? (
+          <p className="text-sm text-gray-400">No contract on record.</p>
+        ) : (
           <div className="rounded-lg border border-gray-200 overflow-hidden">
             <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contract</span>
@@ -591,9 +829,8 @@ function ViewContractsSlideOver({ employee, onClose, workspaceId }: ViewContract
               ))}
             </dl>
           </div>
-          <p className="text-xs text-gray-400">Full contract history is available in Sprint 20.</p>
-        </div>
-      )}
+        )}
+      </div>
     </SlideOver>
   );
 }
@@ -610,10 +847,14 @@ interface AddEmployeeSlideOverProps {
   onClose: () => void;
   onSaved: () => void;
   workspaceId: string;
+  grades: { code: string; description: string | null }[];
+  designations: { code: string; description: string | null }[];
 }
 
-function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmployeeSlideOverProps) {
+function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId, grades, designations }: AddEmployeeSlideOverProps) {
   const toast = useToast();
+  const navigate = useNavigate();
+  const goToConfig = () => { onClose(); navigate(`/workspaces/${workspaceId}/config`); };
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [employeeNumber, setEmployeeNumber] = useState('');
@@ -623,6 +864,8 @@ function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmploy
   const [accountNumber, setAccountNumber] = useState('');
   const [contractStart, setContractStart] = useState('');
   const [contractEnd, setContractEnd] = useState('');
+  const [gradeCode, setGradeCode] = useState('');
+  const [designationCode, setDesignationCode] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addedCount, setAddedCount] = useState(0);
@@ -631,6 +874,7 @@ function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmploy
     setFirstName(''); setLastName(''); setEmployeeNumber('');
     setContractStart(''); setContractEnd('');
     setTin(''); setRsa(''); setBank(''); setAccountNumber('');
+    setGradeCode(''); setDesignationCode('');
     setError(null);
   }
 
@@ -650,8 +894,8 @@ function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmploy
         last_name: lastName.trim(),
         employee_number: employeeNumber.trim(),
         salary_definition_code: null,
-        grade_code: null,
-        designation_code: null,
+        grade_code: gradeCode || null,
+        designation_code: designationCode || null,
         contract_start: contractStart,
         contract_end: contractEnd || null,
         tin: tin || null,
@@ -731,6 +975,52 @@ function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId }: AddEmploy
             onChange={setContractEnd}
             hint="Leave blank if open-ended"
           />
+        </div>
+
+        {/* Classification */}
+        <div className="pt-2 space-y-1 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider pt-2">
+            Classification
+            <span className="ml-1 text-[10px] font-normal normal-case text-gray-400">optional</span>
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <SearchableSelect
+              label="Grade"
+              value={gradeCode}
+              onChange={setGradeCode}
+              options={[
+                { value: '', label: '— unassigned —' },
+                ...grades.map(g => ({ value: g.code, label: codeLabel(g.code, g.description) })),
+              ]}
+            />
+            <button
+              type="button"
+              className="text-xs text-indigo-600 hover:underline pl-0.5"
+              onClick={goToConfig}
+            >
+              + Add new grade in Configuration
+            </button>
+          </div>
+          <div className="space-y-1">
+            <SearchableSelect
+              label="Designation"
+              value={designationCode}
+              onChange={setDesignationCode}
+              options={[
+                { value: '', label: '— unassigned —' },
+                ...designations.map(d => ({ value: d.code, label: codeLabel(d.code, d.description) })),
+              ]}
+            />
+            <button
+              type="button"
+              className="text-xs text-indigo-600 hover:underline pl-0.5"
+              onClick={goToConfig}
+            >
+              + Add new designation in Configuration
+            </button>
+          </div>
         </div>
 
         {/* Bank / payroll details */}
@@ -1050,7 +1340,7 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
                 </td>
               )}
               <td className="sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)] px-4 py-3">
-                <div className="flex gap-1">
+                <div className="flex gap-0.5 items-center">
                   {isNotEnrolled ? (
                     <>
                       <Btn
@@ -1062,24 +1352,37 @@ function EmployeeTable({ rows, variant = 'active', onEdit, onChangeContract, onV
                       >
                         Enroll
                       </Btn>
-                      <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
-                        Edit
-                      </Btn>
+                      <IconBtn label="Edit" size="sm" onClick={() => onEdit(emp)}>
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </IconBtn>
+                    </>
+                  ) : variant === 'active' ? (
+                    <>
+                      {onChangeContract && (
+                        <IconBtn label="Change Grade / Salary" size="sm" onClick={() => onChangeContract(emp)}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+                        </IconBtn>
+                      )}
+                      {onViewContracts && (
+                        <IconBtn label="Contract Management" size="sm" onClick={() => onViewContracts(emp)}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        </IconBtn>
+                      )}
                     </>
                   ) : (
                     <>
-                      <Btn variant="ghost" size="sm" onClick={() => onEdit(emp)}>
-                        Edit
-                      </Btn>
+                      <IconBtn label="Edit" size="sm" onClick={() => onEdit(emp)}>
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </IconBtn>
                       {variant !== 'ended' && onChangeContract && (
-                        <Btn variant="ghost" size="sm" onClick={() => onChangeContract(emp)}>
-                          Change Grade / Salary
-                        </Btn>
+                        <IconBtn label="Change Grade / Salary" size="sm" onClick={() => onChangeContract(emp)}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+                        </IconBtn>
                       )}
                       {onViewContracts && (
-                        <Btn variant="ghost" size="sm" onClick={() => onViewContracts(emp)}>
-                          View Contracts
-                        </Btn>
+                        <IconBtn label="Contract Management" size="sm" onClick={() => onViewContracts(emp)}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        </IconBtn>
                       )}
                     </>
                   )}
@@ -1106,6 +1409,8 @@ export function Employees() {
   const [error, setError] = useState<string | null>(null);
   const [gradeOptions, setGradeOptions] = useState<string[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [grades, setGrades] = useState<{ code: string; description: string | null }[]>([]);
+  const [designations, setDesignations] = useState<{ code: string; description: string | null }[]>([]);
   const [salaryDefinitions, setSalaryDefinitions] = useState<SalaryDefinitionOption[]>([]);
   const [payCycle, setPayCycle] = useState<PayCycleSummary | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -1122,6 +1427,7 @@ export function Employees() {
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [enrollingGroupIdx, setEnrollingGroupIdx] = useState<number | null>(null);
   const [showEnded, setShowEnded] = useState(false);
+  const [parkingEmployeeId, setParkingEmployeeId] = useState<string | null>(null);
 
   const unmatchedRef = useRef<HTMLDivElement>(null);
   const notEnrolledRef = useRef<HTMLDivElement>(null);
@@ -1149,6 +1455,8 @@ export function Employees() {
         setEmployees(emps);
         setGradeOptions(config.grades.map((g) => g.code));
         setDesignationOptions(config.designations.map((d) => d.code));
+        setGrades(config.grades);
+        setDesignations(config.designations);
         setSalaryDefinitions(
           config.salary_definitions.map((sd) => ({
             salary_definition_id: sd.salary_definition_id,
@@ -1195,7 +1503,8 @@ export function Employees() {
     const ended       = employees.filter((e) => e.is_ended);
     const deactivated = employees.filter((e) => !e.is_ended && e.status === 'INACTIVE');
     const live        = employees.filter((e) => !e.is_ended && e.status !== 'INACTIVE');
-    const notEnrolled = live.filter((e) => !e.is_enrolled);
+    // not-enrolled includes INACTIVE (paused) so operator can see and enrol them without un-pausing first
+    const notEnrolled = employees.filter((e) => !e.is_ended && !e.is_enrolled);
     const unmatched   = live.filter((e) => e.is_enrolled && (!e.grade || !e.designation));
     const matched     = live.filter((e) => e.is_enrolled && e.grade && e.designation);
     // Enrolled INACTIVE with live contract — valid HR state (suspension) but excluded from payroll
@@ -1208,8 +1517,9 @@ export function Employees() {
   const suggestedGroups = useMemo(() => {
     const grouped = new Map<string, { employees: typeof notEnrolled; desigLabel: string; gradeLabel: string }>();
     for (const emp of notEnrolled) {
-      const desigLabel = emp.imported_designation_label?.toUpperCase() ?? '';
-      const gradeLabel = emp.imported_grade_label?.toUpperCase() ?? '';
+      // Use imported label if present; fall back to the assigned grade/designation code
+      const desigLabel = (emp.imported_designation_label ?? emp.designation ?? '').toUpperCase();
+      const gradeLabel = (emp.imported_grade_label ?? emp.grade ?? '').toUpperCase();
       const key = `${desigLabel}|${gradeLabel}`;
       const existing = grouped.get(key);
       if (existing) existing.employees.push(emp);
@@ -1219,10 +1529,10 @@ export function Employees() {
       .map(([, { employees: emps, desigLabel, gradeLabel }]) => {
         const matchedGrade = gradeOptions.find(g => g.toUpperCase() === gradeLabel) ?? null;
         const matchedDesignation = designationOptions.find(d => d.toUpperCase() === desigLabel) ?? null;
-        // Raw labels from first employee — preserve original casing for API calls
         const firstEmp = emps[0];
-        const rawGradeLabel = firstEmp?.imported_grade_label ?? null;
-        const rawDesigLabel = firstEmp?.imported_designation_label ?? null;
+        // For the enrol API call, prefer imported label (original casing); fall back to assigned code
+        const rawGradeLabel = firstEmp?.imported_grade_label ?? firstEmp?.grade ?? null;
+        const rawDesigLabel = firstEmp?.imported_designation_label ?? firstEmp?.designation ?? null;
         const tryMatch = (code: string) => salaryDefinitions.find(sd => sd.code.toUpperCase() === code) ?? null;
         const matchedDef = tryMatch(`${desigLabel}_${gradeLabel}`)
           ?? tryMatch(`${gradeLabel}_${desigLabel}`)
@@ -1285,21 +1595,21 @@ export function Employees() {
                 {notEnrolled.length} awaiting enrollment
               </button>
             )}
-            {unmatched.length > 0 && <><span className="text-gray-300">·</span>
+            {unmatched.length > 0 && <><span className="text-gray-400">·</span>
             <button className="text-rose-600 hover:underline cursor-pointer" onClick={() => unmatchedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
               {unmatched.length} incomplete
             </button></>}
-            {matched.length > 0 && <><span className="text-gray-300">·</span>
+            {matched.length > 0 && <><span className="text-gray-400">·</span>
             <button className="text-green-700 hover:underline cursor-pointer" onClick={() => activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
               {matched.length} in payroll
             </button></>}
-            {ended.length > 0 && <><span className="text-gray-300">·</span>
+            {ended.length > 0 && <><span className="text-gray-400">·</span>
             <button className="text-gray-500 hover:underline cursor-pointer" onClick={() => { setShowEnded(true); endedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
               {ended.length} contract ended
             </button></>}
-            {deactivated.length > 0 && <><span className="text-gray-300">·</span>
+            {deactivatedEnrolled.length > 0 && <><span className="text-gray-400">·</span>
             <button className="text-gray-500 hover:underline cursor-pointer" onClick={() => { setShowEnded(true); endedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
-              {deactivated.length} deactivated
+              {deactivatedEnrolled.length} deactivated
             </button></>}
           </span>
         }
@@ -1534,15 +1844,58 @@ export function Employees() {
                             const emp = notEnrolled.find(e => e.employee_id === eid);
                             if (!emp) return null;
                             return (
-                              <div key={eid} className="flex items-center justify-between px-8 py-1.5 text-xs border-b border-gray-100 last:border-b-0 hover:bg-gray-100 transition-colors">
-                                <span className="text-gray-800">{emp.full_name}</span>
-                                <span className="text-gray-400 font-mono ml-4 shrink-0">{emp.employee_number}</span>
-                                <button
-                                  className="ml-auto text-indigo-600 hover:underline shrink-0 pl-4"
-                                  onClick={() => setEnrollingEmployee(emp)}
-                                >
-                                  Enroll individually →
-                                </button>
+                              <div key={eid} className="flex items-center px-8 py-1.5 text-xs border-b border-gray-100 last:border-b-0 hover:bg-gray-100 transition-colors gap-2">
+                                <span className={`min-w-0 truncate ${emp.status === 'INACTIVE' ? 'text-gray-400' : 'text-gray-800'}`}>{emp.full_name}</span>
+                                <span className="text-gray-400 font-mono shrink-0">{emp.employee_number}</span>
+                                {emp.status === 'INACTIVE' && (
+                                  <span className="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                                    Paused
+                                  </span>
+                                )}
+                                <div className="ml-auto flex items-center gap-3 shrink-0">
+                                  <button
+                                    className="text-indigo-600 hover:underline"
+                                    onClick={() => setEnrollingEmployee(emp)}
+                                  >
+                                    Enroll →
+                                  </button>
+                                  <button
+                                    className="flex items-center justify-center min-w-[44px] min-h-[44px] text-gray-400 hover:text-indigo-600"
+                                    title="Edit employee"
+                                    aria-label="Edit employee"
+                                    onClick={() => setEditingEmployee(emp)}
+                                  >
+                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  </button>
+                                  {/* Pause / Resume toggle */}
+                                  <button
+                                    className="flex items-center justify-center min-w-[44px] min-h-[44px] text-gray-400 hover:text-amber-600 disabled:opacity-40"
+                                    title={emp.status === 'INACTIVE' ? 'Resume — move back to enrolment queue' : 'Pause — keep registered but remove from queue'}
+                                    aria-label={emp.status === 'INACTIVE' ? 'Resume employee' : 'Pause employee'}
+                                    disabled={parkingEmployeeId === emp.employee_id}
+                                    onClick={async () => {
+                                      setParkingEmployeeId(emp.employee_id);
+                                      const newStatus = emp.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
+                                      try {
+                                        await workspaceApi.patchEmployee(workspaceId!, emp.employee_id, { status: newStatus });
+                                        loadEmployees();
+                                      } catch {
+                                        toast.show('error', newStatus === 'ACTIVE' ? 'Failed to resume employee' : 'Failed to pause employee');
+                                      } finally {
+                                        setParkingEmployeeId(null);
+                                      }
+                                    }}
+                                  >
+                                    {parkingEmployeeId === emp.employee_id
+                                      ? '…'
+                                      : emp.status === 'INACTIVE'
+                                        /* Resume/play icon */
+                                        ? <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                        /* Pause icon */
+                                        : <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                    }
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -1705,6 +2058,9 @@ export function Employees() {
       <EditSlideOver
         employee={editingEmployee}
         workspaceId={workspaceId ?? ''}
+        grades={grades}
+        designations={designations}
+        salaryDefinitions={salaryDefinitions}
         onClose={() => setEditingEmployee(null)}
         onSaved={loadEmployees}
       />
@@ -1728,6 +2084,8 @@ export function Employees() {
       <AddEmployeeSlideOver
         open={showAddEmployee}
         workspaceId={workspaceId ?? ''}
+        grades={grades}
+        designations={designations}
         onClose={() => setShowAddEmployee(false)}
         onSaved={loadEmployees}
       />

@@ -115,6 +115,12 @@ export const workspaceApi = {
       component_overrides: { component_name: string; is_active: boolean; proration_strategy: string | null }[];
     }>(`/${workspaceId}/configuration`),
 
+  patchEmployee: (
+    workspaceId: string,
+    employeeId: string,
+    payload: { status?: string; full_name?: string }
+  ) => api.patch<{ status: string }>(`/${workspaceId}/employees/${employeeId}`, payload),
+
   updateEmployeeContract: (
     workspaceId: string,
     employeeId: string,
