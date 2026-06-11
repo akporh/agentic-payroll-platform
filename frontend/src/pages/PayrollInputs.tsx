@@ -83,6 +83,15 @@ function TrashIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+        d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3.414A2 2 0 017.586 11.5z" />
+    </svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -117,6 +126,7 @@ export function PayrollInputs() {
 
   // slide-over state
   const [panelOpen, setPanelOpen] = useState(false);
+  const [editingInputId, setEditingInputId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -145,6 +155,7 @@ export function PayrollInputs() {
   }, [workspaceId]);
 
   function resetForm() {
+    setEditingInputId(null);
     setEmployeeId('');
     setInputCode('');
     setQuantity('');
@@ -152,29 +163,43 @@ export function PayrollInputs() {
     setFormError(null);
   }
 
+  function openEdit(inp: PayrollInput) {
+    setEditingInputId(inp.payroll_input_id);
+    setEmployeeId(inp.employee_id);
+    setInputCode(inp.input_code);
+    setQuantity(inp.quantity != null ? String(inp.quantity) : '');
+    setEffectivePeriod(inp.reference_date ? inp.reference_date.slice(0, 7) : '');
+    setFormError(null);
+    setPanelOpen(true);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!workspaceId || !employeeId || !inputCode) return;
+    if (!workspaceId) return;
     setSubmitting(true);
     setFormError(null);
     try {
-      const payload: {
-        employee_id: string;
-        input_code: string;
-        quantity?: number;
-        reference_date?: string;
-      } = { employee_id: employeeId, input_code: inputCode };
-      if (quantity) payload.quantity = parseFloat(quantity);
-      if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
-
-      await payrollInputApi.create(workspaceId, payload);
+      if (editingInputId) {
+        const payload: { quantity?: number; reference_date?: string } = {};
+        if (quantity) payload.quantity = parseFloat(quantity);
+        if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
+        await payrollInputApi.update(workspaceId, editingInputId, payload);
+        toast.show('success', 'Input updated');
+      } else {
+        if (!employeeId || !inputCode) return;
+        const payload: { employee_id: string; input_code: string; quantity?: number; reference_date?: string } =
+          { employee_id: employeeId, input_code: inputCode };
+        if (quantity) payload.quantity = parseFloat(quantity);
+        if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
+        await payrollInputApi.create(workspaceId, payload);
+        toast.show('success', 'Input added to payroll inbox');
+      }
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
       resetForm();
       setPanelOpen(false);
-      toast.show('success', 'Input added to payroll inbox');
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : 'Failed to add input');
+      setFormError(e instanceof Error ? e.message : editingInputId ? 'Failed to update input' : 'Failed to add input');
     } finally {
       setSubmitting(false);
     }
@@ -325,14 +350,24 @@ export function PayrollInputs() {
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{inp.source}</td>
                     <td className="px-4 py-3">
-                      <IconBtn
-                        label={`Delete input for ${inp.employee_name}`}
-                        size="sm"
-                        className="text-gray-400 hover:text-red-600"
-                        onClick={() => handleDelete(inp.payroll_input_id)}
-                      >
-                        <TrashIcon />
-                      </IconBtn>
+                      <div className="flex items-center gap-1">
+                        <IconBtn
+                          label={`Edit input for ${inp.employee_name}`}
+                          size="sm"
+                          className="text-gray-400 hover:text-blue-600"
+                          onClick={() => openEdit(inp)}
+                        >
+                          <PencilIcon />
+                        </IconBtn>
+                        <IconBtn
+                          label={`Delete input for ${inp.employee_name}`}
+                          size="sm"
+                          className="text-gray-400 hover:text-red-600"
+                          onClick={() => handleDelete(inp.payroll_input_id)}
+                        >
+                          <TrashIcon />
+                        </IconBtn>
+                      </div>
                     </td>
                   </tr>
                   );
@@ -343,51 +378,62 @@ export function PayrollInputs() {
         )}
       </Card>
 
-      {/* Add Input — SlideOver (DD-3: primary action opens panel, not inline form) */}
+      {/* Add / Edit Input — SlideOver (DD-3: primary action opens panel, not inline form) */}
       <SlideOver
         open={panelOpen}
-        onClose={() => setPanelOpen(false)}
-        title="Add Payroll Input"
-        description="Record a variable event for the next run"
+        onClose={() => { setPanelOpen(false); resetForm(); }}
+        title={editingInputId ? 'Edit Payroll Input' : 'Add Payroll Input'}
+        description={editingInputId ? 'Update quantity or period for this input' : 'Record a variable event for the next run'}
         footer={
           <>
-            <Btn variant="secondary" onClick={() => setPanelOpen(false)} disabled={submitting}>
+            <Btn variant="secondary" onClick={() => { setPanelOpen(false); resetForm(); }} disabled={submitting}>
               Cancel
             </Btn>
             <Btn
               variant="primary"
               loading={submitting}
-              disabled={!employeeId || !inputCode}
+              disabled={!editingInputId && (!employeeId || !inputCode)}
               onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
             >
-              Add Input
+              {editingInputId ? 'Save Changes' : 'Add Input'}
             </Btn>
           </>
         }
       >
         <form id="add-input-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
           {formError && (
-            <AlertBanner variant="error" title="Failed to add input" description={formError} />
+            <AlertBanner variant="error" title={editingInputId ? 'Failed to update input' : 'Failed to add input'} description={formError} />
           )}
 
-          <SearchableSelect
-            label="Employee"
-            required
-            options={employeeOptions}
-            value={employeeId}
-            onChange={setEmployeeId}
-            placeholder="Select employee…"
-          />
+          {editingInputId ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Employee</span>
+              <p className="text-sm text-gray-900">{employees.find(e => e.employee_id === employeeId)?.full_name ?? employeeId}</p>
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 mt-2">Input Code</span>
+              <p className="text-sm font-mono text-gray-700">{inputCode}</p>
+            </div>
+          ) : (
+            <>
+              <SearchableSelect
+                label="Employee"
+                required
+                options={employeeOptions}
+                value={employeeId}
+                onChange={setEmployeeId}
+                placeholder="Select employee…"
+              />
 
-          {/* Input code — groups by category (DD-6) */}
-          <SearchableSelect
-            label="Input Code"
-            required
-            options={inputCodeOptions}
-            value={inputCode}
-            onChange={(v) => { setInputCode(v); setQuantity(''); }}
-            placeholder="Select code…"
-          />
+              {/* Input code — groups by category (DD-6) */}
+              <SearchableSelect
+                label="Input Code"
+                required
+                options={inputCodeOptions}
+                value={inputCode}
+                onChange={(v) => { setInputCode(v); setQuantity(''); }}
+                placeholder="Select code…"
+              />
+            </>
+          )}
 
           {/* Conditional fields based on calculation method */}
           {inputCode && showsQty(selectedDef) && (

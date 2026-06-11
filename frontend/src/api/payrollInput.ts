@@ -21,6 +21,13 @@ export const payrollInputApi = {
       payload
     ),
 
+  update: (
+    workspaceId: string,
+    inputId: string,
+    payload: { quantity?: number; reference_date?: string }
+  ) =>
+    api.patch<{ status: string }>(`/${workspaceId}/payroll/inputs/${inputId}`, payload),
+
   delete: (workspaceId: string, inputId: string) =>
     api.delete<void>(`/${workspaceId}/payroll/inputs/${inputId}`),
 };

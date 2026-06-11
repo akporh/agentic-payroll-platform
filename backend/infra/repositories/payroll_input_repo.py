@@ -259,6 +259,41 @@ def create_input(
         db.close()
 
 
+def update_input(
+    workspace_id: str,
+    payroll_input_id: str,
+    quantity,
+    reference_date: date | None,
+) -> bool:
+    """Update quantity and reference_date on an unclaimed payroll_input row.
+
+    Returns True if the row was found and updated, False if not found or
+    already claimed by a run (payroll_run_id IS NOT NULL).
+    """
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("""
+                UPDATE payroll_input
+                   SET quantity       = :qty,
+                       reference_date = :reference_date
+                 WHERE payroll_input_id = :input_id
+                   AND workspace_id    = :wid
+                   AND payroll_run_id  IS NULL
+            """),
+            {
+                "qty":            quantity,
+                "reference_date": reference_date,
+                "input_id":       payroll_input_id,
+                "wid":            workspace_id,
+            },
+        )
+        db.commit()
+        return result.rowcount > 0
+    finally:
+        db.close()
+
+
 def delete_input(workspace_id: str, payroll_input_id: str) -> bool:
     """Delete an unclaimed payroll_input row. Returns True if deleted."""
     db = SessionLocal()

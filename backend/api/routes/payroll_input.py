@@ -18,6 +18,7 @@ from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.payroll_input_repo import (
     list_unclaimed_inputs,
     create_input,
+    update_input,
     delete_input,
 )
 
@@ -319,6 +320,26 @@ def get_input_issues(workspace_id: str):
         }
     finally:
         db.close()
+
+
+@router.patch("/{workspace_id}/payroll/inputs/{input_id}")
+def edit_input(workspace_id: str, input_id: str, payload: dict):
+    """Update quantity and reference_date on an unclaimed payroll_input row."""
+    quantity = payload.get("quantity")
+    raw_date = payload.get("reference_date")
+
+    if quantity is not None and quantity < 0:
+        raise HTTPException(status_code=400, detail="quantity must be >= 0")
+
+    reference_date = _parse_period_date(raw_date) if raw_date else None
+
+    updated = update_input(workspace_id, input_id, quantity, reference_date)
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Input not found or already claimed by a payroll run",
+        )
+    return {"status": "updated"}
 
 
 @router.delete("/{workspace_id}/payroll/inputs/{input_id}")
