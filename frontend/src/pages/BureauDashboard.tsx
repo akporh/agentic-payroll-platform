@@ -105,7 +105,6 @@ function NewClientSlideOver({ open, onClose, onCreated }: NewClientSlideOverProp
         savedAt: new Date().toISOString(),
         activeStep: 'client-config-json',
         rawJson: JSON.stringify(buildConfigTemplate(created.workspace_id), null, 2),
-        employees: [],
       });
       onCreated();
       navigate(`/workspaces/${created.workspace_id}/setup`);

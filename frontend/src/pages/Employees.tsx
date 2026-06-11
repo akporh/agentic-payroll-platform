@@ -1721,7 +1721,7 @@ export function Employees() {
             <Card padding="md">
               <div className="flex flex-col h-full gap-3">
                 <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                  <UploadIcon className="w-5 h-5 text-indigo-600" />
+                  <UploadIcon />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 text-sm">Upload from Excel</h3>
@@ -1746,7 +1746,7 @@ export function Employees() {
             <Card padding="md">
               <div className="flex flex-col h-full gap-3">
                 <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <PlusIcon className="w-5 h-5 text-slate-500" />
+                  <PlusIcon />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 text-sm">Add one at a time</h3>

@@ -636,7 +636,7 @@ export function PayrollResults() {
   useEffect(() => {
     if (!workspaceId) return;
     workspaceApi.getEmployees(workspaceId)
-      .then((emps) => setNotEnrolledCount(emps.filter((e: { is_ended: boolean; is_enrolled: boolean }) => !e.is_ended && !e.is_enrolled).length))
+      .then((emps) => setNotEnrolledCount(emps.filter((e) => !e.is_ended && !e.is_enrolled).length))
       .catch(() => {});
   }, [workspaceId]);
 
