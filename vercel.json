@@ -11,5 +11,11 @@
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/keep-alive",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }
