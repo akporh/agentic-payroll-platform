@@ -196,6 +196,7 @@ export function PayrollInputs() {
       }
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
+      window.dispatchEvent(new Event('payroll-inputs-changed'));
       resetForm();
       setPanelOpen(false);
     } catch (e: unknown) {
@@ -210,6 +211,7 @@ export function PayrollInputs() {
     try {
       await payrollInputApi.delete(workspaceId, inputId);
       setInputs((prev) => prev.filter((i) => i.payroll_input_id !== inputId));
+      window.dispatchEvent(new Event('payroll-inputs-changed'));
       toast.show('success', 'Input removed');
     } catch (e: unknown) {
       toast.show('error', e instanceof Error ? e.message : 'Failed to delete input');

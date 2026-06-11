@@ -175,6 +175,7 @@ export function PayrollInputsBulkUpload() {
         { rows: validRows },
       );
       setResult(res);
+      if (res.created > 0) window.dispatchEvent(new Event('payroll-inputs-changed'));
       if (res.errors.length === 0) {
         toast.show('success', `${res.created} input${res.created !== 1 ? 's' : ''} added to payroll inbox`);
       } else {
