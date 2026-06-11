@@ -303,7 +303,11 @@ export function PayrollInputs() {
                 </tr>
               </thead>
               <tbody>
-                {inputs.map((inp) => (
+                {inputs.map((inp) => {
+                  const def = inputDefs.find((d) => d.code === inp.input_code);
+                  const displayRate   = def?.rule_rate   != null ? `₦${Number(def.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
+                  const displayAmount = def?.rule_amount != null ? `₦${Number(def.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
+                  return (
                   <tr key={inp.payroll_input_id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800">{inp.employee_name}</p>
@@ -314,8 +318,8 @@ export function PayrollInputs() {
                       <CategoryBadge category={inp.input_category} />
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.quantity ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.rate ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.amount ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayRate}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayAmount}</td>
                     <td className="px-4 py-3 text-right text-gray-500 text-xs">
                       {inp.reference_date ? inp.reference_date.slice(0, 7) : <span className="text-gray-400 italic">current</span>}
                     </td>
@@ -331,7 +335,8 @@ export function PayrollInputs() {
                       </IconBtn>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
