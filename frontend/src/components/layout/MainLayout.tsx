@@ -23,7 +23,7 @@ export function MainLayout() {
   useEffect(() => {
     if (!workspaceId) { setEmployees([]); setInputIssueCount(0); setTimesheetEnabled(false); return; }
     const fetchEmployees = () => workspaceApi.getEmployees(workspaceId).then(setEmployees).catch(() => {});
-    const fetchInputIssues = () => payrollApi.getInputIssues(workspaceId).then((d) => setInputIssueCount(d.total)).catch(() => {});
+    const fetchInputIssues = () => payrollApi.getInputIssues(workspaceId).then((d) => setInputIssueCount(d.pending_count ?? d.total)).catch(() => {});
     fetchEmployees();
     fetchInputIssues();
     workspaceApi.getPayrollConfig(workspaceId).then((cfg) => setTimesheetEnabled(cfg.timesheet_enabled ?? false)).catch(() => {});

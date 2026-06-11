@@ -309,13 +309,21 @@ def get_input_issues(workspace_id: str):
             {"wid": workspace_id, "period_start": str(period_start)},
         ).scalar() or 0
 
-        import calendar as _cal
+        pending = db.execute(
+            text("""
+                SELECT COUNT(*) FROM payroll_input
+                WHERE workspace_id = :wid AND payroll_run_id IS NULL
+            """),
+            {"wid": workspace_id},
+        ).scalar() or 0
+
         month_name = today.strftime("%B %Y")
 
         return {
             "total":                    int(deactivated) + int(unmatched),
             "deactivated_with_inputs":  int(deactivated),
             "unmatched_with_inputs":    int(unmatched),
+            "pending_count":            int(pending),
             "period_label":             month_name,
         }
     finally:

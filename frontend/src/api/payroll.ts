@@ -150,6 +150,7 @@ export const payrollApi = {
       total: number;
       deactivated_with_inputs: number;
       unmatched_with_inputs: number;
+      pending_count: number;
       period_label: string;
     }>(`/workspaces/${workspaceId}/payroll/inputs/issues`),
 };
