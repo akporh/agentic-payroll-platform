@@ -13,8 +13,6 @@ export const payrollInputApi = {
       employee_id: string;
       input_code: string;
       quantity?: number;
-      rate?: number;
-      amount?: number;
       reference_date?: string;
     }
   ) =>

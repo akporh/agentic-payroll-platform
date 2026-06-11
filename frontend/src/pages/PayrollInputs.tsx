@@ -39,6 +39,8 @@ interface InputCodeDef {
   category: string;
   rule_name: string;
   calculation_method: string;
+  rule_rate?: number | null;
+  rule_amount?: number | null;
 }
 
 function showsQty(def: InputCodeDef | undefined) {
@@ -122,8 +124,6 @@ export function PayrollInputs() {
   const [employeeId, setEmployeeId] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [rate, setRate] = useState('');
-  const [amount, setAmount] = useState('');
   const [effectivePeriod, setEffectivePeriod] = useState('');
 
   useEffect(() => {
@@ -148,8 +148,6 @@ export function PayrollInputs() {
     setEmployeeId('');
     setInputCode('');
     setQuantity('');
-    setRate('');
-    setAmount('');
     setEffectivePeriod('');
     setFormError(null);
   }
@@ -164,13 +162,9 @@ export function PayrollInputs() {
         employee_id: string;
         input_code: string;
         quantity?: number;
-        rate?: number;
-        amount?: number;
         reference_date?: string;
       } = { employee_id: employeeId, input_code: inputCode };
       if (quantity) payload.quantity = parseFloat(quantity);
-      if (rate) payload.rate = parseFloat(rate);
-      if (amount) payload.amount = parseFloat(amount);
       if (effectivePeriod) payload.reference_date = `${effectivePeriod}-01`;
 
       await payrollInputApi.create(workspaceId, payload);
@@ -386,7 +380,7 @@ export function PayrollInputs() {
             required
             options={inputCodeOptions}
             value={inputCode}
-            onChange={(v) => { setInputCode(v); setQuantity(''); setRate(''); setAmount(''); }}
+            onChange={(v) => { setInputCode(v); setQuantity(''); }}
             placeholder="Select code…"
           />
 
@@ -402,26 +396,24 @@ export function PayrollInputs() {
             />
           )}
 
-          {inputCode && showsRate(selectedDef) && (
-            <NumberInput
-              label="Rate per unit"
-              currency
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              step="0.01"
-              min="0"
-            />
+          {inputCode && showsRate(selectedDef) && selectedDef?.rule_rate != null && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rate per unit</label>
+              <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                ₦{Number(selectedDef.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
+              </p>
+            </div>
           )}
 
-          {inputCode && showsAmt(selectedDef) && (
-            <NumberInput
-              label="Amount"
-              currency
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              step="0.01"
-              min="0"
-            />
+          {inputCode && showsAmt(selectedDef) && selectedDef?.rule_amount != null && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+              <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                ₦{Number(selectedDef.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
+              </p>
+            </div>
           )}
 
           <DateInput

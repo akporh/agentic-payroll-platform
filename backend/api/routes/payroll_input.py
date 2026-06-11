@@ -99,6 +99,8 @@ def list_input_codes(workspace_id: str):
                     "category":           rule_type or "EARNING",
                     "rule_name":          rule_name,
                     "calculation_method": (defn or {}).get("calculation_method", ""),
+                    "rule_rate":          (defn or {}).get("rate"),
+                    "rule_amount":        (defn or {}).get("amount"),
                 })
 
         return {"input_codes": codes}
@@ -119,8 +121,6 @@ def add_input(workspace_id: str, payload: dict):
     employee_id = payload.get("employee_id")
     input_code  = payload.get("input_code")
     quantity    = payload.get("quantity")
-    rate        = payload.get("rate")
-    amount      = payload.get("amount")
     raw_date    = payload.get("reference_date")
 
     if not employee_id:
@@ -148,8 +148,6 @@ def add_input(workspace_id: str, payload: dict):
             input_code=input_code,
             input_category=input_category,
             quantity=quantity,
-            rate=rate,
-            amount=amount,
             reference_date=reference_date,
         )
         return {"status": "created", "payroll_input_id": result["payroll_input_id"]}

@@ -228,8 +228,6 @@ def create_input(
     input_code: str,
     input_category: str,
     quantity,
-    rate=None,
-    amount=None,
     reference_date: date | None = None,
 ) -> dict:
     """Insert an unclaimed payroll_input row. Returns the new ID."""
@@ -239,10 +237,10 @@ def create_input(
             text("""
                 INSERT INTO payroll_input (
                     payroll_input_id, workspace_id, employee_id,
-                    input_code, input_category, quantity, rate, amount, source, reference_date
+                    input_code, input_category, quantity, source, reference_date
                 ) VALUES (
                     gen_random_uuid(), :wid, :emp_id,
-                    :code, :category, :qty, :rate, :amount, 'MANUAL', :reference_date
+                    :code, :category, :qty, 'MANUAL', :reference_date
                 )
                 RETURNING payroll_input_id
             """),
@@ -252,8 +250,6 @@ def create_input(
                 "code":           input_code,
                 "category":       input_category,
                 "qty":            quantity,
-                "rate":           rate,
-                "amount":         amount,
                 "reference_date": reference_date,
             },
         ).fetchone()
