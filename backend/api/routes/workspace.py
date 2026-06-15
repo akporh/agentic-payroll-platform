@@ -1236,8 +1236,10 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
                 detail=f"Component '{code_upper}' is not valid for country '{country_code}'.",
             )
 
-        # D-ARCH-2: Statutory deduction components cannot be disabled
-        if payload.get("is_active") is False:
+        # D-ARCH-2: Mandatory statutory deduction components cannot be disabled.
+        # CHECK_OFF_DUES is union-only (not universal) and is exempt from this guard.
+        _OPTIONAL_STATUTORY = {"CHECK_OFF_DUES"}
+        if payload.get("is_active") is False and code_upper not in _OPTIONAL_STATUTORY:
             statutory = db.execute(
                 text("""
                     SELECT component_class FROM component_metadata
