@@ -12,13 +12,7 @@ import {
   useToast,
 } from '../design-system';
 import { useWorkspaceContext } from '../context/WorkspaceContext';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function extractError(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
+import { extractError } from '../utils/errorUtils';
 
 function firstOfMonth(): string {
   const d = new Date();

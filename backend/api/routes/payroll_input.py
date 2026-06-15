@@ -10,10 +10,14 @@ contains an `input_field` key contributes one valid code; the rule_type
 (EARNING / DEDUCTION) becomes the input_category stored on the row.
 """
 
+import logging
 from datetime import date
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from psycopg2.errors import UniqueViolation
+
+_log = logging.getLogger(__name__)
 from backend.infra.db.session import SessionLocal
 from backend.infra.repositories.payroll_input_repo import (
     list_unclaimed_inputs,
@@ -128,8 +132,11 @@ def add_input(workspace_id: str, payload: dict):
         raise HTTPException(status_code=400, detail="employee_id is required")
     if not input_code:
         raise HTTPException(status_code=400, detail="input_code is required")
-    if quantity is not None and quantity < 0:
-        raise HTTPException(status_code=400, detail="quantity must be >= 0")
+    if quantity is not None:
+        if not isinstance(quantity, (int, float)):
+            raise HTTPException(status_code=400, detail="quantity must be a number")
+        if quantity < 0:
+            raise HTTPException(status_code=400, detail="quantity must be >= 0")
 
     db = SessionLocal()
     try:
@@ -170,6 +177,8 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
     rows = payload.get("rows", [])
     if not rows:
         raise HTTPException(status_code=400, detail="rows is required and must be non-empty")
+    if len(rows) > 2000:
+        raise HTTPException(status_code=400, detail="Bulk upload limit is 2000 rows per request")
 
     db = SessionLocal()
     try:
@@ -187,6 +196,7 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
         emp_map = {r[0]: str(r[1]) for r in emp_rows}
 
         created = 0
+        skipped = 0
         errors  = []
 
         for i, row in enumerate(rows):
@@ -202,9 +212,13 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
             if not input_code:
                 errors.append({"row": row_num, "detail": "input_code is required"})
                 continue
-            if quantity is not None and quantity < 0:
-                errors.append({"row": row_num, "detail": "quantity must be >= 0"})
-                continue
+            if quantity is not None:
+                if not isinstance(quantity, (int, float)):
+                    errors.append({"row": row_num, "detail": "quantity must be a number"})
+                    continue
+                if quantity < 0:
+                    errors.append({"row": row_num, "detail": "quantity must be >= 0"})
+                    continue
             if input_code not in valid_codes:
                 errors.append({"row": row_num, "detail": f"Unknown input_code '{input_code}'"})
                 continue
@@ -233,20 +247,18 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                     reference_date=reference_date,
                 )
                 created += 1
-            except IntegrityError:
-                period_label = str(reference_date) if reference_date else "current period"
-                errors.append({
-                    "row": row_num,
-                    "detail": (
-                        f"Duplicate: input_code '{input_code}' for employee '{employee_number}' "
-                        f"on {period_label} already exists. "
-                        "Delete the existing input or use a different reference_date."
-                    ),
-                })
+            except IntegrityError as exc:
+                if isinstance(exc.orig, UniqueViolation):
+                    # Duplicate (employee, input_code, period) — skip silently; re-upload is idempotent.
+                    skipped += 1
+                else:
+                    _log.error("Unexpected IntegrityError on row %d: %s", row_num, exc)
+                    errors.append({"row": row_num, "detail": "Failed to save input — data constraint violation"})
             except Exception as exc:
-                errors.append({"row": row_num, "detail": str(exc)})
+                _log.error("Unexpected error on row %d: %s", row_num, exc)
+                errors.append({"row": row_num, "detail": "Failed to save input — unexpected error"})
 
-        return {"created": created, "errors": errors}
+        return {"created": created, "skipped": skipped, "errors": errors}
     finally:
         db.close()
 

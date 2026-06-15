@@ -28,17 +28,31 @@ import {
   SearchableSelect,
   TextInput,
   DateInput,
+  DownloadBtn,
   useToast,
   Breadcrumb,
 } from '../design-system';
 import { useWorkspaceContext } from '../context/WorkspaceContext';
 import {
   EmployeeUpload,
+  downloadEmployeeTemplate,
   type EmployeeRow,
   type SalaryDefinitionOption,
 } from '../components/employees/EmployeeUpload';
+import { NativeUploadFlow } from '../components/shared/NativeUploadFlow';
+import type { SubmitResultDetail } from '../components/shared/NativeUploadFlow';
+import type { ColumnMapping } from '../components/shared/ColumnMappingPanel';
+import {
+  EMPLOYEE_ALIASES,
+  forwardFillRow,
+  buildColumnMap,
+  toISODate,
+} from '../utils/nativeExcelParser';
 
 // ── Option builders ───────────────────────────────────────────────────────────
+
+/** Normalizes a grade/designation label for matching: trim, uppercase, spaces/hyphens → underscores */
+const normalizeCode = (s: string) => s.trim().toUpperCase().replace(/[\s-]+/g, '_');
 
 function salaryDefOptions(defs: SalaryDefinitionOption[], emptyLabel = '— select —') {
   return [
@@ -53,6 +67,30 @@ function codeOptions(codes: string[], emptyLabel = '— unassigned —') {
     ...codes.map((c) => ({ value: c, label: c })),
   ];
 }
+
+// ── Native upload constants (module-level — not recreated per render) ─────────
+
+// Required by the backend CreateEmployeeSchema — Continue is blocked until all three are mapped
+const EMPLOYEE_REQUIRED_TARGETS = [
+  { value: 'employee_id', label: 'Employee ID / Number' },
+  { value: 'first_name',  label: 'First Name' },
+  { value: 'last_name',   label: 'Last Name / Surname' },
+];
+
+// Optional in the backend schema — shown in checklist but do not block Continue
+const EMPLOYEE_OPTIONAL_TARGETS = [
+  { value: 'grade',           label: 'Grade / Category' },
+  { value: 'designation',     label: 'Designation / Job Title' },
+  { value: 'tin',             label: 'TIN' },
+  { value: 'rsa',             label: 'RSA / Pension PIN' },
+  { value: 'bank',            label: 'Bank' },
+  { value: 'account_number',  label: 'Account Number' },
+  { value: 'contract_start',  label: 'Contract Start Date' },
+  { value: 'contract_end',    label: 'Contract End Date' },
+];
+
+// Combined list used by buildNativeMappings for the dropdown options
+const EMPLOYEE_AVAILABLE_TARGETS = [...EMPLOYEE_REQUIRED_TARGETS, ...EMPLOYEE_OPTIONAL_TARGETS];
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -98,7 +136,7 @@ function autoMatchSalaryDef(
   const g = (gradeLabel ?? '').toUpperCase();
   const d = (desigLabel ?? '').toUpperCase();
   if (!g && !d) return '';
-  const tryMatch = (code: string) => salaryDefinitions.find(sd => sd.code.toUpperCase() === code) ?? null;
+  const tryMatch = (code: string) => salaryDefinitions.find(sd => normalizeCode(sd.code) === normalizeCode(code)) ?? null;
   return (
     (g && d ? tryMatch(`${d}_${g}`) ?? tryMatch(`${g}_${d}`) : null)
     ?? (d ? tryMatch(d) : null)
@@ -129,10 +167,10 @@ function EnrollSlideOver({
   useEffect(() => {
     if (employee) {
       const gradeMatch = gradeOptions.find(
-        g => g.toUpperCase() === (employee.imported_grade_label ?? '').toUpperCase()
+        g => normalizeCode(g) === normalizeCode(employee.imported_grade_label ?? '')
       ) ?? '';
       const desgMatch = designationOptions.find(
-        d => d.toUpperCase() === (employee.imported_designation_label ?? '').toUpperCase()
+        d => normalizeCode(d) === normalizeCode(employee.imported_designation_label ?? '')
       ) ?? '';
       const resolvedGrade = gradeMatch || employee.grade || '';
       const resolvedDesig = desgMatch || employee.designation || '';
@@ -222,11 +260,15 @@ interface BulkEnrollSlideOverProps {
   presetSalaryCode?: string;
   presetGradeCode?: string;
   presetDesignationCode?: string;
+  // Raw imported labels shown as context when no salary def was auto-matched
+  contextGradeLabel?: string | null;
+  contextDesigLabel?: string | null;
 }
 
 function BulkEnrollSlideOver({
   open, employeeIds, salaryDefinitions, gradeOptions, designationOptions, onClose, onSaved, workspaceId,
   presetSalaryCode, presetGradeCode, presetDesignationCode,
+  contextGradeLabel, contextDesigLabel,
 }: BulkEnrollSlideOverProps) {
   const toast = useToast();
   const [salaryDefCode, setSalaryDefCode] = useState('');
@@ -269,12 +311,14 @@ function BulkEnrollSlideOver({
     }
   }
 
+  const hasContext = contextGradeLabel || contextDesigLabel;
+
   return (
     <SlideOver
       open={open}
       onClose={onClose}
       title="Enroll Employees"
-      description={`Enrolling ${employeeIds.length} employee${employeeIds.length !== 1 ? 's' : ''}`}
+      description={`Enrolling ${employeeIds.length} employee${employeeIds.length !== 1 ? 's' : ''} — assign a salary definition to make them payroll-eligible`}
       footer={
         <div className="flex gap-3">
           <Btn type="submit" form="bulk-enroll-form" variant="primary" size="md" loading={saving}>
@@ -287,6 +331,18 @@ function BulkEnrollSlideOver({
       }
     >
       <form id="bulk-enroll-form" onSubmit={handleSave} className="space-y-5">
+        {hasContext && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 space-y-1">
+            <p className="font-medium text-gray-700 text-sm">Group from your file</p>
+            {contextDesigLabel && (
+              <p>Designation: <span className="font-mono text-gray-800">{contextDesigLabel}</span></p>
+            )}
+            {contextGradeLabel && (
+              <p>Grade: <span className="font-mono text-gray-800">{contextGradeLabel}</span></p>
+            )}
+            <p className="text-gray-400 pt-0.5">Select the salary definition that applies to this group.</p>
+          </div>
+        )}
         <SearchableSelect
           label="Salary Definition"
           value={salaryDefCode}
@@ -298,13 +354,25 @@ function BulkEnrollSlideOver({
           label="Designation (optional)"
           value={designation}
           onChange={setDesignation}
-          options={codeOptions(designationOptions)}
+          options={(() => {
+            const base = codeOptions(designationOptions);
+            if (designation && !designationOptions.some(d => d === designation)) {
+              return [base[0], { value: designation, label: `${designation} (from import)` }, ...base.slice(1)];
+            }
+            return base;
+          })()}
         />
         <SearchableSelect
           label="Grade (optional)"
           value={grade}
           onChange={setGrade}
-          options={codeOptions(gradeOptions)}
+          options={(() => {
+            const base = codeOptions(gradeOptions);
+            if (grade && !gradeOptions.some(g => g === grade)) {
+              return [base[0], { value: grade, label: `${grade} (from import)` }, ...base.slice(1)];
+            }
+            return base;
+          })()}
         />
         {error && <AlertBanner variant="error" description={error} />}
       </form>
@@ -1042,6 +1110,90 @@ function AddEmployeeSlideOver({ open, onClose, onSaved, workspaceId, grades, des
   );
 }
 
+// ── Upload method selector ────────────────────────────────────────────────────
+
+function UploadMethodSelector({
+  value,
+  onChange,
+}: {
+  value: 'template' | 'native';
+  onChange: (v: 'template' | 'native') => void;
+}) {
+  const methods: Array<{
+    id: 'native' | 'template';
+    title: string;
+    descriptor: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      id: 'native',
+      title: 'Client file',
+      descriptor: 'Map columns from any spreadsheet',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'template',
+      title: 'Our template',
+      descriptor: 'Download, fill, re-upload',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3 mb-6">
+      {methods.map((method) => {
+        const selected = value === method.id;
+        return (
+          <button
+            key={method.id}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(method.id)}
+            className={[
+              'relative flex flex-col gap-2 rounded-lg border p-3 text-left',
+              'transition-all duration-150 focus:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1',
+              selected
+                ? 'border-brand bg-blue-50 shadow-sm'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-slate-50',
+            ].join(' ')}
+          >
+            {/* Selected checkmark — brand filled circle so it's not colour-only */}
+            {selected && (
+              <span className="absolute top-2.5 right-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand" aria-hidden="true">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            )}
+
+            <span className={selected ? 'text-brand' : 'text-gray-400'}>
+              {method.icon}
+            </span>
+
+            <span className="flex flex-col gap-0.5 pr-5">
+              <span className={`text-sm font-semibold leading-tight ${selected ? 'text-brand' : 'text-gray-700'}`}>
+                {method.title}
+              </span>
+              <span className="text-xs text-gray-400 leading-snug">
+                {method.descriptor}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Upload Employees SlideOver ────────────────────────────────────────────────
 
 interface ImportResult {
@@ -1060,15 +1212,219 @@ interface UploadSlideOverProps {
 
 function UploadSlideOver({ open, onClose, onSaved, workspaceId }: UploadSlideOverProps) {
   const toast = useToast();
+  const [uploadMode, setUploadMode] = useState<'template' | 'native'>('native');
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResult[] | null>(null);
+  const [nativeKey, setNativeKey] = useState(0);
+
+  // Reset NativeUploadFlow each time the SlideOver opens so prior results/state don't persist
+  useEffect(() => {
+    if (open) setNativeKey((k) => k + 1);
+  }, [open]);
 
   function handleClose() {
     if (importing) return;
     setEmployees([]);
     setResults(null);
     onClose();
+  }
+
+  // ── Native upload helpers ─────────────────────────────────────────────────
+
+  function buildNativeMappings(headerRow: string[]): ColumnMapping[] {
+    const colMap = buildColumnMap(headerRow, EMPLOYEE_ALIASES);
+    return headerRow
+      .map((header, colIdx): ColumnMapping | null => {
+        if (!header.trim()) return null;
+        const matchedField = Object.entries(colMap).find(([, idx]) => idx === colIdx)?.[0] ?? null;
+        return {
+          dataColIdx: colIdx,
+          detectedHeader: header,
+          proposedTarget: matchedField,
+          status: matchedField ? 'matched' : 'excluded',
+          availableTargets: EMPLOYEE_AVAILABLE_TARGETS,
+        };
+      })
+      .filter((m): m is ColumnMapping => m !== null);
+  }
+
+  interface NativeEmployeeRow {
+    employee_id: string;
+    first_name: string;
+    last_name: string;
+    grade: string;
+    designation: string;
+    tin: string;
+    rsa: string;
+    bank: string;
+    account_number: string;
+    contract_start: string;
+    contract_end: string;
+    _error?: string;
+  }
+
+  function parseNativeRows(
+    data: unknown[][],
+    headerRowIndex: number,
+    colMappings: ColumnMapping[],
+  ): { rows: NativeEmployeeRow[]; errors: string[] } {
+    const fieldToColIdx: Record<string, number> = {};
+    colMappings.forEach((m) => {
+      if (m.status === 'matched' && m.proposedTarget) {
+        fieldToColIdx[m.proposedTarget] = m.dataColIdx;
+      }
+    });
+
+    const rows: NativeEmployeeRow[] = [];
+    const errors: string[] = [];
+    const seenIds = new Set<string>();
+
+    for (let ri = headerRowIndex + 1; ri < data.length; ri++) {
+      const row = data[ri] as unknown[];
+      const allBlank = row.every((c) => String(c ?? '').trim() === '');
+      if (allBlank) continue;
+
+      function get(field: string) {
+        const idx = fieldToColIdx[field];
+        return idx !== undefined ? String(row[idx] ?? '').trim() : '';
+      }
+
+      const employee_id = get('employee_id');
+      const first_name  = get('first_name');
+      const last_name   = get('last_name');
+
+      if (!employee_id && !first_name && !last_name) continue;
+
+      const rowErrors: string[] = [];
+      if (!employee_id) rowErrors.push('Employee ID missing');
+      if (!first_name)  rowErrors.push('First name missing');
+      if (!last_name)   rowErrors.push('Last name missing');
+      if (employee_id && seenIds.has(employee_id)) rowErrors.push(`Duplicate employee ID: ${employee_id}`);
+      if (employee_id) seenIds.add(employee_id);
+
+      const contractStartRaw = fieldToColIdx['contract_start'] !== undefined ? row[fieldToColIdx['contract_start']] : null;
+      const contractEndRaw   = fieldToColIdx['contract_end']   !== undefined ? row[fieldToColIdx['contract_end']]   : null;
+
+      const nativeRow: NativeEmployeeRow = {
+        employee_id,
+        first_name,
+        last_name,
+        grade:          normalizeCode(get('grade')),
+        designation:    normalizeCode(get('designation')),
+        tin:            get('tin'),
+        rsa:            get('rsa'),
+        bank:           get('bank'),
+        account_number: get('account_number'),
+        contract_start: toISODate(contractStartRaw),
+        contract_end:   toISODate(contractEndRaw),
+        _error: rowErrors.length > 0 ? rowErrors.join('; ') : undefined,
+      };
+      rows.push(nativeRow);
+      if (rowErrors.length > 0) errors.push(`Row ${ri + 1}: ${rowErrors.join('; ')}`);
+    }
+
+    return { rows, errors };
+  }
+
+  function renderNativePreview(rows: NativeEmployeeRow[], errors: string[]) {
+    const invalidCount = errors.length;
+    const validCount   = rows.length - invalidCount;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+            {validCount} ready
+          </span>
+          {invalidCount > 0 && (
+            <span className="text-xs font-semibold bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
+              {invalidCount} with errors
+            </span>
+          )}
+        </div>
+        {errors.length > 0 && (
+          <AlertBanner
+            variant="error"
+            title={`${errors.length} row${errors.length !== 1 ? 's' : ''} have errors`}
+            description={errors.slice(0, 3).join(' · ') + (errors.length > 3 ? ` +${errors.length - 3} more` : '')}
+          />
+        )}
+        <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-64">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                {['ID', 'First Name', 'Last Name', 'Grade', 'Start Date', 'Status'].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className={`border-b border-gray-100 ${r._error ? 'bg-red-50' : ''}`}>
+                  <td className="px-3 py-2 font-mono text-gray-700">{r.employee_id}</td>
+                  <td className="px-3 py-2 text-gray-700">{r.first_name}</td>
+                  <td className="px-3 py-2 text-gray-700">{r.last_name}</td>
+                  <td className="px-3 py-2 text-gray-500">{r.grade || '—'}</td>
+                  <td className="px-3 py-2 text-gray-500">{r.contract_start || '—'}</td>
+                  <td className="px-3 py-2">
+                    {r._error
+                      ? <span className="text-red-600">{r._error}</span>
+                      : <span className="text-green-600">✓</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  async function submitNativeRows(rows: NativeEmployeeRow[]) {
+    const valid = rows.filter((r) => !r._error);
+    if (valid.length === 0) return { success: false, message: 'No valid rows to submit.' };
+
+    const details = await Promise.all(
+      valid.map((emp) => {
+        const name = `${emp.first_name} ${emp.last_name}`;
+        const employee_number = emp.employee_id;
+        return workspaceApi.createEmployee(workspaceId, {
+          first_name: emp.first_name,
+          last_name: emp.last_name,
+          employee_number: emp.employee_id,
+          salary_definition_code: null,
+          grade_code: null,
+          designation_code: null,
+          imported_grade_label: emp.grade || null,
+          imported_designation_label: emp.designation || null,
+          contract_start: emp.contract_start || null,
+          contract_end: emp.contract_end || null,
+          tin: emp.tin || null,
+          rsa: emp.rsa || null,
+          bank: emp.bank || null,
+          account_number: emp.account_number || null,
+        })
+          .then((): SubmitResultDetail => ({ name, employee_number, status: 'created' }))
+          .catch((e: unknown): SubmitResultDetail => {
+            if (e instanceof ApiError && e.response.status === 409)
+              return { name, employee_number, status: 'skipped' };
+            return { name, employee_number, status: 'failed', error: e instanceof Error ? e.message : 'Unknown error' };
+          });
+      })
+    );
+
+    const created = details.filter((d) => d.status === 'created').length;
+    const failed  = details.filter((d) => d.status === 'failed').length;
+
+    if (created > 0) {
+      toast.show('success', `${created} employee${created !== 1 ? 's' : ''} registered`);
+      onSaved();
+    }
+
+    return { success: failed === 0, message: '', details };
   }
 
   async function handleImport() {
@@ -1133,95 +1489,138 @@ function UploadSlideOver({ open, onClose, onSaved, workspaceId }: UploadSlideOve
       ? 'Register'
       : `Register ${employees.length} employee${employees.length !== 1 ? 's' : ''}`;
 
+  const modeSelector = (
+    <UploadMethodSelector value={uploadMode} onChange={setUploadMode} />
+  );
+
+  // Single SlideOver — both mode sections rendered simultaneously so NativeUploadFlow
+  // stays mounted across mode switches, preserving upload progress.
+  const templateFooter = results ? (
+    <Btn variant="secondary" size="md" onClick={handleClose}>
+      Close
+    </Btn>
+  ) : (
+    <div className="flex items-center gap-3">
+      <Btn
+        variant="primary"
+        size="md"
+        loading={importing}
+        disabled={employees.length === 0 || importing}
+        onClick={handleImport}
+      >
+        {importLabel}
+      </Btn>
+      <Btn variant="secondary" size="md" onClick={handleClose} disabled={importing}>
+        Cancel
+      </Btn>
+    </div>
+  );
+
   return (
     <SlideOver
       open={open}
       onClose={handleClose}
       title="Upload Employees"
-      description="Register employees from an Excel or CSV file — payroll structure is assigned separately"
-      footer={
-        results ? (
-          <Btn variant="secondary" size="md" onClick={handleClose}>
-            Close
-          </Btn>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Btn
-              variant="primary"
-              size="md"
-              loading={importing}
-              disabled={employees.length === 0 || importing}
-              onClick={handleImport}
-            >
-              {importLabel}
-            </Btn>
-            <Btn variant="secondary" size="md" onClick={handleClose} disabled={importing}>
-              Cancel
-            </Btn>
-          </div>
-        )
+      description={
+        uploadMode === 'native'
+          ? 'Upload a client spreadsheet in their own format — columns are matched automatically'
+          : 'Register employees from an Excel or CSV file — payroll structure is assigned separately'
       }
+      footer={uploadMode === 'template' ? templateFooter : undefined}
     >
-      <div className="space-y-5">
-        {results ? (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              {[
-                createdCount > 0 && `${createdCount} registered`,
-                skippedCount > 0 && `${skippedCount} already registered`,
-                failedCount > 0 && `${failedCount} failed`,
-              ].filter(Boolean).join(' · ')}
-            </p>
-            {createdCount > 0 && (
-              <AlertBanner
-                variant="success"
-                title={`${createdCount} employee${createdCount !== 1 ? 's' : ''} registered`}
-                description="Assign a salary definition from the Not Enrolled section to make them payroll-eligible."
-              />
-            )}
-            {skippedCount > 0 && (
-              <AlertBanner
-                variant="info"
-                title={`${skippedCount} already registered — skipped`}
-              />
-            )}
-            {failedCount > 0 && (
-              <AlertBanner
-                variant="error"
-                title={`${failedCount} employee${failedCount !== 1 ? 's' : ''} failed`}
-                description="Review the errors below and correct the data before re-uploading."
-              />
-            )}
-            {failedCount > 0 && (
-              <div className="rounded-lg border border-red-100 overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-red-50 border-b border-red-100">
-                      <th className="px-3 py-2 text-left font-semibold text-red-700">Employee</th>
-                      <th className="px-3 py-2 text-left font-semibold text-red-700">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.filter((r) => r.status === 'failed').map((r) => (
-                      <tr key={r.employee_number} className="border-b border-red-50 last:border-0">
-                        <td className="px-3 py-2 text-gray-700">
-                          {r.name}
-                          <span className="ml-1 font-mono text-gray-400">({r.employee_number})</span>
-                        </td>
-                        <td className="px-3 py-2 text-red-600">{r.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      <div>
+        {modeSelector}
+
+        {/* Template mode content */}
+        <div style={{ display: uploadMode === 'template' ? 'block' : 'none' }}>
+          <div className="space-y-5">
+            {!results && (
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Step 1 — Download the template</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Fill it in, then drop it below</p>
+                </div>
+                <DownloadBtn label="Download Template" onClick={downloadEmployeeTemplate} />
               </div>
             )}
+            {results ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  {[
+                    createdCount > 0 && `${createdCount} registered`,
+                    skippedCount > 0 && `${skippedCount} already registered`,
+                    failedCount > 0 && `${failedCount} failed`,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+                {createdCount > 0 && (
+                  <AlertBanner
+                    variant="success"
+                    title={`${createdCount} employee${createdCount !== 1 ? 's' : ''} registered`}
+                    description="Assign a salary definition from the Not Enrolled section to make them payroll-eligible."
+                  />
+                )}
+                {skippedCount > 0 && (
+                  <AlertBanner
+                    variant="info"
+                    title={`${skippedCount} already registered — skipped`}
+                  />
+                )}
+                {failedCount > 0 && (
+                  <AlertBanner
+                    variant="error"
+                    title={`${failedCount} employee${failedCount !== 1 ? 's' : ''} failed`}
+                    description="Review the errors below and correct the data before re-uploading."
+                  />
+                )}
+                {failedCount > 0 && (
+                  <div className="rounded-lg border border-red-100 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-red-50 border-b border-red-100">
+                          <th className="px-3 py-2 text-left font-semibold text-red-700">Employee</th>
+                          <th className="px-3 py-2 text-left font-semibold text-red-700">Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {results.filter((r) => r.status === 'failed').map((r) => (
+                          <tr key={r.employee_number} className="border-b border-red-50 last:border-0">
+                            <td className="px-3 py-2 text-gray-700">
+                              {r.name}
+                              <span className="ml-1 font-mono text-gray-400">({r.employee_number})</span>
+                            </td>
+                            <td className="px-3 py-2 text-red-600">{r.error}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <EmployeeUpload
+                employees={employees}
+                onEmployeesLoaded={setEmployees}
+              />
+            )}
           </div>
-        ) : (
-          <EmployeeUpload
-            employees={employees}
-            onEmployeesLoaded={setEmployees}
+        </div>
+
+        {/* Native mode content — always mounted to preserve upload progress */}
+        <div style={{ display: uploadMode === 'native' ? 'block' : 'none' }}>
+          <NativeUploadFlow<NativeEmployeeRow>
+            key={nativeKey}
+            aliases={EMPLOYEE_ALIASES}
+            minMatchesForAutoDetect={3}
+            buildMappings={buildNativeMappings}
+            parseRows={parseNativeRows}
+            renderPreview={renderNativePreview}
+            submitLabel="Register employees"
+            onSubmit={submitNativeRows}
+            onDone={handleClose}
+            requiredTargets={EMPLOYEE_REQUIRED_TARGETS}
+            optionalTargets={EMPLOYEE_OPTIONAL_TARGETS}
           />
-        )}
+        </div>
       </div>
     </SlideOver>
   );
@@ -1424,6 +1823,8 @@ export function Employees() {
   const [bulkEnrollPresetCode, setBulkEnrollPresetCode] = useState<string | undefined>(undefined);
   const [bulkEnrollPresetGradeCode, setBulkEnrollPresetGradeCode] = useState<string | undefined>(undefined);
   const [bulkEnrollPresetDesignationCode, setBulkEnrollPresetDesignationCode] = useState<string | undefined>(undefined);
+  const [bulkEnrollContextGradeLabel, setBulkEnrollContextGradeLabel] = useState<string | null>(null);
+  const [bulkEnrollContextDesigLabel, setBulkEnrollContextDesigLabel] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [enrollingGroupIdx, setEnrollingGroupIdx] = useState<number | null>(null);
   const [showEnded, setShowEnded] = useState(false);
@@ -1493,6 +1894,8 @@ export function Employees() {
         group.matchedDef?.code,
         group.matchedGrade ?? group.rawGradeLabel ?? undefined,
         group.matchedDesignation ?? group.rawDesigLabel ?? undefined,
+        group.gradeLabel,
+        group.desigLabel,
       );
     } finally {
       setEnrollingGroupIdx(null);
@@ -1527,17 +1930,19 @@ export function Employees() {
     }
     return Array.from(grouped.entries())
       .map(([, { employees: emps, desigLabel, gradeLabel }]) => {
-        const matchedGrade = gradeOptions.find(g => g.toUpperCase() === gradeLabel) ?? null;
-        const matchedDesignation = designationOptions.find(d => d.toUpperCase() === desigLabel) ?? null;
+        const matchedGrade = gradeOptions.find(g => normalizeCode(g) === normalizeCode(gradeLabel)) ?? null;
+        const matchedDesignation = designationOptions.find(d => normalizeCode(d) === normalizeCode(desigLabel)) ?? null;
         const firstEmp = emps[0];
         // For the enrol API call, prefer imported label (original casing); fall back to assigned code
         const rawGradeLabel = firstEmp?.imported_grade_label ?? firstEmp?.grade ?? null;
         const rawDesigLabel = firstEmp?.imported_designation_label ?? firstEmp?.designation ?? null;
-        const tryMatch = (code: string) => salaryDefinitions.find(sd => sd.code.toUpperCase() === code) ?? null;
-        const matchedDef = tryMatch(`${desigLabel}_${gradeLabel}`)
-          ?? tryMatch(`${gradeLabel}_${desigLabel}`)
-          ?? (desigLabel ? tryMatch(desigLabel) : null)
-          ?? (gradeLabel ? tryMatch(gradeLabel) : null);
+        const ng = normalizeCode(gradeLabel);
+        const nd = normalizeCode(desigLabel);
+        const tryMatch = (code: string) => salaryDefinitions.find(sd => normalizeCode(sd.code) === normalizeCode(code)) ?? null;
+        const matchedDef = tryMatch(`${nd}_${ng}`)
+          ?? tryMatch(`${ng}_${nd}`)
+          ?? (nd ? tryMatch(nd) : null)
+          ?? (ng ? tryMatch(ng) : null);
         return {
           desigLabel: desigLabel || null,
           gradeLabel: gradeLabel || null,
@@ -1561,11 +1966,15 @@ export function Employees() {
     salaryCode?: string,
     gradeCode?: string,
     designationCode?: string,
+    rawGradeLabel?: string | null,
+    rawDesigLabel?: string | null,
   ) {
     setBulkEnrollPresetIds(ids);
     setBulkEnrollPresetCode(salaryCode);
     setBulkEnrollPresetGradeCode(gradeCode);
     setBulkEnrollPresetDesignationCode(designationCode);
+    setBulkEnrollContextGradeLabel(rawGradeLabel ?? null);
+    setBulkEnrollContextDesigLabel(rawDesigLabel ?? null);
     setShowBulkEnroll(true);
   }
 
@@ -1812,7 +2221,24 @@ export function Employees() {
                         <span className="text-slate-500 text-right tabular-nums">{g.count}</span>
                         {g.matchedDef
                           ? <span className="font-mono text-green-700 truncate">{g.matchedDef.code}</span>
-                          : <span className="text-amber-600">no match</span>
+                          : (() => {
+                              const d = g.desigLabel ?? '';
+                              const gr = g.gradeLabel ?? '';
+                              const tried = [
+                                d && gr ? `${d}_${gr}` : null,
+                                d && gr ? `${gr}_${d}` : null,
+                                d || null,
+                                gr || null,
+                              ].filter(Boolean).join(', ');
+                              return (
+                                <span
+                                  className="text-amber-600 underline decoration-dotted cursor-help"
+                                  title={`No salary def found. Tried: ${tried}`}
+                                >
+                                  no match
+                                </span>
+                              );
+                            })()
                         }
                         <span onClick={(e) => e.stopPropagation()}>
                           <Btn
@@ -1827,8 +2253,10 @@ export function Employees() {
                                 openBulkEnrollFromSuggestion(
                                   g.employeeIds,
                                   g.matchedDef?.code,
-                                  g.matchedGrade ?? undefined,
-                                  g.matchedDesignation ?? undefined,
+                                  g.matchedGrade ?? g.rawGradeLabel ?? undefined,
+                                  g.matchedDesignation ?? g.rawDesigLabel ?? undefined,
+                                  g.gradeLabel,
+                                  g.desigLabel,
                                 );
                               }
                             }}
@@ -2045,12 +2473,16 @@ export function Employees() {
         presetSalaryCode={bulkEnrollPresetCode}
         presetGradeCode={bulkEnrollPresetGradeCode}
         presetDesignationCode={bulkEnrollPresetDesignationCode}
+        contextGradeLabel={bulkEnrollContextGradeLabel}
+        contextDesigLabel={bulkEnrollContextDesigLabel}
         onClose={() => {
           setShowBulkEnroll(false);
           setBulkEnrollPresetIds([]);
           setBulkEnrollPresetCode(undefined);
           setBulkEnrollPresetGradeCode(undefined);
           setBulkEnrollPresetDesignationCode(undefined);
+          setBulkEnrollContextGradeLabel(null);
+          setBulkEnrollContextDesigLabel(null);
         }}
         onSaved={loadEmployees}
       />

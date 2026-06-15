@@ -20,10 +20,13 @@ import {
   StatusBadge,
   EmptyState,
   AlertBanner,
+  ConfirmDialog,
   useToast,
   Breadcrumb,
 } from '../design-system';
+
 import { useWorkspaceContext } from '../context/WorkspaceContext';
+import { extractError } from '../utils/errorUtils';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -78,7 +81,13 @@ export function PayrollRuns() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [workspaceStatus, setWorkspaceStatus] = useState('');
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
   const pollFailCount = useRef(0);
+
+  const isReady = workspaceStatus === 'READY';
 
   const fetchRuns = useCallback(async (silent = false) => {
     if (!workspaceId) return;
@@ -123,8 +132,8 @@ export function PayrollRuns() {
     if (!workspaceId) return;
     workspaceApi
       .getOnboardingStatus(workspaceId)
-      .then((s) => setIsLive(s.status === 'LIVE'))
-      .catch(() => setIsLive(false));
+      .then((s) => { setIsLive(s.status === 'LIVE'); setWorkspaceStatus(s.status); })
+      .catch(() => { setIsLive(false); });
   }, [workspaceId]);
 
   // DD-18: 5s polling when any run is CALCULATING; stops after 3 consecutive failures
@@ -134,6 +143,23 @@ export function PayrollRuns() {
     const id = setInterval(() => fetchRuns(true), 5000);
     return () => clearInterval(id);
   }, [hasCalculating, error, fetchRuns]);
+
+  async function handleActivate() {
+    if (!workspaceId) return;
+    setActivating(true);
+    setActivateError(null);
+    try {
+      await workspaceApi.transition(workspaceId, 'LIVE');
+      setIsLive(true);
+      setWorkspaceStatus('LIVE');
+      setActivateConfirmOpen(false);
+    } catch (e) {
+      setActivateError(extractError(e));
+      setActivateConfirmOpen(false);
+    } finally {
+      setActivating(false);
+    }
+  }
 
   return (
     <div className="max-w-5xl">
@@ -165,11 +191,30 @@ export function PayrollRuns() {
       {error && <AlertBanner variant="error" title="Failed to load runs" description={error} className="mb-4" />}
 
       {!isLive && !loading && (
+        isReady ? (
+          <AlertBanner
+            variant="success"
+            title="Setup complete"
+            description="Your workspace is configured and ready. Activate it to start running payroll."
+            action={{ label: 'Activate Workspace →', onClick: () => setActivateConfirmOpen(true) }}
+            className="mb-4"
+          />
+        ) : (
+          <AlertBanner
+            variant="info"
+            title="Workspace not activated"
+            description="Complete workspace setup to unlock payroll runs."
+            action={{ label: 'Continue Setup →', onClick: () => navigate(`/workspaces/${workspaceId}/setup`) }}
+            className="mb-4"
+          />
+        )
+      )}
+      {activateError && (
         <AlertBanner
-          variant="info"
-          title="Workspace not activated"
-          description="Payroll runs are only available once the workspace is LIVE. Complete the setup wizard to activate."
-          action={{ label: 'Continue Setup →', onClick: () => navigate(`/workspaces/${workspaceId}/setup`) }}
+          variant="error"
+          description={activateError}
+          dismissible
+          onDismiss={() => setActivateError(null)}
           className="mb-4"
         />
       )}
@@ -209,13 +254,23 @@ export function PayrollRuns() {
                 onClick: () => navigate(`/workspaces/${workspaceId}/payroll/new`),
               }}
             />
+          ) : isReady ? (
+            <EmptyState
+              icon={<SetupIcon />}
+              headline="Ready to activate"
+              body="Your workspace configuration is complete. Activate it to start running payroll."
+              action={{
+                label: 'Activate Workspace →',
+                onClick: () => setActivateConfirmOpen(true),
+              }}
+            />
           ) : (
             <EmptyState
               icon={<SetupIcon />}
               headline="Complete setup to unlock payroll runs"
-              body="Payroll runs require the workspace to be LIVE. Finish the setup wizard to activate this workspace."
+              body="Your workspace needs to be configured before payroll runs are available."
               action={{
-                label: 'Continue Setup',
+                label: 'Continue Setup →',
                 onClick: () => navigate(`/workspaces/${workspaceId}/setup`),
               }}
             />
@@ -266,6 +321,20 @@ export function PayrollRuns() {
           </div>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={activateConfirmOpen}
+        onClose={() => setActivateConfirmOpen(false)}
+        onConfirm={handleActivate}
+        title="Activate workspace?"
+        body={
+          <p className="text-sm text-gray-600">
+            Once active, this workspace is eligible to run payroll. Configuration can still be edited at any time.
+          </p>
+        }
+        confirmLabel="Activate →"
+        loading={activating}
+      />
     </div>
   );
 }

@@ -12,8 +12,9 @@
  * DD-18 5s polling while run status is CALCULATING
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { payrollApi } from '../api/payroll';
 import { workspaceApi } from '../api/workspace';
 import type {
@@ -45,9 +46,17 @@ import {
   TextInput,
   useToast,
   formatNaira,
+  SlideOver,
 } from '../design-system';
 import type { Tab, Column } from '../design-system';
 import { PayrollTimeline } from '../components/payroll/PayrollTimeline';
+import { NativeUploadFlow } from '../components/shared/NativeUploadFlow';
+import type { ColumnMapping } from '../components/shared/ColumnMappingPanel';
+import {
+  PAYROLL_RECON_ALIASES,
+  buildColumnMap,
+  forwardFillRow,
+} from '../utils/nativeExcelParser';
 
 // ── Tab keys ──────────────────────────────────────────────────────────────────
 
@@ -168,6 +177,393 @@ function ActionPanel({ run, onApprove, onLock, onPay, onRetry, actionLoading }: 
 
 // ── Results Tab ───────────────────────────────────────────────────────────────
 
+// ── Reconciliation SlideOver (PAY-RECON-1) ────────────────────────────────────
+
+const RECON_FIELD_LABELS: Record<string, string> = {
+  net_pay:          'Net Pay',
+  gross_pay:        'Gross Pay',
+  paye:             'PAYE',
+  pension_employee: 'Pension (Employee)',
+  development_levy: 'Development Levy',
+  nhf:              'NHF',
+  basic_salary:     'Basic Salary',
+  housing:          'Housing',
+  transport:        'Transport',
+};
+
+interface OldSystemRow { employee_id: string; [field: string]: number | string }
+
+type ReconStatus = 'MATCH' | 'MISMATCH' | 'NEW ONLY' | 'OLD ONLY';
+interface ReconRow {
+  employee_number: string;
+  employee_name: string;
+  status: ReconStatus;
+  fields: Record<string, { old: number | null; new: number | null; diff: number | null }>;
+}
+
+function getNewValue(result: PayrollResult, field: string): number | null {
+  if (field === 'net_pay')   return result.net_pay   ?? null;
+  if (field === 'gross_pay') return result.gross_pay ?? null;
+  // Look in component_trace for statutory fields
+  const entry = result.component_trace?.find(
+    (e) => e.component?.toUpperCase() === field.toUpperCase() ||
+           e.component?.toUpperCase().replace(/_/g, '') === field.toUpperCase().replace(/_/g, '')
+  );
+  if (entry?.result != null && entry.result !== 'None') return parseFloat(entry.result);
+  return null;
+}
+
+interface ReconSlideOverProps {
+  open: boolean;
+  onClose: () => void;
+  results: PayrollResult[];
+}
+
+type ReconStep = 'upload' | 'comparison';
+type FilterKey = 'all' | 'MISMATCH' | 'MATCH' | 'unmatched' | 'needsAttention';
+
+function ReconSlideOver({ open, onClose, results }: ReconSlideOverProps) {
+  const [reconStep, setReconStep] = useState<ReconStep>('upload');
+  const [reconRows, setReconRows] = useState<ReconRow[]>([]);
+  const [mappedFields, setMappedFields] = useState<string[]>([]);
+  const [filter, setFilter] = useState<FilterKey>('needsAttention');
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+
+  function handleClose() {
+    setReconStep('upload');
+    setReconRows([]);
+    setMappedFields([]);
+    setExcluded(new Set());
+    onClose();
+  }
+
+  // Memoized: only recomputes when the results array changes
+  const availableReconTargets = useMemo(() => {
+    const presentFields = new Set<string>();
+    for (const r of results) {
+      if (r.net_pay != null)   presentFields.add('net_pay');
+      if (r.gross_pay != null) presentFields.add('gross_pay');
+      r.component_trace?.forEach((e) => {
+        const normalised = e.component?.toLowerCase();
+        if (normalised && RECON_FIELD_LABELS[normalised]) presentFields.add(normalised);
+      });
+    }
+    return [
+      { value: '__employee_id__', label: 'Employee Identifier' },
+      ...Object.entries(RECON_FIELD_LABELS)
+        .filter(([key]) => presentFields.has(key))
+        .map(([value, label]) => ({ value, label })),
+    ];
+  }, [results]);
+
+  function buildReconMappings(headerRow: string[]): ColumnMapping[] {
+    const colMap = buildColumnMap(headerRow, PAYROLL_RECON_ALIASES);
+
+    return headerRow
+      .map((header, colIdx): ColumnMapping | null => {
+        if (!header.trim()) return null;
+        const matchedField = Object.entries(colMap).find(([, idx]) => idx === colIdx)?.[0] ?? null;
+        return {
+          dataColIdx: colIdx,
+          detectedHeader: header,
+          proposedTarget: matchedField === 'employee_id' ? '__employee_id__' : matchedField,
+          status: (matchedField ? 'matched' : 'unresolved') as ColumnMapping['status'],
+          availableTargets: availableReconTargets,
+        };
+      })
+      .filter((m): m is ColumnMapping => m !== null);
+  }
+
+  function parseReconRows(
+    data: unknown[][],
+    headerRowIndex: number,
+    colMappings: ColumnMapping[],
+  ): { rows: OldSystemRow[]; errors: string[] } {
+    const empMapping = colMappings.find((m) => m.proposedTarget === '__employee_id__');
+    const empColIdx = empMapping?.dataColIdx ?? -1;
+    const fieldCols = colMappings
+      .filter((m) => m.proposedTarget && m.proposedTarget !== '__employee_id__' && m.status === 'matched')
+      .map((m) => ({ colIdx: m.dataColIdx, field: m.proposedTarget! }));
+
+    const rows: OldSystemRow[] = [];
+    for (let ri = headerRowIndex + 1; ri < data.length; ri++) {
+      const row = data[ri] as unknown[];
+      const allBlank = row.every((c) => String(c ?? '').trim() === '');
+      if (allBlank) continue;
+      const employee_id = empColIdx >= 0 ? String(row[empColIdx] ?? '').trim() : '';
+      if (!employee_id) continue;
+
+      const obj: OldSystemRow = { employee_id };
+      for (const { colIdx, field } of fieldCols) {
+        if (!field) continue;
+        const raw = String(row[colIdx] ?? '').replace(/,/g, '').trim();
+        const val = raw === '' || raw === '-' || raw === '—' ? NaN : parseFloat(raw);
+        if (!isNaN(val)) obj[field] = val;
+      }
+      rows.push(obj);
+    }
+    return { rows, errors: [] };
+  }
+
+  function runComparison(oldRows: OldSystemRow[]): { reconRows: ReconRow[]; fields: string[] } {
+    const fieldSet = new Set<string>();
+    for (const row of oldRows) {
+      for (const k of Object.keys(row)) {
+        if (k !== 'employee_id') fieldSet.add(k);
+      }
+    }
+    const fields = Array.from(fieldSet);
+
+    const newByEmpNo = new Map(results.map((r) => [r.employee_number, r]));
+    const oldByEmpNo = new Map(oldRows.map((r) => [r.employee_id, r]));
+    const allEmpNos = new Set([...newByEmpNo.keys(), ...oldByEmpNo.keys()]);
+
+    const rows: ReconRow[] = Array.from(allEmpNos).map((empNo) => {
+      const newResult = newByEmpNo.get(empNo) ?? null;
+      const oldResult = oldByEmpNo.get(empNo) ?? null;
+
+      // Compute fieldValues first; derive status from it (avoids double getNewValue calls)
+      const fieldValues: ReconRow['fields'] = {};
+      for (const f of fields) {
+        const newVal = newResult ? getNewValue(newResult, f) : null;
+        const oldVal = oldResult && typeof oldResult[f] === 'number' ? (oldResult[f] as number) : null;
+        const diff   = newVal != null && oldVal != null ? newVal - oldVal : null;
+        fieldValues[f] = { old: oldVal, new: newVal, diff };
+      }
+
+      let status: ReconStatus;
+      if (!newResult) status = 'OLD ONLY';
+      else if (!oldResult) status = 'NEW ONLY';
+      else {
+        const anyMismatch = fields.some((f) => {
+          const { diff } = fieldValues[f];
+          return diff != null && Math.abs(diff) > 0.005;
+        });
+        status = anyMismatch ? 'MISMATCH' : 'MATCH';
+      }
+
+      return {
+        employee_number: empNo,
+        employee_name: newResult?.employee_name ?? '',
+        status,
+        fields: fieldValues,
+      };
+    });
+
+    return { reconRows: rows, fields };
+  }
+
+  async function submitReconRows(oldRows: OldSystemRow[]) {
+    const { reconRows: rows, fields } = runComparison(oldRows);
+    setReconRows(rows);
+    setMappedFields(fields);
+    setReconStep('comparison');
+    return { success: true, message: '' };
+  }
+
+  function renderReconPreview(rows: OldSystemRow[], _errors: string[]) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-gray-600">{rows.length} employee rows parsed from old system file.</p>
+        <p className="text-sm text-gray-500">Click "Compare" to run the comparison.</p>
+      </div>
+    );
+  }
+
+  function downloadRecon() {
+    const data = reconRows.map((r) => {
+      const obj: Record<string, unknown> = {
+        'Employee No': r.employee_number,
+        'Name': r.employee_name,
+        'Status': r.status,
+      };
+      for (const f of mappedFields) {
+        const label = RECON_FIELD_LABELS[f] ?? f;
+        obj[`${label} (Old)`]  = r.fields[f]?.old  ?? '';
+        obj[`${label} (New)`]  = r.fields[f]?.new  ?? '';
+        obj[`${label} (Diff)`] = r.fields[f]?.diff ?? '';
+      }
+      return obj;
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Reconciliation');
+    XLSX.writeFile(wb, 'payroll_reconciliation.xlsx');
+  }
+
+  const { filtered, visibleFiltered, mismatchCount, matchCount, unmatchedCount, needsAttentionCount } = useMemo(() => {
+    let mismatchCount = 0, matchCount = 0, unmatchedCount = 0;
+    const filtered: ReconRow[] = [];
+    for (const r of reconRows) {
+      if (r.status === 'MISMATCH') mismatchCount++;
+      else if (r.status === 'MATCH') matchCount++;
+      else unmatchedCount++;
+      const isNeedsAttention = r.status === 'MISMATCH' || r.status === 'NEW ONLY' || r.status === 'OLD ONLY';
+      const keep = filter === 'all'
+        || (filter === 'unmatched' && (r.status === 'NEW ONLY' || r.status === 'OLD ONLY'))
+        || (filter === 'needsAttention' && isNeedsAttention)
+        || r.status === filter;
+      if (keep) filtered.push(r);
+    }
+    const needsAttentionCount = mismatchCount + unmatchedCount;
+    const visibleFiltered = filtered.filter((r) => !excluded.has(r.employee_number));
+    return { filtered, visibleFiltered, mismatchCount, matchCount, unmatchedCount, needsAttentionCount };
+  }, [reconRows, filter, excluded]);
+
+  return (
+    <SlideOver
+      open={open}
+      onClose={handleClose}
+      title="Reconcile with old system"
+      description="Upload the old system's payroll output to compare against this run's results"
+    >
+      {results.length === 0 ? (
+        <AlertBanner variant="error" title="This run has no results to compare against." />
+      ) : reconStep === 'upload' ? (
+        <NativeUploadFlow<OldSystemRow>
+          aliases={PAYROLL_RECON_ALIASES}
+          minMatchesForAutoDetect={2}
+          buildMappings={(headerRow) => buildReconMappings(headerRow)}
+          parseRows={parseReconRows}
+          renderPreview={renderReconPreview}
+          submitLabel="Compare"
+          onSubmit={submitReconRows}
+          onDone={handleClose}
+        />
+      ) : (
+        <div className="space-y-4">
+          {/* Filter chips */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {([
+              { key: 'needsAttention', label: `Needs Attention (${needsAttentionCount})` },
+              { key: 'MISMATCH',       label: `Mismatch (${mismatchCount})` },
+              { key: 'MATCH',          label: `Match (${matchCount})` },
+              { key: 'unmatched',      label: `Unmatched (${unmatchedCount})` },
+              { key: 'all',            label: `All (${reconRows.length})` },
+            ] as { key: FilterKey; label: string }[]).map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                  filter === key
+                    ? 'bg-brand text-white border-brand'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+                onClick={() => setFilter(key)}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2">
+              {filtered.length > 0 && (
+                <Btn
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setExcluded((prev) => new Set([...prev, ...filtered.map((r) => r.employee_number)]))}
+                >
+                  Exclude All
+                </Btn>
+              )}
+              <Btn variant="secondary" size="sm" onClick={downloadRecon}>
+                Download XLSX
+              </Btn>
+            </div>
+          </div>
+
+          {excluded.size > 0 && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>{excluded.size} row{excluded.size !== 1 ? 's' : ''} excluded from view</span>
+              <button
+                type="button"
+                className="text-brand hover:underline"
+                onClick={() => setExcluded(new Set())}
+              >
+                Clear exclusions
+              </button>
+            </div>
+          )}
+
+          {/* Comparison table */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="text-xs border-collapse min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 sticky left-0 bg-gray-50 whitespace-nowrap">Emp No</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">Name</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  {mappedFields.map((f) => {
+                    const label = RECON_FIELD_LABELS[f] ?? f;
+                    return (
+                      <th key={f} colSpan={3} className="px-3 py-2 text-center font-semibold text-gray-500 whitespace-nowrap border-l border-gray-200">
+                        {label}
+                      </th>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-gray-50 border-t border-gray-100">
+                  <th colSpan={3} />
+                  {mappedFields.map((f) => (
+                    ['Old', 'New', 'Diff'].map((sub) => (
+                      <th key={`${f}-${sub}`} className="px-2 py-1 text-[10px] font-medium text-gray-400 text-right border-l border-gray-100">
+                        {sub}
+                      </th>
+                    ))
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleFiltered.length === 0 ? (
+                  <tr>
+                    <td colSpan={3 + mappedFields.length * 3} className="px-3 py-6 text-center text-gray-400">
+                      {filtered.length > 0 ? 'All rows in this filter have been excluded.' : 'No rows match this filter.'}
+                    </td>
+                  </tr>
+                ) : visibleFiltered.map((row, i) => (
+                  <tr key={i} className={`border-b border-gray-100 ${row.status === 'MISMATCH' ? 'bg-red-50/40' : ''}`}>
+                    <td className="px-3 py-2 font-mono text-gray-700 sticky left-0 bg-inherit whitespace-nowrap">{row.employee_number}</td>
+                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{row.employee_name || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className={`font-semibold text-[10px] px-1.5 py-0.5 rounded ${
+                        row.status === 'MISMATCH' ? 'bg-red-100 text-red-700' :
+                        row.status === 'MATCH'    ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {row.status}
+                      </span>
+                    </td>
+                    {mappedFields.map((f) => {
+                      const vals = row.fields[f] ?? { old: null, new: null, diff: null };
+                      const fmt = (v: number | null) =>
+                        v == null ? '—' : v.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      const insignificant = vals.diff == null || Math.abs(vals.diff) < 0.005;
+                      const diffLabel = insignificant
+                        ? '—'
+                        : `${vals.diff! > 0 ? '▲' : '▼'} ${Math.abs(vals.diff!).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
+                      const diffClass = insignificant
+                        ? 'text-gray-300'
+                        : vals.diff! > 0 ? 'text-amber-600' : 'text-red-600';
+                      return [
+                        <td key={`${f}-old`} className="px-2 py-2 tabular-nums text-right text-gray-600 border-l border-gray-100">{fmt(vals.old)}</td>,
+                        <td key={`${f}-new`} className="px-2 py-2 tabular-nums text-right text-gray-700">{fmt(vals.new)}</td>,
+                        <td key={`${f}-diff`} className={`px-2 py-2 tabular-nums text-right font-medium ${diffClass}`}>{diffLabel}</td>,
+                      ];
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <Btn variant="secondary" size="sm" onClick={() => setReconStep('upload')}>
+            Upload different file
+          </Btn>
+        </div>
+      )}
+    </SlideOver>
+  );
+}
+
+// ── Results Tab ───────────────────────────────────────────────────────────────
+
 interface ResultsTabProps {
   run: PayrollRun;
   results: PayrollResult[];
@@ -188,6 +584,7 @@ interface ResultsTabProps {
 function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDetail, workspaceId, runId, onApprove, onLock, onPay, onRetry, actionLoading, actionError }: ResultsTabProps) {
   const toast = useToast();
   const [exportBusy, setExportBusy] = useState<string | null>(null);
+  const [reconOpen, setReconOpen] = useState(false);
 
   async function handleExport(exportType: 'bank-upload' | 'paye' | 'pension' | 'full-detail') {
     setExportBusy(exportType);
@@ -396,6 +793,11 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
               <DownloadBtn label="Pension"          loading={exportBusy === 'pension'}     onClick={() => handleExport('pension')} />
             </>
           )}
+          <div className="ml-auto">
+            <Btn variant="secondary" size="sm" onClick={() => setReconOpen(true)}>
+              Reconcile with old system
+            </Btn>
+          </div>
         </div>
       )}
 
@@ -431,6 +833,12 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
             <td />
           </tr>
         ) : undefined}
+      />
+
+      <ReconSlideOver
+        open={reconOpen}
+        onClose={() => setReconOpen(false)}
+        results={results}
       />
     </div>
   );

@@ -28,6 +28,11 @@
 | **Track S — Security** | — | — | — | — | — | 5✅ closed; 3⬜ open (S6 DB constraint, S7 upload cap, S8 pin dep) |
 | **Track Q — Audit Observations** | — | — | 3🔜 open (Q1/Q2/Q3); 3✅ (Q5/Q6/Q8); 1⬜ open (Q7) | — | — | — |
 | **Track UI — Design System** | Gate 1✅ Gate 2✅ Gate 3✅ Gate 4✅ Gate 5✅ Gate 6✅ | — | — | — | — | — |
+| **Sprints 24–26 — Employee Lifecycle UX** | 14✅ (enrollment UX, badge, registration, status mgmt) | — | — | — | — | 2✅ |
+| **Sprint 27 — Smart Native Upload** | 2✅ (EMP-NATIVE-1, INP-NATIVE-1) | 2✅ (INP-MULTI-1, PAY-RECON-1) | 1🔜 (EMP-REG-5-FIX) | — | — | — |
+| **Sprint 28 — Upload Error Visibility** | 2✅ (UPLOAD-ERR-1, UPLOAD-SKIP-1) | — | — | — | — | — |
+| **Fix — Workspace Activation Coverage** | 3✅ (WS-ACTIVATE-1: Config page · WS-ACTIVATE-2: PayrollRuns READY state · WS-ACTIVATE-3: Setup ExistingConfigView) | — | — | — | — | — |
+| **Phase 2 — Agent Layer (Planned)** | Track P (auth) ⬜ | — | — | — | — | Tracks V/W/X/Y ⬜ |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
 ---
@@ -716,6 +721,7 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 
 ## Sprint 24 — Enrollment UX Clarity + Audit Fixes
 
+
 **Sprint date:** 2026-06-09
 **Sprint goal:** Fix post-upload UX confusion (unenrolled employees look broken but aren't); close Q6 audit finding (APPROVED timesheet overwrite); close Q8 (already resolved via snapshot); surface excluded employees on PayrollResults.
 
@@ -733,15 +739,190 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 
 ---
 
+## Sprint 25 — Badge Real-time Update + Employees Table UX Fixes
+
+**Sprint date:** 2026-06-10
+**Sprint goal:** Sidebar badge updates in real-time on payroll input mutations; employees table UX regressions and contract date display fixed.
+
+**Story files:** `docs/stories/sprint-25-badge-realtime-update.md`, `docs/stories/sprint-25a-employees-table-ux-fixes.md`, `docs/stories/sprint-25b-no-longer-active-ux.md`, `docs/stories/sprint-25c-edit-employee-contract-end-date.md`, `docs/stories/sprint-25d-register-employee-contract-dates.md`
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| BADGE-RT-1 | Payroll Inputs sidebar badge reflects live pending count via `window.dispatchEvent` on mutations | ✅ |
+| BADGE-RT-2 | Badge shows total pending inputs (not just issue inputs) | ✅ |
+| EMP-TABLE-1 | Employees table UX fixes: start/end date both visible, column alignment, inactive employee styling | ✅ |
+| EMP-TABLE-2 | "No longer active" state surfaced correctly; contract end date editable | ✅ |
+| EMP-TABLE-3 | Register employee: contract start and end date fields added to AddEmployeeSlideOver | ✅ |
+
+---
+
+## Sprint 26 — Employee Registration & Status Management
+
+**Sprint date:** 2026-06-11
+**Sprint goal:** Complete employee lifecycle CRUD: registration, edit, status transitions (ACTIVE/INACTIVE), enrollment auto-defaults, and payroll action badges.
+
+**Story file:** `docs/stories/sprint-26-employee-registration-status-management.md`
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| EMP-REG-1 | Register new employee: full form (name, ID, TIN, RSA, bank, contract dates) | ✅ |
+| EMP-EDIT-1 | Edit employee: name, employee number, TIN, RSA, bank; contract dates via separate slide-over | ✅ |
+| EMP-STATUS-1 | Status toggle: ACTIVE ↔ INACTIVE with confirmation; payroll exclusion warning for INACTIVE + live contract | ✅ |
+| EMP-BADGE-1 | Per-row payroll readiness badge: enrolled/not enrolled/unmatched indicators | ✅ |
+| EMP-ENROLL-AUTODEF-1 | Enroll slide-over: auto-suggest salary definition from imported grade label | ✅ |
+| EMP-ICONS-1 | Consistent icon set across employee row actions | ✅ |
+| EMP-PAYROLL-ACTIONS-1 | Payroll-specific actions (enroll, view inputs) surfaced from employee row | ✅ |
+
+---
+
+## Sprint 27 — Smart Native Upload
+
+**Sprint date:** 2026-06-12
+**Sprint goal:** Accept client spreadsheets as-is. Auto-detect column headers, let the operator verify the mapping, then submit to existing endpoints unchanged.
+
+**Story file:** `docs/stories/sprint-27-smart-native-upload.md`
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| EMP-NATIVE-1 | Smart employee upload: alias-based header detection, row-picker fallback, column mapping panel, per-row result | ✅ |
+| INP-NATIVE-1 | Smart period inputs upload: period+keyword header parsing, `@rate` quantity derivation, duplicate column dedup, long-format row emission | ✅ |
+| PAY-RECON-1 | Payroll reconciliation upload (old system vs new): column mapping, comparison table, mismatch filter, XLSX download | ✅ |
+| INP-MULTI-1 | Multi-row period input entry SlideOver: anchor employee + line-item table, partial success handling | ✅ |
+| EMP-REG-5-FIX | Enrollment slide-over pre-population: normalised grade/designation matching (spaces→underscores), pre-fills fields from imported labels; fixes EMP-REG-5 (Sprint 23) | 🔜 |
+
+**New shared infrastructure:** `NativeUploadFlow.tsx`, `ColumnMappingPanel.tsx`, `nativeExcelParser.ts`
+
+---
+
+## Sprint 28 — Upload Error Visibility + Duplicate Skip
+
+**Sprint date:** 2026-06-13
+**Sprint goal:** Make upload failures visible and portable across all upload flows; make period input re-uploads idempotent.
+
+**Story file:** `docs/stories/sprint-28-upload-error-visibility.md`
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| UPLOAD-ERR-1 | Consistent three-layer error state across all upload flows: status banner + amber "Download before you close" block + scrollable error table; downloadable CSV | ✅ |
+| UPLOAD-SKIP-1 | Period inputs bulk upload: `IntegrityError` → silent skip (not error); response adds `skipped` count; re-upload is idempotent | ✅ |
+
+**Files changed:** `NativeUploadFlow.tsx`, `PayrollInputsBulkUpload.tsx`, `EmployeeUpload.tsx`, `payroll_input.py`
+
+---
+
+## Phase 2 — Agent Layer (Planned)
+
+AI-powered operator assistant layer built on top of the deterministic payroll engine.
+
+**Arch-council review:** 2026-06-11 — **NEEDS REVISION**. Five blocking conditions recorded before sprint planning can begin.
+
+**Blocking conditions (must resolve in order):**
+1. No authentication system exists — `performed_by = "admin@internal"` hardcoded; workspace_id from request body, not JWT. Pre-requisite sprint required.
+2. NDPR compliance for employee PII sent to external LLM API — mitigated by PII sanitisation contract (V4); client must be informed.
+3. Transactional outbox + full event gap closure must ship before any proactive agent (V1+V2).
+4. `explain_component_trace` must use structured slot-filling — LLM cannot introduce numbers not sourced from trace data.
+5. `agent_session_log` must wait for auth — partial audit trail (placeholder operator_id) is worse than none.
+
+**Technology decisions (arch-council locked 2026-06-11):**
+- Primary LLM: Claude Sonnet (chat) / Claude Opus (investigation agents) via Vercel AI Gateway
+- Fallback LLM: GPT-4o (automatic reroute on Anthropic unavailability — silent to operator, logged)
+- No Celery/Redis — APScheduler polling loop; single-worker constraint documented
+- Conversation history: ephemeral per session; `agent_session_log` persists audit trail (not replay)
+- All write actions in Phase 2B require service-layer `pending_action_id` + structured confirmation UI component (not chat reply)
+
+---
+
+### Track P — Authentication (Pre-requisite: Phase 1 routes + Agent Layer)
+
+Arch-council finding: no JWT auth exists anywhere in the system. Must ship before Phase 2A begins. Also closes Track I #35 (P2-2) and Q7 (no actor identity on transitions).
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| P1 | `operator` table — id, workspace_id, email, role, password_hash | Auth | — | Stable identity anchor |
+| P2 | `POST /auth/login` → JWT with workspace_id + operator_id claims | Auth | — | |
+| P3 | FastAPI `get_current_operator` dependency — injected into all routes | Auth | — | Replaces hardcoded "admin@internal" |
+| P4 | workspace_id extracted from JWT in all routes (not request body) | Auth | — | **Non-negotiable invariant — never from message content** |
+| P5 | `performed_by` populated from JWT identity across all audit writes and state transitions | Auth | P2-2 / Q7 | Closes Track I #35 and Q7 atomically |
+| P6 | Session workspace_id locked from JWT at chat session creation — new session required on workspace switch | Auth | — | Prevents mid-session workspace drift |
+
+> **Gate:** No Phase 2A sprint begins until Track P is complete and verified.
+
+---
+
+### Track V — Agent Foundation (after Track P)
+
+| # | Item | Area | Ref | Notes |
+|---|------|------|-----|-------|
+| V1 | Transactional outbox — write events inside same DB transaction as state change; relay process moves to `event_store` | Event Reliability | — | **Prerequisite for all Phase 2B proactive agents** — current post-commit write is fire-and-forget |
+| V2 | Add missing events: reconciliation MISMATCH, employee enrollment, employee status change (ACTIVE/INACTIVE), payroll input submitted | Event Completeness | — | Ship atomically with V1 |
+| V3 | Event consumer worker — APScheduler polling `event_store` for unprocessed events; `processed_at` column on `event_store`; single-worker deployment documented; distributed lock required if multi-process | Event Routing | — | Dispatches to agent handlers; no Celery |
+| V4 | PII sanitisation contract — strip direct identifiers (name, employee_number, TIN, RSA pin, bank account) from all tool responses before LLM context; UUID-only employee reference in LLM context; frontend maps UUID to display name | NDPR Compliance | — | Defined and enforced in tool serialisation layer — not ad-hoc per tool author |
+| V5 | Agent tool layer — 10 read-only workspace-scoped tool definitions; workspace_id from JWT only, never from message content; result set caps on all list tools | Tool Layer | — | See tool list below |
+| V6 | Tool schema contract tests — lightweight assertions each tool returns expected shape; Phase 1 migration that breaks tool layer caught before deployment | Tool Reliability | — | Tool definitions frozen per agent session at session start |
+| V7 | Notification layer — in-app alert model (`workspace_notification` table: workspace_id, operator_id, type, message, entity_ref, read_at, created_at) | Notifications | — | Email deferred to Track Y |
+
+**Tool definitions (all read-only; workspace_id from JWT; freeform string fields wrapped in structured envelope before LLM context):**
+
+| Tool | Description | Cap |
+|------|-------------|-----|
+| `get_employee` | Single employee by ID or search query | — |
+| `get_employees` | Filtered employee list (status, enrolled, grade) | 50 rows |
+| `get_payroll_run` | Run header + status | — |
+| `get_run_results` | Per-employee results for a run | 100 rows |
+| `explain_component_trace` | Structured slot-filled trace — LLM fills named slots from trace data only; cannot introduce numbers not in source | — |
+| `get_reconciliation` | Reconciliation record for a run | — |
+| `get_pending_inputs` | Inputs not yet claimed for current run | 200 rows |
+| `get_enrollment_status` | Enrolled vs unenrolled employee counts | — |
+| `get_statutory_rules` | Active statutory rules for workspace | — |
+| `get_salary_definitions` | Salary definition list | 50 rows |
+
+---
+
+### Track W — Operator Chat Agent — Phase 2A (after Track V)
+
+| # | Item | Sprint | Notes |
+|---|------|--------|-------|
+| W1 | Chat API endpoint — `POST /api/chat`; workspace context injected at session start (current pay period, run state, enrollment gaps); streaming | A2 | Rate limiting ships here — not deferred to A4 |
+| W2 | Vercel AI Gateway integration — Claude Sonnet primary; GPT-4o fallback; zero-data-retention mode; per-workspace usage observable | A2 | Fallback silent to operator; logged in session |
+| W3 | Rate limiting — N requests per workspace per minute; hard daily ceiling per workspace | A2 | **Non-negotiable: ships with W1** |
+| W4 | Chat UI — floating bubble (bottom-right); expands to panel; streaming renderer; session reset on workspace switch | A3 | |
+| W5 | `agent_session_log` table — workspace_id, operator_id, session_id, turn_sequence, role, content, tool_calls_jsonb, created_at; 7-year retention; ships after Track P | A4 | operator_id must be real auth identity — do not ship with placeholder |
+| W6 | Degraded mode UX — graceful copy when both providers unavailable; payroll operations unblocked | A4 | |
+
+> **Arch-council condition:** Rate limiting (W3) ships in Sprint A2. `agent_session_log` (W5) ships after Track P is complete. Do not invert this ordering.
+
+---
+
+### Track X — Proactive Agents — Phase 2B (after Track W)
+
+**Pre-condition before Phase 2B sprint planning:** Confirmation protocol must be fully specified. Mechanism: structured confirmation UI component (not chat reply) showing exact record ID, field, and new value — backed by a service-layer `pending_action_id`. Operator must interact with the component to confirm; natural-language "yes" in chat is not sufficient.
+
+| # | Item | Sprint | Notes |
+|---|------|--------|-------|
+| X1 | Structured confirmation component — `pending_action_id` pattern; mutation layer separate from conversation layer | B1 | Required before any write tool introduced |
+| X2 | Payroll Prep Agent — pre-run checklist: missing timesheets, unenrolled employees, expiring contracts, anomalous inputs; surfaced before run creation | B1 | Triggered by: operator navigates to New Run |
+| X3 | Reconciliation Investigation Agent — MISMATCH root cause explanation + resolution options with evidence trail | B2 | Triggered by: `reconciliation.MISMATCH` event (requires V1+V2) |
+| X4 | Exception Trace Agent — period-over-period pay change explanation per employee using `component_trace_jsonb` | B3 | Triggered by: operator query in chat |
+
+---
+
+### Track Y — Autonomous Agents — Phase 2C (future)
+
+| # | Item | Notes |
+|---|------|-------|
+| Y1 | Compliance Monitoring Agent — detects statutory rule changes; proposes migration; requires operator approval | After notification layer proven |
+| Y2 | Onboarding Agent — guided bulk import; dry-run payroll before commit; maps salary definitions | Requires PII policy confirmed with client |
+| Y3 | Email notifications | After in-app notification layer (V7) proven in production |
+
+---
+
 ## Phase 3 — Platform Scale (Future)
 
-Deferred until Phase 2 (including Tracks K–O) is complete and a second client is onboarded.
+Deferred until Phase 2 (including Tracks K–O and Agent Layer) is complete and a second client is onboarded.
 
 - Employee payslip PDF generation and distribution (P4-1)
 - Snapshot replay endpoint (P4-2)
 - Life insurance — full employer cost reporting (P4-3)
-- Agentic workflow integration (P4-4)
-- Role-based access control — no auth on any DB operation today (P4-5)
 - Multi-tenant bureau scaling (P4-6)
 - Automated payroll scheduling (pay cycle scheduler)
 - Statutory rule management for bureau operators (manage PAYE bands, NHF rates via UI)

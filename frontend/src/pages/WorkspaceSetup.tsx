@@ -6,7 +6,7 @@ import { onboardingApi } from '../api/onboarding';
 import type { ValidateResponse, PreviewResponse, CommitResponse } from '../types/onboarding';
 import type { Workspace } from '../types/workspace';
 import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
-import { ContentHeader, Card, Btn, AlertBanner, OnboardingStepper, Breadcrumb } from '../design-system';
+import { ContentHeader, Card, Btn, AlertBanner, ConfirmDialog, OnboardingStepper, Breadcrumb } from '../design-system';
 import type { Step } from '../design-system';
 import { EmployeeUpload } from '../components/employees/EmployeeUpload';
 import type { EmployeeRow, SalaryDefinitionOption } from '../components/employees/EmployeeUpload';
@@ -14,6 +14,8 @@ import { WorkspaceExcelUpload } from '../components/onboarding/WorkspaceExcelUpl
 import type { WorkspaceConfig } from '../components/onboarding/WorkspaceExcelUpload';
 import { saveDraft, loadDraft, clearDraft } from '../utils/onboardingDraft';
 import type { OnboardingDraftStep } from '../utils/onboardingDraft';
+
+import { extractError } from '../utils/errorUtils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -698,6 +700,28 @@ function ExistingConfigView({
 
   const workspaceId = workspace?.workspace_id;
 
+  // ── Workspace activation state ────────────────────────────────────────────
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateSuccess, setActivateSuccess] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
+
+  async function handleActivate() {
+    if (!workspaceId) return;
+    setActivating(true);
+    setActivateError(null);
+    try {
+      await workspaceApi.transition(workspaceId, 'LIVE');
+      setActivateSuccess(true);
+      setActivateConfirmOpen(false);
+    } catch (e) {
+      setActivateError(extractError(e));
+      setActivateConfirmOpen(false);
+    } finally {
+      setActivating(false);
+    }
+  }
+
   // ── Employee re-upload state ──────────────────────────────────────────────
   const [uploadEmployees, setUploadEmployees] = useState<EmployeeRow[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
@@ -794,10 +818,39 @@ function ExistingConfigView({
         subtitle={workspace ? `${workspace.name} · ${ws?.country_code ?? ''} · ${ws?.currency_code ?? ''}` : 'Loading…'}
       />
 
-      <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-        This workspace is <strong>{String(ws?.status ?? '')}</strong>. Configuration is read-only.
-        Use the section below to correct employee contract dates.
-      </div>
+      {workspace?.status === 'READY' && !activateSuccess && (
+        <AlertBanner
+          variant="success"
+          title="Setup complete — one step left"
+          description="Activate this workspace to enable payroll runs."
+          action={{ label: 'Activate Workspace →', onClick: () => setActivateConfirmOpen(true) }}
+          className="mb-6"
+        />
+      )}
+      {activateSuccess && (
+        <AlertBanner
+          variant="success"
+          description="Workspace is now live. You can run payroll from the workspace dashboard."
+          dismissible
+          onDismiss={() => setActivateSuccess(false)}
+          className="mb-6"
+        />
+      )}
+      {activateError && (
+        <AlertBanner
+          variant="error"
+          description={activateError}
+          dismissible
+          onDismiss={() => setActivateError(null)}
+          className="mb-4"
+        />
+      )}
+      {workspace?.status !== 'READY' && !activateSuccess && (
+        <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+          This workspace is <strong>{String(ws?.status ?? '')}</strong>. Configuration is read-only.
+          Use the section below to correct employee contract dates.
+        </div>
+      )}
 
       <div className="space-y-5">
         {/* Pay Cycle */}
@@ -1419,6 +1472,20 @@ function ExistingConfigView({
         </div>
 
       </div>
+
+      <ConfirmDialog
+        open={activateConfirmOpen}
+        onClose={() => setActivateConfirmOpen(false)}
+        onConfirm={handleActivate}
+        title="Activate workspace?"
+        body={
+          <p className="text-sm text-gray-600">
+            Once active, this workspace is eligible to run payroll. Configuration can still be edited at any time.
+          </p>
+        }
+        confirmLabel="Activate →"
+        loading={activating}
+      />
     </div>
   );
 }

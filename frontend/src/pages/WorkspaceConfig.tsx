@@ -217,16 +217,7 @@ function LockSmIcon() {
   );
 }
 
-function extractError(e: unknown): string {
-  if (e instanceof Error) {
-    try {
-      const parsed = JSON.parse(e.message.replace(/^\d+ [^:]+: /, ''));
-      if (parsed?.detail) return String(parsed.detail);
-    } catch { /* fall through */ }
-    return e.message;
-  }
-  return 'An unexpected error occurred.';
-}
+import { extractError } from '../utils/errorUtils';
 
 // ── Edit Pay Cycle SlideOver ──────────────────────────────────────────────────
 
@@ -2010,6 +2001,10 @@ export function WorkspaceConfig() {
   const [ruleToggleError, setRuleToggleError] = useState<string | null>(null);
   const [editPhConfigOpen, setEditPhConfigOpen] = useState(false);
   const [addRateCodeOpen, setAddRateCodeOpen] = useState(false);
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateSuccess, setActivateSuccess] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
 
   function loadConfig() {
     if (!workspaceId) return;
@@ -2040,6 +2035,23 @@ export function WorkspaceConfig() {
       .then(setPlatformComponents)
       .catch(() => { /* non-critical — labels fall back to component_code */ });
   }, [workspaceId]);
+
+  async function handleActivateConfirm() {
+    if (!workspaceId) return;
+    setActivating(true);
+    setActivateError(null);
+    try {
+      await workspaceApi.transition(workspaceId, 'LIVE');
+      setConfig((prev) => prev ? { ...prev, workspace: { ...prev.workspace, status: 'LIVE' } } : prev);
+      setActivateSuccess(true);
+      setActivateConfirmOpen(false);
+    } catch (e) {
+      setActivateError(extractError(e));
+      setActivateConfirmOpen(false);
+    } finally {
+      setActivating(false);
+    }
+  }
 
   async function handleRuleToggleConfirm() {
     if (!workspaceId || !ruleToToggle) return;
@@ -2105,12 +2117,37 @@ export function WorkspaceConfig() {
           ]} />
         }
         action={
-          <Btn variant="secondary" size="md" onClick={() => setUpdateOpen(true)}>
-            Re-upload Config
-          </Btn>
+          <div className="flex items-center gap-3">
+            <Btn variant="secondary" size="md" onClick={() => setUpdateOpen(true)}>
+              Re-upload Config
+            </Btn>
+            {config?.workspace.status === 'READY' && (
+              <Btn variant="primary" size="md" onClick={() => setActivateConfirmOpen(true)}>
+                Activate Workspace →
+              </Btn>
+            )}
+          </div>
         }
       />
 
+      {activateSuccess && (
+        <AlertBanner
+          variant="success"
+          description="Workspace is now live. You can run payroll from the workspace dashboard."
+          dismissible
+          onDismiss={() => setActivateSuccess(false)}
+          className="mb-4"
+        />
+      )}
+      {activateError && (
+        <AlertBanner
+          variant="error"
+          description={activateError}
+          dismissible
+          onDismiss={() => setActivateError(null)}
+          className="mb-4"
+        />
+      )}
       {error && <AlertBanner variant="error" description={error} className="mb-4" />}
 
       {loading ? (
@@ -2791,6 +2828,21 @@ export function WorkspaceConfig() {
         rateCodes={rateCodes}
         onClose={() => setEditRule(null)}
         onSaved={loadConfig}
+      />
+
+      {/* Workspace Activation Confirm Dialog */}
+      <ConfirmDialog
+        open={activateConfirmOpen}
+        onClose={() => setActivateConfirmOpen(false)}
+        onConfirm={handleActivateConfirm}
+        title="Activate workspace?"
+        body={
+          <p className="text-sm text-gray-600">
+            Once active, this workspace is eligible to run payroll. Configuration can still be edited at any time.
+          </p>
+        }
+        confirmLabel="Activate →"
+        loading={activating}
       />
 
       {/* Payroll Rule Toggle Confirm Dialog */}

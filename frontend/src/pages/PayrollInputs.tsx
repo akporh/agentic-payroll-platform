@@ -130,11 +130,23 @@ export function PayrollInputs() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // form fields
+  // edit-mode fields (single row)
   const [employeeId, setEmployeeId] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [quantity, setQuantity] = useState('');
   const [effectivePeriod, setEffectivePeriod] = useState('');
+
+  // add-mode multi-row state
+  interface InputRow {
+    _id: string;
+    code: string;
+    qty: string;
+    period: string;
+    _error?: string;
+    _done?: boolean;
+  }
+  const [addEmployeeId, setAddEmployeeId] = useState('');
+  const [inputRows, setInputRows] = useState<InputRow[]>([{ _id: crypto.randomUUID(), code: '', qty: '', period: '' }]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -161,6 +173,77 @@ export function PayrollInputs() {
     setQuantity('');
     setEffectivePeriod('');
     setFormError(null);
+    setAddEmployeeId('');
+    setInputRows([{ _id: crypto.randomUUID(), code: '', qty: '', period: '' }]);
+  }
+
+  function addRow() {
+    setInputRows((prev) => {
+      const last = prev[prev.length - 1];
+      return [...prev, { _id: crypto.randomUUID(), code: '', qty: '', period: last?.period ?? '' }];
+    });
+  }
+
+  function removeRow(id: string) {
+    setInputRows((prev) => prev.length > 1 ? prev.filter((r) => r._id !== id) : prev);
+  }
+
+  function updateRow(id: string, patch: Partial<InputRow>) {
+    setInputRows((prev) => prev.map((r) => r._id === id ? { ...r, ...patch } : r));
+  }
+
+  async function handleMultiSubmit() {
+    if (!workspaceId || !addEmployeeId) return;
+
+    // Validate: mark rows with no code
+    const validated = inputRows.map((r) => ({
+      ...r,
+      _error: !r.code ? 'Select an input code' : undefined,
+      _done: false,
+    }));
+    setInputRows(validated);
+    if (validated.some((r) => r._error)) return;
+
+    setSubmitting(true);
+    setFormError(null);
+
+    const results = await Promise.allSettled(
+      validated.map((r) => {
+        const payload: { employee_id: string; input_code: string; quantity?: number; reference_date?: string } =
+          { employee_id: addEmployeeId, input_code: r.code };
+        if (r.qty) payload.quantity = parseFloat(r.qty);
+        if (r.period) payload.reference_date = `${r.period}-01`;
+        return payrollInputApi.create(workspaceId, payload);
+      }),
+    );
+
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    // Mark row-level outcomes
+    setInputRows(validated.map((r, i) => ({
+      ...r,
+      _done: results[i].status === 'fulfilled',
+      _error: results[i].status === 'rejected'
+        ? (results[i] as PromiseRejectedResult).reason?.message ?? 'Failed'
+        : undefined,
+    })));
+
+    if (succeeded > 0) {
+      const data = await payrollInputApi.list(workspaceId);
+      setInputs(data.inputs);
+      window.dispatchEvent(new Event('payroll-inputs-changed'));
+    }
+
+    setSubmitting(false);
+
+    if (failed === 0) {
+      toast.show('success', `${succeeded} input${succeeded !== 1 ? 's' : ''} added to payroll inbox`);
+      resetForm();
+      setPanelOpen(false);
+    } else {
+      toast.show('warning', `${succeeded} added, ${failed} failed — see errors below`);
+    }
   }
 
   function openEdit(inp: PayrollInput) {
@@ -219,6 +302,7 @@ export function PayrollInputs() {
   }
 
   const selectedDef = inputDefs.find((d) => d.code === inputCode);
+  const validRowCount = inputRows.filter((r) => r.code && !r._done).length;
 
   // Group input codes by category for DD-6
   const employeeOptions = employees.map((e) => ({
@@ -380,103 +464,229 @@ export function PayrollInputs() {
         )}
       </Card>
 
-      {/* Add / Edit Input — SlideOver (DD-3: primary action opens panel, not inline form) */}
+      {/* Add / Edit Input — SlideOver (DD-3) */}
       <SlideOver
         open={panelOpen}
         onClose={() => { setPanelOpen(false); resetForm(); }}
-        title={editingInputId ? 'Edit Payroll Input' : 'Add Payroll Input'}
-        description={editingInputId ? 'Update quantity or period for this input' : 'Record a variable event for the next run'}
+        title={editingInputId ? 'Edit Payroll Input' : 'Add Payroll Inputs'}
+        description={editingInputId ? 'Update quantity or period for this input' : 'Record variable events for the next run'}
         footer={
           <>
             <Btn variant="secondary" onClick={() => { setPanelOpen(false); resetForm(); }} disabled={submitting}>
               Cancel
             </Btn>
-            <Btn
-              variant="primary"
-              loading={submitting}
-              disabled={!editingInputId && (!employeeId || !inputCode)}
-              onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
-            >
-              {editingInputId ? 'Save Changes' : 'Add Input'}
-            </Btn>
+            {editingInputId ? (
+              <Btn
+                variant="primary"
+                loading={submitting}
+                disabled={!quantity && !effectivePeriod}
+                onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
+              >
+                Save Changes
+              </Btn>
+            ) : (
+              <Btn
+                variant="primary"
+                loading={submitting}
+                disabled={!addEmployeeId || validRowCount === 0}
+                onClick={handleMultiSubmit}
+              >
+                {`Add ${validRowCount || ''} input${validRowCount !== 1 ? 's' : ''}`}
+              </Btn>
+            )}
           </>
         }
       >
-        <form id="add-input-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {formError && (
-            <AlertBanner variant="error" title={editingInputId ? 'Failed to update input' : 'Failed to add input'} description={formError} />
-          )}
-
-          {editingInputId ? (
+        {/* ── Edit mode — single-field form (unchanged) ── */}
+        {editingInputId && (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {formError && (
+              <AlertBanner variant="error" title="Failed to update input" description={formError} />
+            )}
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Employee</span>
               <p className="text-sm text-gray-900">{employees.find(e => e.employee_id === employeeId)?.full_name ?? employeeId}</p>
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 mt-2">Input Code</span>
               <p className="text-sm font-mono text-gray-700">{inputCode}</p>
             </div>
-          ) : (
-            <>
-              <SearchableSelect
-                label="Employee"
-                required
-                options={employeeOptions}
-                value={employeeId}
-                onChange={setEmployeeId}
-                placeholder="Select employee…"
+            {inputCode && showsQty(selectedDef) && (
+              <NumberInput
+                label="Quantity"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                step="0.01"
+                min="0"
+                hint={selectedDef?.calculation_method === 'daily_rate_deduction' ? 'Number of days' : 'Number of units'}
               />
-
-              {/* Input code — groups by category (DD-6) */}
-              <SearchableSelect
-                label="Input Code"
-                required
-                options={inputCodeOptions}
-                value={inputCode}
-                onChange={(v) => { setInputCode(v); setQuantity(''); }}
-                placeholder="Select code…"
-              />
-            </>
-          )}
-
-          {/* Conditional fields based on calculation method */}
-          {inputCode && showsQty(selectedDef) && (
-            <NumberInput
-              label="Quantity"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              step="0.01"
-              min="0"
-              hint={selectedDef?.calculation_method === 'daily_rate_deduction' ? 'Number of days' : 'Number of units'}
+            )}
+            {inputCode && showsRate(selectedDef) && selectedDef?.rule_rate != null && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rate per unit</label>
+                <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                  ₦{Number(selectedDef.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                  <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
+                </p>
+              </div>
+            )}
+            {inputCode && showsAmt(selectedDef) && selectedDef?.rule_amount != null && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                  ₦{Number(selectedDef.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                  <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
+                </p>
+              </div>
+            )}
+            <DateInput
+              label="For period"
+              mode="month"
+              value={effectivePeriod}
+              onChange={setEffectivePeriod}
+              hint="Leave blank for current run. Set only for late inputs from a prior month."
             />
-          )}
+          </form>
+        )}
 
-          {inputCode && showsRate(selectedDef) && selectedDef?.rule_rate != null && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rate per unit</label>
-              <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
-                ₦{Number(selectedDef.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
-              </p>
+        {/* ── Add mode — multi-row entry ── */}
+        {!editingInputId && (
+          <div className="flex flex-col gap-5">
+            {formError && (
+              <AlertBanner variant="error" title="Submission failed" description={formError} />
+            )}
+
+            {/* Employee anchor */}
+            <SearchableSelect
+              label="Employee"
+              required
+              options={employeeOptions}
+              value={addEmployeeId}
+              onChange={setAddEmployeeId}
+              placeholder="Select employee…"
+            />
+
+            {/* Info banner + dimmed state when no employee selected */}
+            {!addEmployeeId && (
+              <AlertBanner
+                variant="info"
+                title="Select an employee above to add input lines."
+              />
+            )}
+
+            {/* Row table */}
+            <div className={`rounded-lg border border-gray-200 overflow-hidden transition-opacity duration-150 ${!addEmployeeId ? 'opacity-40 pointer-events-none' : ''}`}>
+              {/* Column headers */}
+              <div className="grid grid-cols-[1fr_72px_96px_28px] gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
+                {['Code', 'Qty', 'For period', ''].map((h) => (
+                  <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{h}</span>
+                ))}
+              </div>
+
+              {/* Input rows */}
+              <div className="divide-y divide-gray-100">
+                {inputRows.map((row, idx) => {
+                  const rowDef = inputDefs.find((d) => d.code === row.code);
+                  const needsQty = showsQty(rowDef);
+                  return (
+                    <div key={row._id} className="px-3 py-2 space-y-1">
+                      <div className="grid grid-cols-[1fr_72px_96px_28px] gap-2 items-center">
+                        {/* Code */}
+                        <div>
+                          <select
+                            value={row.code}
+                            onChange={(e) => updateRow(row._id, { code: e.target.value, qty: '', _error: undefined })}
+                            aria-label={`Input code for row ${idx + 1}`}
+                            disabled={row._done}
+                            className={[
+                              'h-[var(--height-md)] w-full rounded-[var(--radius-input)] border bg-white px-2 text-sm',
+                              'focus:outline-none focus:ring-1 focus:ring-brand',
+                              row._error ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-200',
+                              row._done ? 'bg-green-50 border-green-200 text-gray-500' : '',
+                            ].join(' ')}
+                          >
+                            <option value="">Select code…</option>
+                            {inputDefs.map((d) => (
+                              <option key={d.code} value={d.code}>
+                                {d.rule_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Qty */}
+                        <div>
+                          {needsQty ? (
+                            <input
+                              type="number"
+                              value={row.qty}
+                              onChange={(e) => updateRow(row._id, { qty: e.target.value })}
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                              aria-label={`Quantity for row ${idx + 1}`}
+                              disabled={row._done}
+                              className="h-[var(--height-md)] w-full rounded-[var(--radius-input)] border border-gray-200 bg-white px-2 text-sm text-right focus:outline-none focus:ring-1 focus:ring-brand disabled:bg-green-50 disabled:border-green-200"
+                            />
+                          ) : (
+                            <span className="block h-[var(--height-md)] w-full px-2 text-xs text-gray-400 flex items-center">—</span>
+                          )}
+                        </div>
+
+                        {/* Period */}
+                        <div>
+                          <input
+                            type="month"
+                            value={row.period}
+                            onChange={(e) => updateRow(row._id, { period: e.target.value })}
+                            aria-label={`Period for row ${idx + 1}`}
+                            disabled={row._done}
+                            className="h-[var(--height-md)] w-full rounded-[var(--radius-input)] border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand disabled:bg-green-50 disabled:border-green-200"
+                          />
+                        </div>
+
+                        {/* Remove / status */}
+                        <div className="flex items-center justify-center">
+                          {row._done ? (
+                            <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : inputRows.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeRow(row._id)}
+                              aria-label="Remove this input"
+                              className="text-gray-300 hover:text-red-400 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Per-row error */}
+                      {row._error && !row._done && (
+                        <p className="text-xs text-red-600 pl-0.5">{row._error}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add another */}
+              <div className="px-3 py-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={addRow}
+                  disabled={inputRows.some((r) => r._done)}
+                  className="text-sm text-brand hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  + Add another input
+                </button>
+              </div>
             </div>
-          )}
-
-          {inputCode && showsAmt(selectedDef) && selectedDef?.rule_amount != null && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-              <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-3 py-2">
-                ₦{Number(selectedDef.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                <span className="ml-2 text-xs text-gray-500">(from payroll rule — not editable)</span>
-              </p>
-            </div>
-          )}
-
-          <DateInput
-            label="For period"
-            mode="month"
-            value={effectivePeriod}
-            onChange={setEffectivePeriod}
-            hint="Leave blank for current run. Set only for late inputs from a prior month."
-          />
-        </form>
+          </div>
+        )}
       </SlideOver>
     </div>
   );
