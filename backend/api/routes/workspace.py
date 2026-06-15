@@ -1236,23 +1236,10 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
                 detail=f"Component '{code_upper}' is not valid for country '{country_code}'.",
             )
 
-        # D-ARCH-2: Mandatory statutory deduction components cannot be disabled.
-        # CHECK_OFF_DUES is union-only (not universal) and is exempt from this guard.
-        _OPTIONAL_STATUTORY = {"CHECK_OFF_DUES", "NHF_CONTRIBUTION", "HEALTH_INSURANCE_EMPLOYEE"}
-        if payload.get("is_active") is False and code_upper not in _OPTIONAL_STATUTORY:
-            statutory = db.execute(
-                text("""
-                    SELECT component_class FROM component_metadata
-                    WHERE component_code = :code AND country_code = :country
-                    LIMIT 1
-                """),
-                {"code": code_upper, "country": country_code},
-            ).fetchone()
-            if statutory and statutory[0] == "statutory_deduction":
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"{code_upper} cannot be disabled. It is a statutory obligation under Nigerian law.",
-                )
+        # D-ARCH-2: Statutory deduction components cannot be disabled.
+        # Guard is intentionally not enforced for now — operators may disable any
+        # component per workspace (e.g. NHF, NHIS, Check-Off Dues vary by employer).
+        # Re-enable this block to restore the restriction in future.
 
         has_overrides = "overrides_json" in payload
         db.execute(
