@@ -58,7 +58,7 @@ interface PayrollRule {
   method: string;
   is_active: boolean;
   rule_definition_json: Record<string, unknown>;
-  effective_from: string | null;
+  effective_from?: string | null;
 }
 
 interface ComponentOverride {
