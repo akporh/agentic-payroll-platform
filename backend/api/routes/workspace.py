@@ -1238,7 +1238,7 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
 
         # D-ARCH-2: Mandatory statutory deduction components cannot be disabled.
         # CHECK_OFF_DUES is union-only (not universal) and is exempt from this guard.
-        _OPTIONAL_STATUTORY = {"CHECK_OFF_DUES"}
+        _OPTIONAL_STATUTORY = {"CHECK_OFF_DUES", "NHF_CONTRIBUTION", "HEALTH_INSURANCE_EMPLOYEE"}
         if payload.get("is_active") is False and code_upper not in _OPTIONAL_STATUTORY:
             statutory = db.execute(
                 text("""
