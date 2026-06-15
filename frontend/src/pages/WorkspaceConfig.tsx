@@ -58,6 +58,7 @@ interface PayrollRule {
   method: string;
   is_active: boolean;
   rule_definition_json: Record<string, unknown>;
+  effective_from: string | null;
 }
 
 interface ComponentOverride {
@@ -2450,6 +2451,8 @@ export function WorkspaceConfig() {
                       <tr className="border-b border-gray-100">
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Name</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Type</th>
+                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Rate / Amount</th>
+                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Effective From</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4 w-28">
                           Status
                           <span className="ml-1 text-gray-400 font-normal normal-case" title="Current activation state. Historical state per run is visible in the Run Trace.">ⓘ</span>
@@ -2458,10 +2461,17 @@ export function WorkspaceConfig() {
                       </tr>
                     </thead>
                     <tbody>
-                      {config.payroll_rules.map((r) => (
+                      {config.payroll_rules.map((r) => {
+                        const def = r.rule_definition_json ?? {};
+                        const rateVal = def.rate ?? def.amount ?? def.multiplier ?? null;
+                        const unit = def.unit ? `/${String(def.unit).toLowerCase()}` : '';
+                        const rateDisplay = rateVal != null ? `₦${Number(rateVal).toLocaleString()}${unit}` : '—';
+                        return (
                         <tr key={r.rule_id} className="border-b border-gray-50">
                           <td className="py-2 pr-4 text-gray-800 text-sm font-medium">{r.name}</td>
                           <td className="py-2 pr-4 text-gray-500 text-sm">{r.rule_type}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm font-mono">{rateDisplay}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm">{r.effective_from ?? '—'}</td>
                           <td className="py-2 pr-4 w-28">
                             <StatusBadge status={r.is_active ? 'ACTIVE' : 'INACTIVE'} size="sm" />
                           </td>
@@ -2480,7 +2490,8 @@ export function WorkspaceConfig() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (

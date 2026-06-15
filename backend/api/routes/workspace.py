@@ -1101,16 +1101,27 @@ def get_workspace_configuration(workspace_id: str):
             {"wid": workspace_id},
         ).fetchall()
 
-        # Payroll rules — all rules (active + inactive) for management; historical state in rule_set_item
+        # Payroll rules — all rules (active + inactive) for management; historical state in rule_set_item.
+        # effective_from is matched via rule_set_item by rule_name + rate to handle same-name rules
+        # that have different rates across periods.
         rules = db.execute(
             text("""
-                SELECT rule_id, rule_name, rule_type,
-                       rule_definition_json->>'calculation_method' AS method,
-                       is_active,
-                       rule_definition_json
-                FROM payroll_rule
-                WHERE workspace_id = :wid
-                ORDER BY rule_name
+                SELECT pr.rule_id, pr.rule_name, pr.rule_type,
+                       pr.rule_definition_json->>'calculation_method' AS method,
+                       pr.is_active,
+                       pr.rule_definition_json,
+                       MIN(rs.effective_from) AS effective_from
+                FROM payroll_rule pr
+                LEFT JOIN rule_set_item rsi
+                    ON rsi.rule_name = pr.rule_name
+                    AND rsi.rule_definition_json->>'rate' IS NOT DISTINCT FROM pr.rule_definition_json->>'rate'
+                    AND rsi.rule_definition_json->>'amount' IS NOT DISTINCT FROM pr.rule_definition_json->>'amount'
+                LEFT JOIN rule_set rs
+                    ON rs.rule_set_id = rsi.rule_set_id
+                    AND rs.workspace_id = :wid
+                WHERE pr.workspace_id = :wid
+                GROUP BY pr.rule_id, pr.rule_name, pr.rule_type, pr.rule_definition_json, pr.is_active
+                ORDER BY pr.rule_name, effective_from
             """),
             {"wid": workspace_id},
         ).fetchall()
@@ -1173,6 +1184,7 @@ def get_workspace_configuration(workspace_id: str):
                     "method": r[3] or "—",
                     "is_active": r[4],
                     "rule_definition_json": r[5] or {},
+                    "effective_from": str(r[6]) if r[6] else None,
                 }
                 for r in rules
             ],
