@@ -150,15 +150,39 @@ def add_input(workspace_id: str, payload: dict):
         reference_date = _parse_period_date(raw_date) if raw_date else None
         input_category = valid_codes[input_code]
 
-        result = create_input(
-            workspace_id=workspace_id,
-            employee_id=employee_id,
-            input_code=input_code,
-            input_category=input_category,
-            quantity=quantity,
-            reference_date=reference_date,
+        db.execute(
+            text("""
+                INSERT INTO payroll_input (
+                    payroll_input_id, workspace_id, employee_id,
+                    input_code, input_category, quantity, source, reference_date
+                ) VALUES (
+                    gen_random_uuid(), :wid, :emp_id,
+                    :code, :category, :qty, 'MANUAL', :reference_date
+                )
+            """),
+            {
+                "wid":            workspace_id,
+                "emp_id":         employee_id,
+                "code":           input_code,
+                "category":       input_category,
+                "qty":            quantity,
+                "reference_date": reference_date,
+            },
         )
-        return {"status": "created", "payroll_input_id": result["payroll_input_id"]}
+        db.commit()
+        return {"status": "created"}
+    except HTTPException:
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        if isinstance(exc.orig, UniqueViolation):
+            raise HTTPException(status_code=409, detail="This input already exists for the employee and period")
+        _log.error("add_input IntegrityError: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to add input")
+    except Exception as exc:
+        db.rollback()
+        _log.error("add_input failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to add input")
     finally:
         db.close()
 
@@ -199,6 +223,8 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
         skipped = 0
         errors  = []
 
+        # Validate all rows first, collect those ready to insert
+        valid_inserts = []
         for i, row in enumerate(rows):
             employee_number = str(row.get("employee_number") or row.get("employee_no") or "").strip()
             input_code      = row.get("input_code")
@@ -236,29 +262,61 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                     errors.append({"row": row_num, "detail": exc.detail})
                     continue
 
+            valid_inserts.append({
+                "row_num":        row_num,
+                "workspace_id":   workspace_id,
+                "employee_id":    employee_id,
+                "input_code":     input_code,
+                "input_category": valid_codes[input_code],
+                "quantity":       quantity,
+                "reference_date": reference_date,
+            })
+
+        # Insert all valid rows using the outer session — one round-trip per row
+        # but no per-row TCP handshake overhead (avoids the N×connection-open timeout
+        # that occurs when calling create_input() which opens its own SessionLocal).
+        for v in valid_inserts:
             try:
-                input_category = valid_codes[input_code]
-                create_input(
-                    workspace_id=workspace_id,
-                    employee_id=employee_id,
-                    input_code=input_code,
-                    input_category=input_category,
-                    quantity=quantity,
-                    reference_date=reference_date,
+                db.execute(
+                    text("""
+                        INSERT INTO payroll_input (
+                            payroll_input_id, workspace_id, employee_id,
+                            input_code, input_category, quantity, source, reference_date
+                        ) VALUES (
+                            gen_random_uuid(), :wid, :emp_id,
+                            :code, :category, :qty, 'MANUAL', :reference_date
+                        )
+                    """),
+                    {
+                        "wid":            v["workspace_id"],
+                        "emp_id":         v["employee_id"],
+                        "code":           v["input_code"],
+                        "category":       v["input_category"],
+                        "qty":            v["quantity"],
+                        "reference_date": v["reference_date"],
+                    },
                 )
+                db.commit()
                 created += 1
             except IntegrityError as exc:
+                db.rollback()
                 if isinstance(exc.orig, UniqueViolation):
-                    # Duplicate (employee, input_code, period) — skip silently; re-upload is idempotent.
                     skipped += 1
                 else:
-                    _log.error("Unexpected IntegrityError on row %d: %s", row_num, exc)
-                    errors.append({"row": row_num, "detail": "Failed to save input — data constraint violation"})
+                    _log.error("Unexpected IntegrityError on row %d: %s", v["row_num"], exc)
+                    errors.append({"row": v["row_num"], "detail": "Failed to save input — data constraint violation"})
             except Exception as exc:
-                _log.error("Unexpected error on row %d: %s", row_num, exc)
-                errors.append({"row": row_num, "detail": "Failed to save input — unexpected error"})
+                db.rollback()
+                _log.error("Unexpected error on row %d: %s", v["row_num"], exc)
+                errors.append({"row": v["row_num"], "detail": "Failed to save input — unexpected error"})
 
         return {"created": created, "skipped": skipped, "errors": errors}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("bulk_add_inputs outer failure for workspace %s: %s", workspace_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to process bulk input upload")
     finally:
         db.close()
 

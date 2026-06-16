@@ -1,8 +1,11 @@
 import json
+import logging
 import uuid
 from datetime import date as _date
 from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query
+
+_log = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from backend.infra.db.session import SessionLocal
@@ -849,7 +852,7 @@ def create_salary_definition_by_code(workspace_id: str, body: dict):
 def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
     db = SessionLocal()
     try:
-        result = onboarding_service.create_pay_cycle(
+        pc = onboarding_service.create_pay_cycle(
             db=db,
             workspace_id=workspace_id,
             frequency=payload.frequency,
@@ -858,7 +861,22 @@ def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
             payment_day=payload.payment_day,
             definition_json=payload.definition_json,
         )
-        return result
+        db.refresh(pc)
+        return {
+            "pay_cycle_id": str(pc.pay_cycle_id),
+            "workspace_id": str(pc.workspace_id),
+            "frequency": pc.frequency,
+            "run_day": pc.run_day,
+            "cutoff_day": pc.cutoff_day,
+            "payment_day": pc.payment_day,
+            "is_active": pc.is_active,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("create_pay_cycle failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create pay cycle")
     finally:
         db.close()
 
@@ -866,12 +884,25 @@ def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
 def create_grade_endpoint(workspace_id: str, payload: GradeCreateSchema):
     db = SessionLocal()
     try:
-        return onboarding_service.create_grade(
+        g = onboarding_service.create_grade(
             db=db,
             workspace_id=workspace_id,
             grade_code=payload.grade_code,
             description=payload.description,
         )
+        db.refresh(g)
+        return {
+            "grade_id": str(g.grade_id),
+            "workspace_id": str(g.workspace_id),
+            "grade_code": g.grade_code,
+            "description": g.description,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("create_grade failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create grade")
     finally:
         db.close()
 
@@ -879,12 +910,25 @@ def create_grade_endpoint(workspace_id: str, payload: GradeCreateSchema):
 def create_designation_endpoint(workspace_id: str, payload: DesignationCreateSchema):
     db = SessionLocal()
     try:
-        return onboarding_service.create_designation(
+        d = onboarding_service.create_designation(
             db=db,
             workspace_id=workspace_id,
             designation_code=payload.designation_code,
             description=payload.description,
         )
+        db.refresh(d)
+        return {
+            "designation_id": str(d.designation_id),
+            "workspace_id": str(d.workspace_id),
+            "designation_code": d.designation_code,
+            "description": d.description,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("create_designation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create designation")
     finally:
         db.close()
 
@@ -913,7 +957,7 @@ def create_salary_definition_endpoint(workspace_id: str, payload: SalaryDefiniti
             )
     db = SessionLocal()
     try:
-        return onboarding_service.create_salary_definition(
+        sd = onboarding_service.create_salary_definition(
             db=db,
             workspace_id=workspace_id,
             name=payload.name,
@@ -922,6 +966,21 @@ def create_salary_definition_endpoint(workspace_id: str, payload: SalaryDefiniti
             effective_from=payload.effective_from,
             effective_to=payload.effective_to,
         )
+        db.refresh(sd)
+        return {
+            "salary_definition_id": str(sd.salary_definition_id),
+            "code": sd.code,
+            "name": sd.name,
+            "components_jsonb": sd.components_jsonb,
+            "effective_from": str(sd.effective_from) if sd.effective_from else None,
+            "effective_to": str(sd.effective_to) if sd.effective_to else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("create_salary_definition failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create salary definition")
     finally:
         db.close()
 
@@ -930,13 +989,28 @@ def create_salary_definition_endpoint(workspace_id: str, payload: SalaryDefiniti
 def create_payroll_rule_endpoint(workspace_id: str, payload: PayrollRuleCreateSchema):
     db = SessionLocal()
     try:
-        return onboarding_service.create_payroll_rule(
+        r = onboarding_service.create_payroll_rule(
             db=db,
             workspace_id=workspace_id,
             rule_name=payload.rule_name,
             rule_definition_json=payload.rule_definition_json,
             rule_type=payload.rule_type,
         )
+        db.refresh(r)
+        return {
+            "rule_id": str(r.rule_id),
+            "workspace_id": str(r.workspace_id),
+            "rule_name": r.rule_name,
+            "rule_type": r.rule_type,
+            "rule_definition_json": r.rule_definition_json,
+            "is_active": r.is_active,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        _log.error("create_payroll_rule failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create payroll rule")
     finally:
         db.close()
 
