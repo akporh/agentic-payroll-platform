@@ -127,19 +127,25 @@ def create_component_metadata(
     import json
     from sqlalchemy import text
 
+    # Extract is_active from overrides_json and write it to the dedicated column.
+    # The JSONB blob should only carry numeric/rate overrides — is_active lives in the column.
+    is_active = overrides_json.pop("is_active", True)
+
     result = db.execute(
         text("""
             INSERT INTO client_component_metadata
-                (client_component_metadata_id, workspace_id, component_code, overrides_json)
-            VALUES (gen_random_uuid(), :wid, :code, CAST(:overrides AS jsonb))
+                (client_component_metadata_id, workspace_id, component_code, overrides_json, is_active)
+            VALUES (gen_random_uuid(), :wid, :code, CAST(:overrides AS jsonb), :is_active)
             ON CONFLICT (workspace_id, component_code)
-            DO UPDATE SET overrides_json = EXCLUDED.overrides_json
+            DO UPDATE SET overrides_json = EXCLUDED.overrides_json,
+                          is_active      = EXCLUDED.is_active
             RETURNING client_component_metadata_id, workspace_id, component_code, overrides_json
         """),
         {
             "wid": workspace_id,
             "code": component_code,
             "overrides": json.dumps(overrides_json),
+            "is_active": is_active,
         },
     ).fetchone()
 
