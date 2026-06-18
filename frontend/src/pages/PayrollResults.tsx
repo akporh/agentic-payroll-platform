@@ -180,16 +180,29 @@ function ActionPanel({ run, onApprove, onLock, onPay, onRetry, actionLoading }: 
 // ── Reconciliation SlideOver (PAY-RECON-1) ────────────────────────────────────
 
 const RECON_FIELD_LABELS: Record<string, string> = {
-  net_pay:          'Net Pay',
-  gross_pay:        'Gross Pay',
-  paye:             'PAYE',
-  pension_employee: 'Pension (Employee)',
-  development_levy: 'Development Levy',
-  nhf:              'NHF',
-  basic_salary:     'Basic Salary',
-  housing:          'Housing',
-  transport:        'Transport',
+  net_pay:               'Net Pay',
+  gross_pay:             'Gross Pay',
+  paye:                  'PAYE',
+  pension_employee:      'Pension (Employee)',
+  development_levy:      'Development Levy',
+  nhf:                   'NHF',
+  basic_salary:          'Basic Salary',
+  housing:               'Housing',
+  transport:             'Transport',
+  consolidated_allowance: 'Consolidation Allowance',
 };
+
+// Maps RECON_FIELD_LABELS keys to the actual component codes stored in component_trace.
+// Required where the field key differs from the component code (e.g. basic_salary → BASIC).
+const FIELD_TO_COMPONENT_CODE: Record<string, string> = {
+  basic_salary:          'BASIC',
+  consolidated_allowance: 'CONSOLIDATED_ALLOWANCE',
+};
+
+// Reverse: component code (uppercase) → field key, for availableReconTargets detection.
+const COMPONENT_CODE_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(FIELD_TO_COMPONENT_CODE).map(([field, code]) => [code, field])
+);
 
 interface OldSystemRow { employee_id: string; [field: string]: number | string }
 
@@ -204,10 +217,9 @@ interface ReconRow {
 function getNewValue(result: PayrollResult, field: string): number | null {
   if (field === 'net_pay')   return result.net_pay   ?? null;
   if (field === 'gross_pay') return result.gross_pay ?? null;
-  // Look in component_trace for statutory fields
+  const targetCode = (FIELD_TO_COMPONENT_CODE[field] ?? field).toUpperCase();
   const entry = result.component_trace?.find(
-    (e) => e.component?.toUpperCase() === field.toUpperCase() ||
-           e.component?.toUpperCase().replace(/_/g, '') === field.toUpperCase().replace(/_/g, '')
+    (e) => e.component?.toUpperCase() === targetCode
   );
   if (entry?.result != null && entry.result !== 'None') return parseFloat(entry.result);
   return null;
@@ -244,8 +256,11 @@ function ReconSlideOver({ open, onClose, results }: ReconSlideOverProps) {
       if (r.net_pay != null)   presentFields.add('net_pay');
       if (r.gross_pay != null) presentFields.add('gross_pay');
       r.component_trace?.forEach((e) => {
-        const normalised = e.component?.toLowerCase();
-        if (normalised && RECON_FIELD_LABELS[normalised]) presentFields.add(normalised);
+        const code = e.component?.toUpperCase();
+        if (!code) return;
+        // First check explicit mapping (e.g. BASIC → basic_salary); fall back to lowercase match.
+        const fieldKey = COMPONENT_CODE_TO_FIELD[code] ?? (RECON_FIELD_LABELS[code.toLowerCase()] ? code.toLowerCase() : null);
+        if (fieldKey) presentFields.add(fieldKey);
       });
     }
     return [
