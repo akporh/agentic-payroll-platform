@@ -26,3 +26,5 @@ class ClientComponentMetadata(Base):
     workspace_id = Column(UUID(as_uuid=True), nullable=False)
     component_code = Column(Text, nullable=False)
     overrides_json = Column(JSONB, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=True)
+    proration_strategy = Column(Text, nullable=True)

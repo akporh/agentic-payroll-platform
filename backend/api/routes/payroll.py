@@ -435,7 +435,7 @@ def run_payroll(
     # it there rather than into overrides_json.calculations_behaviour.  Both storage
     # locations are reconciled during client_meta construction below.
     override_rows = db.execute(text("""
-        SELECT component_code, overrides_json, proration_strategy
+        SELECT component_code, overrides_json, proration_strategy, is_active
         FROM client_component_metadata
         WHERE workspace_id = :wid
     """), {"wid": workspace_id}).fetchall()
@@ -444,8 +444,9 @@ def run_payroll(
     # Map of component_code → proration_strategy from the dedicated column (may be None)
     ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
 
-    # Remove components the workspace has disabled
-    disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
+    # Remove components the workspace has disabled — read is_active from the dedicated
+    # column (r[3]), not from overrides_json. NULL means no override → treat as active.
+    disabled_codes = {r[0] for r in override_rows if r[3] is False}
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 
