@@ -44,7 +44,7 @@ def create_payroll_snapshot(
     Idempotent: ON CONFLICT DO NOTHING — safe to call twice on the same run_id.
 
     client_override_rows must be a list of dicts with keys:
-        component_code, overrides_json, proration_strategy
+        component_code, overrides_json, proration_strategy, is_active
     """
     # 1. component_metadata_snapshot
     if component_metadata_rows:
@@ -77,9 +77,9 @@ def create_payroll_snapshot(
             text("""
                 INSERT INTO client_component_metadata_snapshot
                     (payroll_run_id, workspace_id, component_code,
-                     overrides_json, proration_strategy)
+                     overrides_json, proration_strategy, is_active)
                 VALUES
-                    (:run_id, :wid, :code, CAST(:overrides AS jsonb), :strategy)
+                    (:run_id, :wid, :code, CAST(:overrides AS jsonb), :strategy, :is_active)
                 ON CONFLICT (payroll_run_id, component_code) DO NOTHING
             """),
             [
@@ -89,6 +89,7 @@ def create_payroll_snapshot(
                     "code": row["component_code"],
                     "overrides": _jsonb(row["overrides_json"]),
                     "strategy": row["proration_strategy"],
+                    "is_active": row.get("is_active", True),
                 }
                 for row in client_override_rows
             ],

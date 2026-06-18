@@ -802,7 +802,7 @@ def run_payroll(
     # ── Snapshot component metadata + overrides + employee contracts (D3 atomicity) ─
     _snap_db = SessionLocal()
     _override_rows_dicts = [
-        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2]}
+        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2], "is_active": r[3]}
         for r in override_rows
     ]
     try:

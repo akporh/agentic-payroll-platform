@@ -1359,7 +1359,8 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_component_override failed workspace=%s component=%s: %s", workspace_id, component_code, e)
+        raise HTTPException(status_code=400, detail="Failed to update component override")
     finally:
         db.close()
 
