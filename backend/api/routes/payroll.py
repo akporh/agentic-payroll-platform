@@ -1537,11 +1537,18 @@ def export_full_detail(workspace_id: str, run_id: str):
         net_pay          = float(r[3] or 0)
         period           = r[7].strftime("%Y-%m") if r[7] else ""
 
-        trace_map = {
-            entry["component"]: entry.get("result", "")
-            for entry in (trace if isinstance(trace, list) else [])
-            if isinstance(entry, dict) and entry.get("component") != "_period_context"
-        }
+        # First-occurrence-with-result wins: proration supplemental entries share
+        # the same component codes but have no "result" key — they must not
+        # overwrite the monetary results from the main execution entries.
+        trace_map: dict[str, str] = {}
+        for _entry in (trace if isinstance(trace, list) else []):
+            if not isinstance(_entry, dict):
+                continue
+            _code = _entry.get("component")
+            if not _code or _code == "_period_context" or _code in trace_map:
+                continue
+            if "result" in _entry:
+                trace_map[_code] = _entry["result"] or ""
 
         gross_pay = sum(
             float(v.get("amount", v) if isinstance(v, dict) else v)
