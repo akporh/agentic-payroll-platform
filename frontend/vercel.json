@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/v1/:path*",
+      "destination": "https://payroll-backend-5od7.onrender.com/api/v1/:path*"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
