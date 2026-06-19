@@ -58,15 +58,21 @@ function PlusIcon() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Parse a YYYY-MM-DD string in local time to avoid UTC-midnight timezone shift.
+function parseDateOnly(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function formatPeriod(start: string, end: string): string {
-  const s = new Date(start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  const e = new Date(end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const s = parseDateOnly(start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const e = parseDateOnly(end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return `${s} – ${e}`;
 }
 
 function formatDate(d: string | null | undefined) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return parseDateOnly(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

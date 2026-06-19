@@ -71,9 +71,15 @@ const TABS: Tab[] = [
 
 // ── Helper: format date range ─────────────────────────────────────────────────
 
+// Parse a YYYY-MM-DD string in local time to avoid UTC-midnight timezone shift.
+function parseDateOnly(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function formatPeriod(start: string, end: string) {
   const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-  return `${new Date(start).toLocaleDateString('en-GB', opts)} – ${new Date(end).toLocaleDateString('en-GB', opts)}`;
+  return `${parseDateOnly(start).toLocaleDateString('en-GB', opts)} – ${parseDateOnly(end).toLocaleDateString('en-GB', opts)}`;
 }
 
 // ── Status-driven Action Panel (DD-3) ─────────────────────────────────────────
@@ -1180,7 +1186,7 @@ export function PayrollResults() {
       {/* Back link */}
       <ContentHeader
         title={run ? `Run ${run.run_id.slice(0, 8)}…` : 'Run Detail'}
-        subtitle={run ? formatPeriod(run.period_start, run.period_end) + (run.pay_date ? ' · Pay date: ' + new Date(run.pay_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '') : ''}
+        subtitle={run ? formatPeriod(run.period_start, run.period_end) + (run.pay_date ? ' · Pay date: ' + parseDateOnly(run.pay_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '') : ''}
         back={
           <button
             onClick={() => navigate(`/workspaces/${workspaceId}/payroll`)}
