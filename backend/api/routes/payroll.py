@@ -800,27 +800,15 @@ def run_payroll(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    # ── Snapshot component metadata + overrides + employee contracts (D3 atomicity) ─
-    _snap_db = SessionLocal()
+    # Build override-rows dict once (pure Python, in-memory — no DB) for snapshot.
     _override_rows_dicts = [
         {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2], "is_active": r[3]}
         for r in override_rows
     ]
-    try:
-        create_payroll_snapshot(
-            _snap_db,
-            payroll_run_id=payroll_run_id,
-            workspace_id=workspace_id,
-            component_metadata_rows=component_metadata,
-            client_override_rows=_override_rows_dicts,
-            employees_data=employees,
-        )
-    except Exception as exc:
-        logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to create payroll snapshot")
-    finally:
-        _snap_db.close()
 
+    # Snapshot creation moved into the background task so the HTTP response returns
+    # immediately after DRAFT creation.  Previously it blocked here for ~25 s because
+    # SQLAlchemy executemany sends one Neon round-trip per employee row (~100 ms each).
     background_tasks.add_task(
         _calculate_and_persist,
         payroll_run_id            = payroll_run_id,
@@ -836,6 +824,7 @@ def run_payroll(
         pay_cycle_definition      = pay_cycle_definition,
         retry_strategy            = retry_strategy,
         component_metadata        = component_metadata or None,
+        client_override_rows      = _override_rows_dicts,
         context                   = context,
         rules_ctx_snapshot        = rules_ctx_snapshot,
         rule_set_id               = rule_set_id,
@@ -882,6 +871,7 @@ def _calculate_and_persist(
     pay_cycle_definition,
     retry_strategy: str,
     component_metadata,
+    client_override_rows: list,
     context: dict,
     rules_ctx_snapshot: dict,
     rule_set_id,
@@ -892,8 +882,25 @@ def _calculate_and_persist(
     salary_inputs_by_employee: dict,
     period_ctx,
 ) -> None:
-    """Background task: calculate payroll and persist results for an existing DRAFT run."""
+    """Background task: snapshot + calculate + persist results for an existing DRAFT run."""
     try:
+        # Create snapshot here (not in the sync route) so the HTTP response returns
+        # immediately after DRAFT creation.
+        _snap_db = SessionLocal()
+        try:
+            create_payroll_snapshot(
+                _snap_db,
+                payroll_run_id=payroll_run_id,
+                workspace_id=workspace_id,
+                component_metadata_rows=component_metadata or [],
+                client_override_rows=client_override_rows,
+                employees_data=employees,
+            )
+        except Exception as exc:
+            logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+        finally:
+            _snap_db.close()
+
         execute_and_persist(
             payroll_run_id              = payroll_run_id,
             workspace_id                = workspace_id,
