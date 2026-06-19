@@ -5,9 +5,11 @@ Responsible for persisting payroll_result records.
 Handles JSON sanitization at infrastructure boundary.
 """
 
+import uuid
+
 from sqlalchemy import text
-from psycopg2.extras import Json
-from backend.infra.db.session import SessionLocal
+from psycopg2.extras import Json, execute_values
+from backend.infra.db.session import SessionLocal, engine
 from backend.infra.json_utils import sanitize_jsonb as _sanitize_json
 
 
@@ -30,6 +32,87 @@ def get_employee_context_from_result(db, payroll_run_id: str, employee_id: str) 
     if row is None:
         return {}
     return row[0] or {}
+
+
+def save_payroll_results_bulk(
+    payroll_run_id: str,
+    results: list[dict],
+    salary_inputs_by_employee: dict | None = None,
+) -> None:
+    """Persist all payroll results for a run in a single connection and transaction.
+
+    Replaces 175 individual save_payroll_result calls (175 connections, 175
+    commits) with one psycopg2 execute_values call — one connection, one
+    multi-row INSERT, one commit.
+    """
+    if not results:
+        return
+
+    rows = []
+    for r in results:
+        status = r["status"]
+        output = r.get("output")
+        employee_context = r.get("employee_context")
+
+        if status == "SUCCESS" and output is not None:
+            pr = output["payroll_result"]
+            gross_components = _sanitize_json(pr["gross_components_jsonb"])
+            deductions = _sanitize_json(pr["deductions_jsonb"])
+            snapshot = _sanitize_json(pr["calculations_snapshot_json"])
+            net_pay = pr["net_pay"]
+            component_trace = pr.get("component_trace_jsonb")
+        else:
+            gross_components = {}
+            deductions = {}
+            snapshot = {}
+            net_pay = 0
+            component_trace = None
+
+        trace_value = _sanitize_json(component_trace) if component_trace else None
+        sal_snap = (salary_inputs_by_employee or {}).get(r["employee_id"], {})
+
+        rows.append((
+            str(uuid.uuid4()),
+            payroll_run_id,
+            r["employee_id"],
+            Json(gross_components),
+            Json(deductions),
+            net_pay,
+            Json(snapshot),
+            Json(trace_value) if trace_value is not None else None,
+            status,
+            r.get("error"),
+            Json(_sanitize_json(employee_context)) if employee_context else None,
+            Json(sal_snap),
+        ))
+
+    raw_conn = engine.raw_connection()
+    try:
+        cursor = raw_conn.cursor()
+        execute_values(
+            cursor,
+            """
+            INSERT INTO payroll_result (
+                payroll_result_id,
+                payroll_run_id,
+                employee_id,
+                gross_components_jsonb,
+                deductions_jsonb,
+                net_pay,
+                calculations_snapshot_json,
+                component_trace_jsonb,
+                status,
+                error_message,
+                per_employee_context_json,
+                salary_inputs_snapshot
+            ) VALUES %s
+            """,
+            rows,
+        )
+        raw_conn.commit()
+    finally:
+        cursor.close()
+        raw_conn.close()
 
 
 def save_payroll_result(
