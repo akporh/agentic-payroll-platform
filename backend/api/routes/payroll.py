@@ -886,10 +886,8 @@ def _calculate_and_persist(
     try:
         # Create snapshot here (not in the sync route) so the HTTP response returns
         # immediately after DRAFT creation.
-        _snap_db = SessionLocal()
         try:
             create_payroll_snapshot(
-                _snap_db,
                 payroll_run_id=payroll_run_id,
                 workspace_id=workspace_id,
                 component_metadata_rows=component_metadata or [],
@@ -898,8 +896,6 @@ def _calculate_and_persist(
             )
         except Exception as exc:
             logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
-        finally:
-            _snap_db.close()
 
         execute_and_persist(
             payroll_run_id              = payroll_run_id,

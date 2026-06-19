@@ -2,20 +2,26 @@ import json
 import logging
 from decimal import Decimal
 
-from sqlalchemy import text
+from psycopg2.extras import Json, execute_values
+
+from backend.infra.db.session import SessionLocal, engine
 
 _log = logging.getLogger(__name__)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _jsonb(value) -> str | None:
-    """Serialise a value to a JSON string for CAST(:x AS jsonb) placeholders."""
+def _as_json(value):
+    """Convert a value to a psycopg2 Json adapter for execute_values.
+
+    Handles None (→ SQL NULL), pre-serialised JSON strings (parsed back),
+    and plain Python objects (dicts, lists).
+    """
     if value is None:
         return None
     if isinstance(value, str):
-        return value
-    return json.dumps(value, default=_json_default)
+        return Json(json.loads(value), dumps=lambda v: json.dumps(v, default=_json_default))
+    return Json(value, dumps=lambda v: json.dumps(v, default=_json_default))
 
 
 def _json_default(obj):
@@ -27,7 +33,6 @@ def _json_default(obj):
 # ── public API ────────────────────────────────────────────────────────────────
 
 def create_payroll_snapshot(
-    db,
     payroll_run_id: str,
     workspace_id: str,
     component_metadata_rows: list[dict],
@@ -36,96 +41,103 @@ def create_payroll_snapshot(
 ) -> None:
     """Freeze component metadata, client overrides, and employee contracts at run time.
 
-    D3: all three INSERT batches share a single db.commit(). Any INSERT failure
-    propagates — no partial commit. The caller treats any exception as HTTP 500;
-    the orphaned DRAFT run has no snapshot rows so validate_snapshot_complete()
-    blocks any retry attempt on it.
+    Uses psycopg2 execute_values for all three batches — single round-trip per
+    table regardless of row count, avoiding the N×latency problem from executemany.
+
+    D3: all three INSERT batches share a single raw_conn.commit(). Any INSERT
+    failure propagates — no partial commit. The orphaned DRAFT run has no snapshot
+    rows so validate_snapshot_complete() blocks any retry attempt on it.
 
     Idempotent: ON CONFLICT DO NOTHING — safe to call twice on the same run_id.
-
-    client_override_rows must be a list of dicts with keys:
-        component_code, overrides_json, proration_strategy, is_active
     """
-    # 1. component_metadata_snapshot
-    if component_metadata_rows:
-        db.execute(
-            text("""
+    raw_conn = engine.raw_connection()
+    try:
+        cursor = raw_conn.cursor()
+
+        # 1. component_metadata_snapshot
+        if component_metadata_rows:
+            rows = [
+                (
+                    payroll_run_id,
+                    row["component_code"],
+                    row.get("component_class"),
+                    row.get("calculation_method"),
+                    row.get("execution_priority"),
+                    row.get("is_active"),
+                    _as_json(row.get("metadata_json")),
+                )
+                for row in component_metadata_rows
+            ]
+            execute_values(
+                cursor,
+                """
                 INSERT INTO component_metadata_snapshot
                     (payroll_run_id, component_code, component_class,
                      calculation_method, execution_priority, is_active, metadata_json)
-                VALUES
-                    (:run_id, :code, :cls, :method, :priority, :active, CAST(:meta AS jsonb))
+                VALUES %s
                 ON CONFLICT (payroll_run_id, component_code) DO NOTHING
-            """),
-            [
-                {
-                    "run_id": payroll_run_id,
-                    "code": row["component_code"],
-                    "cls": row.get("component_class"),
-                    "method": row.get("calculation_method"),
-                    "priority": row.get("execution_priority"),
-                    "active": row.get("is_active"),
-                    "meta": _jsonb(row.get("metadata_json")),
-                }
-                for row in component_metadata_rows
-            ],
-        )
+                """,
+                rows,
+            )
 
-    # 2. client_component_metadata_snapshot
-    if client_override_rows:
-        db.execute(
-            text("""
+        # 2. client_component_metadata_snapshot
+        if client_override_rows:
+            rows = [
+                (
+                    payroll_run_id,
+                    workspace_id,
+                    row["component_code"],
+                    _as_json(row["overrides_json"]),
+                    row["proration_strategy"],
+                    row.get("is_active", True),
+                )
+                for row in client_override_rows
+            ]
+            execute_values(
+                cursor,
+                """
                 INSERT INTO client_component_metadata_snapshot
                     (payroll_run_id, workspace_id, component_code,
                      overrides_json, proration_strategy, is_active)
-                VALUES
-                    (:run_id, :wid, :code, CAST(:overrides AS jsonb), :strategy, :is_active)
+                VALUES %s
                 ON CONFLICT (payroll_run_id, component_code) DO NOTHING
-            """),
-            [
-                {
-                    "run_id": payroll_run_id,
-                    "wid": workspace_id,
-                    "code": row["component_code"],
-                    "overrides": _jsonb(row["overrides_json"]),
-                    "strategy": row["proration_strategy"],
-                    "is_active": row.get("is_active", True),
-                }
-                for row in client_override_rows
-            ],
-        )
+                """,
+                rows,
+            )
 
-    # 3. employee_contract_snapshot (D1: salary_definition_id frozen)
-    if employees_data:
-        db.execute(
-            text("""
+        # 3. employee_contract_snapshot (D1: salary_definition_id frozen)
+        if employees_data:
+            rows = [
+                (
+                    payroll_run_id,
+                    emp["employee_id"],
+                    emp["salary_definition_id"],
+                    _as_json(emp.get("components_jsonb")),
+                    emp.get("start_date") or emp.get("contract_start"),
+                    emp.get("end_date") or emp.get("contract_end"),
+                    emp.get("shift_type"),
+                    emp.get("grade_id"),
+                    _as_json(emp.get("grade_jsonb")),
+                )
+                for emp in employees_data
+            ]
+            execute_values(
+                cursor,
+                """
                 INSERT INTO employee_contract_snapshot
                     (payroll_run_id, employee_id, salary_definition_id,
                      components_jsonb, contract_start, contract_end,
                      shift_type, grade_id, grade_jsonb)
-                VALUES
-                    (:run_id, :eid, :sal_def_id,
-                     CAST(:components AS jsonb), :start, :end,
-                     :shift, :grade_id, CAST(:grade_json AS jsonb))
+                VALUES %s
                 ON CONFLICT (payroll_run_id, employee_id) DO NOTHING
-            """),
-            [
-                {
-                    "run_id": payroll_run_id,
-                    "eid": emp["employee_id"],
-                    "sal_def_id": emp["salary_definition_id"],
-                    "components": _jsonb(emp.get("components_jsonb")),
-                    "start": emp.get("start_date") or emp.get("contract_start"),
-                    "end": emp.get("end_date") or emp.get("contract_end"),
-                    "shift": emp.get("shift_type"),
-                    "grade_id": emp.get("grade_id"),
-                    "grade_json": _jsonb(emp.get("grade_jsonb")),
-                }
-                for emp in employees_data
-            ],
-        )
+                """,
+                rows,
+            )
 
-    db.commit()  # D3: single commit — atomicity across all three tables
+        raw_conn.commit()
+    finally:
+        cursor.close()
+        raw_conn.close()
 
 
 def validate_snapshot_complete(db, payroll_run_id: str) -> None:
@@ -139,6 +151,7 @@ def validate_snapshot_complete(db, payroll_run_id: str) -> None:
     with zero component overrides is valid, so an empty override table is not
     an error signal.
     """
+    from sqlalchemy import text
     row = db.execute(
         text("""
             SELECT
