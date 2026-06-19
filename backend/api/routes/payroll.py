@@ -39,8 +39,8 @@ router = APIRouter()
 @router.post("/payroll/run")
 def run_payroll(
     payload: dict,
+    background_tasks: BackgroundTasks,
     idempotency_key: str | None = Header(default=None),
-    background_tasks: BackgroundTasks | None = None,
 ):
     """
     Trigger a payroll run for a workspace.
@@ -821,103 +821,34 @@ def run_payroll(
     finally:
         _snap_db.close()
 
-    if background_tasks is not None:
-        background_tasks.add_task(
-            _calculate_and_persist,
-            payroll_run_id           = payroll_run_id,
-            workspace_id             = workspace_id,
-            employees                = employees,
-            tax_bands                = tax_bands,
-            statutory_rule_id        = statutory_rule_id,
-            statutory_version        = statutory_version,
-            payroll_rule_ids         = payroll_rule_ids,
-            idempotency_key          = idempotency_key,
-            period_start             = period_start,
-            period_end               = period_end,
-            pay_cycle_definition     = pay_cycle_definition,
-            retry_strategy           = retry_strategy,
-            component_metadata       = component_metadata or None,
-            context                  = context,
-            rules_ctx_snapshot       = rules_ctx_snapshot,
-            rule_set_id              = rule_set_id,
-            statutory_effective_date = str(statutory_effective_date),
-            run_type                 = run_type,
-            pre_warnings             = _ph_pre_warnings or None,
-            public_holiday_dates     = public_holiday_dates,
-            salary_inputs_by_employee = salary_inputs_by_employee,
-            period_ctx               = period_ctx,
-        )
-        return {
-            "status":         "DRAFT",
-            "payroll_run_id": payroll_run_id,
-        }
-
-    try:
-        result = execute_and_persist(
-            payroll_run_id              = payroll_run_id,
-            workspace_id                = workspace_id,
-            employees                   = employees,
-            tax_bands                   = tax_bands,
-            statutory_rule_id           = statutory_rule_id,
-            statutory_version           = statutory_version,
-            payroll_rule_ids            = payroll_rule_ids,
-            performed_by                = "admin@internal",
-            execution_mode              = "isolated",
-            idempotency_key             = idempotency_key,
-            period_start                = period_start,
-            period_end                  = period_end,
-            pay_cycle_definition        = pay_cycle_definition,
-            retry_strategy              = retry_strategy,
-            component_metadata          = component_metadata or None,
-            context                     = context,
-            rules_context_snapshot      = rules_ctx_snapshot,
-            rule_set_id                 = rule_set_id,
-            statutory_effective_date    = str(statutory_effective_date),
-            run_type                    = run_type,
-            pre_warnings                = _ph_pre_warnings or None,
-            public_holidays_snapshot    = sorted(str(d) for d in public_holiday_dates),
-            salary_inputs_by_employee   = salary_inputs_by_employee,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except SQLInternalError as exc:
-        error_str = str(exc)
-        if "PAYROLL_ALREADY_EXISTS" in error_str:
-            raise HTTPException(
-                status_code=409,
-                detail="A payroll run already exists for this period.",
-            )
-        if "Payroll readiness failed:" in error_str:
-            import re, json as _json
-            match = re.search(r'Payroll readiness failed: (\[.*?\])', error_str, re.DOTALL)
-            if match:
-                try:
-                    errors = _json.loads(match.group(1))
-                    messages = " | ".join(e["message"] for e in errors)
-                    raise HTTPException(
-                        status_code=422,
-                        detail={"error": "PAYROLL_NOT_READY", "message": messages},
-                    )
-                except (ValueError, KeyError):
-                    pass
-            raise HTTPException(
-                status_code=422,
-                detail={"error": "PAYROLL_NOT_READY", "message": "Payroll readiness check failed."},
-            )
-        raise
-
-    # payroll_run row now exists — safe to claim inputs against it
-    link_inputs_to_run(
-        workspace_id=workspace_id,
-        payroll_run_id=payroll_run_id,
-        period_start=period_ctx.period_start,
-        period_end=period_ctx.period_end,
+    background_tasks.add_task(
+        _calculate_and_persist,
+        payroll_run_id            = payroll_run_id,
+        workspace_id              = workspace_id,
+        employees                 = employees,
+        tax_bands                 = tax_bands,
+        statutory_rule_id         = statutory_rule_id,
+        statutory_version         = statutory_version,
+        payroll_rule_ids          = payroll_rule_ids,
+        idempotency_key           = idempotency_key,
+        period_start              = period_start,
+        period_end                = period_end,
+        pay_cycle_definition      = pay_cycle_definition,
+        retry_strategy            = retry_strategy,
+        component_metadata        = component_metadata or None,
+        context                   = context,
+        rules_ctx_snapshot        = rules_ctx_snapshot,
+        rule_set_id               = rule_set_id,
+        statutory_effective_date  = str(statutory_effective_date),
+        run_type                  = run_type,
+        pre_warnings              = _ph_pre_warnings or None,
+        public_holiday_dates      = public_holiday_dates,
+        salary_inputs_by_employee = salary_inputs_by_employee,
+        period_ctx                = period_ctx,
     )
-
     return {
-        "status":         "success",
+        "status":         "DRAFT",
         "payroll_run_id": payroll_run_id,
-        "summary":        result["totals"],
     }
 
 
@@ -930,7 +861,7 @@ def run_payroll_scoped(
 ):
     """Workspace-scoped payroll run trigger. Returns immediately with run_id; calculation runs in background."""
     payload["workspace_id"] = workspace_id
-    result = run_payroll(payload, idempotency_key, background_tasks)
+    result = run_payroll(payload, background_tasks, idempotency_key)
     return {
         "run_id": result.get("payroll_run_id", result.get("run_id")),
         "status": result.get("status"),
