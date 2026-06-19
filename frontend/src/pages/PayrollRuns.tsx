@@ -176,7 +176,6 @@ export function PayrollRuns() {
           <Breadcrumb items={[
             { label: 'Bureau Dashboard', to: '/' },
             { label: workspace?.name ?? '…', to: `/workspaces/${workspaceId}` },
-            { label: 'Payroll Runs' },
           ]} />
         }
         action={
@@ -286,7 +285,7 @@ export function PayrollRuns() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 sticky top-0">
-                  {['Period', 'Pay Date', 'Status', 'Run ID', ''].map((h, i) => (
+                  {['Period', 'Pay Date', 'Status', 'Run Date', ''].map((h, i) => (
                     <th key={i} className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 ${i === 2 ? 'text-center' : 'text-left'} ${i === 4 ? 'w-32' : ''}`}>
                       {h}
                     </th>
@@ -307,7 +306,12 @@ export function PayrollRuns() {
                     <td className="px-4 py-3 text-center">
                       <StatusBadge status={run.status} />
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-400">{run.run_id.slice(0, 8)}…</td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm text-gray-700">
+                        {run.created_at ? new Date(run.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </div>
+                      <div className="font-mono text-xs text-gray-400">{run.run_id.slice(0, 8)}…</div>
+                    </td>
                     <td className="px-4 py-3">
                       <Btn
                         variant="ghost"
