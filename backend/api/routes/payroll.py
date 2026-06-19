@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
@@ -40,6 +40,7 @@ router = APIRouter()
 def run_payroll(
     payload: dict,
     idempotency_key: str | None = Header(default=None),
+    background_tasks: BackgroundTasks | None = None,
 ):
     """
     Trigger a payroll run for a workspace.
@@ -820,6 +821,37 @@ def run_payroll(
     finally:
         _snap_db.close()
 
+    if background_tasks is not None:
+        background_tasks.add_task(
+            _calculate_and_persist,
+            payroll_run_id           = payroll_run_id,
+            workspace_id             = workspace_id,
+            employees                = employees,
+            tax_bands                = tax_bands,
+            statutory_rule_id        = statutory_rule_id,
+            statutory_version        = statutory_version,
+            payroll_rule_ids         = payroll_rule_ids,
+            idempotency_key          = idempotency_key,
+            period_start             = period_start,
+            period_end               = period_end,
+            pay_cycle_definition     = pay_cycle_definition,
+            retry_strategy           = retry_strategy,
+            component_metadata       = component_metadata or None,
+            context                  = context,
+            rules_ctx_snapshot       = rules_ctx_snapshot,
+            rule_set_id              = rule_set_id,
+            statutory_effective_date = str(statutory_effective_date),
+            run_type                 = run_type,
+            pre_warnings             = _ph_pre_warnings or None,
+            public_holiday_dates     = public_holiday_dates,
+            salary_inputs_by_employee = salary_inputs_by_employee,
+            period_ctx               = period_ctx,
+        )
+        return {
+            "status":         "DRAFT",
+            "payroll_run_id": payroll_run_id,
+        }
+
     try:
         result = execute_and_persist(
             payroll_run_id              = payroll_run_id,
@@ -893,16 +925,77 @@ def run_payroll(
 def run_payroll_scoped(
     workspace_id: str,
     payload: dict,
+    background_tasks: BackgroundTasks,
     idempotency_key: str | None = Header(default=None),
 ):
-    """Workspace-scoped payroll run trigger. Delegates to the core run logic."""
+    """Workspace-scoped payroll run trigger. Returns immediately with run_id; calculation runs in background."""
     payload["workspace_id"] = workspace_id
-    result = run_payroll(payload, idempotency_key)
-    # Normalise response key for the frontend (run_id vs payroll_run_id)
+    result = run_payroll(payload, idempotency_key, background_tasks)
     return {
         "run_id": result.get("payroll_run_id", result.get("run_id")),
         "status": result.get("status"),
     }
+
+
+def _calculate_and_persist(
+    payroll_run_id: str,
+    workspace_id: str,
+    employees: list,
+    tax_bands: list,
+    statutory_rule_id: str,
+    statutory_version,
+    payroll_rule_ids: list,
+    idempotency_key,
+    period_start: str,
+    period_end: str,
+    pay_cycle_definition,
+    retry_strategy: str,
+    component_metadata,
+    context: dict,
+    rules_ctx_snapshot: dict,
+    rule_set_id,
+    statutory_effective_date: str,
+    run_type: str,
+    pre_warnings,
+    public_holiday_dates: set,
+    salary_inputs_by_employee: dict,
+    period_ctx,
+) -> None:
+    """Background task: calculate payroll and persist results for an existing DRAFT run."""
+    try:
+        execute_and_persist(
+            payroll_run_id              = payroll_run_id,
+            workspace_id                = workspace_id,
+            employees                   = employees,
+            tax_bands                   = tax_bands,
+            statutory_rule_id           = statutory_rule_id,
+            statutory_version           = statutory_version,
+            payroll_rule_ids            = payroll_rule_ids,
+            performed_by                = "admin@internal",
+            execution_mode              = "isolated",
+            idempotency_key             = idempotency_key,
+            period_start                = period_start,
+            period_end                  = period_end,
+            pay_cycle_definition        = pay_cycle_definition,
+            retry_strategy              = retry_strategy,
+            component_metadata          = component_metadata,
+            context                     = context,
+            rules_context_snapshot      = rules_ctx_snapshot,
+            rule_set_id                 = rule_set_id,
+            statutory_effective_date    = statutory_effective_date,
+            run_type                    = run_type,
+            pre_warnings                = pre_warnings,
+            public_holidays_snapshot    = sorted(str(d) for d in public_holiday_dates),
+            salary_inputs_by_employee   = salary_inputs_by_employee,
+        )
+        link_inputs_to_run(
+            workspace_id   = workspace_id,
+            payroll_run_id = payroll_run_id,
+            period_start   = period_ctx.period_start,
+            period_end     = period_ctx.period_end,
+        )
+    except Exception:
+        logger.error("Background payroll calculation failed for run %s", payroll_run_id, exc_info=True)
 
 
 @router.get("/{workspace_id}/payroll/runs")
