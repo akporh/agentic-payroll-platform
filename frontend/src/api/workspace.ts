@@ -73,6 +73,16 @@ export const workspaceApi = {
     }
   ) => api.post(`/${workspaceId}/rule-set`, payload),
 
+  getDriftReport: (workspaceId: string) =>
+    api.get<{
+      has_drift: boolean;
+      latest_rule_set_id: string | null;
+      latest_effective_from: string | null;
+      new_rules: string[];
+      modified_rules: string[];
+      removed_rules: string[];
+    }>(`/${workspaceId}/payroll-rule/drift`),
+
   createComponentMetadata: (
     workspaceId: string,
     payload: {

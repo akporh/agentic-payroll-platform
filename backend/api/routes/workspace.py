@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Query
 _log = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from psycopg2.errors import UniqueViolation
 from backend.infra.db.session import SessionLocal
 from backend.application import onboarding_service
 from backend.api.schemas.pay_cycle import PayCycleCreateSchema
@@ -1025,6 +1027,16 @@ def publish_rule_set_endpoint(workspace_id: str, payload: RuleSetPublishSchema):
     db = SessionLocal()
     try:
         rules = [r.dict() for r in payload.rules]
+
+        # Guard: reject past effective_from dates.
+        today = str(_date.today())
+        past_dates = {r.get("effective_from") for r in rules if r.get("effective_from") and r.get("effective_from") < today}
+        if past_dates:
+            raise HTTPException(
+                status_code=422,
+                detail=f"effective_from {sorted(past_dates)} is in the past. Rule sets must be effective today or later.",
+            )
+
         result = onboarding_service.publish_rule_sets(
             db, workspace_id, rules, created_by=payload.created_by
         )
@@ -1034,9 +1046,19 @@ def publish_rule_set_endpoint(workspace_id: str, payload: RuleSetPublishSchema):
         return {"published": result}
     except HTTPException:
         raise
+    except IntegrityError as exc:
+        db.rollback()
+        if isinstance(exc.orig, UniqueViolation):
+            raise HTTPException(
+                status_code=409,
+                detail="A rule set already exists for that effective date. Choose a different date.",
+            )
+        _log.error("publish_rule_set integrity error: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to publish rule set")
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(exc))
+        _log.error("publish_rule_set failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to publish rule set")
     finally:
         db.close()
 
@@ -1664,7 +1686,8 @@ def patch_payroll_rule(workspace_id: str, rule_id: str, payload: dict):
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_payroll_rule failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to update payroll rule")
     finally:
         db.close()
 
@@ -1690,7 +1713,80 @@ def delete_payroll_rule(workspace_id: str, rule_id: str):
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("delete_payroll_rule failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to delete payroll rule")
+    finally:
+        db.close()
+
+
+@router.get("/{workspace_id}/payroll-rule/drift")
+def get_payroll_rule_drift(workspace_id: str):
+    """Return a comparison between the active payroll_rule library and the latest
+    published rule_set snapshot. Used to surface unpublished changes in the UI.
+    """
+    db = SessionLocal()
+    try:
+        def _to_dict(rows) -> dict:
+            return {r[0]: r[1] for r in rows}
+
+        # Active rules in the library.
+        library = _to_dict(db.execute(
+            text("""
+                SELECT rule_name, rule_definition_json
+                FROM payroll_rule
+                WHERE workspace_id = :wid AND is_active = TRUE
+                ORDER BY rule_name
+            """),
+            {"wid": workspace_id},
+        ).fetchall())
+
+        # Latest published snapshot — single CTE resolves rule_set + items together.
+        snap_rows = db.execute(
+            text("""
+                WITH latest AS (
+                    SELECT rule_set_id, effective_from
+                    FROM rule_set
+                    WHERE workspace_id = :wid
+                    ORDER BY effective_from DESC, created_at DESC
+                    LIMIT 1
+                )
+                SELECT l.rule_set_id, l.effective_from, rsi.rule_name, rsi.rule_definition_json
+                FROM latest l
+                LEFT JOIN rule_set_item rsi ON rsi.rule_set_id = l.rule_set_id
+            """),
+            {"wid": workspace_id},
+        ).fetchall()
+
+        if not snap_rows or snap_rows[0][0] is None:
+            return {
+                "has_drift": bool(library),
+                "latest_rule_set_id": None,
+                "latest_effective_from": None,
+                "new_rules": list(library.keys()),
+                "modified_rules": [],
+                "removed_rules": [],
+            }
+
+        latest_rs_id = str(snap_rows[0][0])
+        latest_eff = str(snap_rows[0][1])
+        snapshot = _to_dict((r[2], r[3]) for r in snap_rows if r[2] is not None)
+
+        new_rules = [n for n in library if n not in snapshot]
+        removed_rules = [n for n in snapshot if n not in library]
+        modified_rules = [n for n in library if n in snapshot and library[n] != snapshot[n]]
+
+        has_drift = bool(new_rules or removed_rules or modified_rules)
+        return {
+            "has_drift": has_drift,
+            "latest_rule_set_id": latest_rs_id,
+            "latest_effective_from": latest_eff,
+            "new_rules": new_rules,
+            "modified_rules": modified_rules,
+            "removed_rules": removed_rules,
+        }
+    except Exception as e:
+        _log.error("get_payroll_rule_drift failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to compute rule drift")
     finally:
         db.close()
 
