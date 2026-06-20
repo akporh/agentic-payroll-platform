@@ -561,7 +561,7 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint 18, 2026-05-31)
+## Known Test Failures (Pre-existing — Live State as of Sprint PAY-TAX-1, 2026-06-20)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
@@ -569,10 +569,11 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 |---|------|------|------------|------------|-------------|--------|
 | TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
 | TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
-| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ❌ RE-BROKEN Sprint PAY-TAX-1 |
 | TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
 | TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
 | TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-7 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | `body["status"] == "success"` fails (returns `"DRAFT"`); API now returns run object with run status, not a success envelope. Likely broken by background-task / bulk-insert performance sprints (Sprints 31–32). Not caused by PAYE band change. | Fix: update assertion to check `body["run_status"] == "CALCULATED"` or whatever the current response schema returns | Sprint after PAY-TAX-1 | ❌ OPEN |
 
 ---
 
