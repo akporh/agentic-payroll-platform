@@ -71,6 +71,8 @@ A signal moves to **AMBER** when it is approaching threshold. **RED** means eval
 | Date | Sprint | Signal | Reading | Notes |
 |------|--------|--------|---------|-------|
 | 2026-06-12 | Phase 1 baseline | All | GREEN | Initial doc — no extraction pressure |
+| 2026-06-18 | is_active fix | All | GREEN | No extraction pressure. Retry path correctness defect flagged — internal to monolith, no extraction implication. |
+| 2026-06-20 | PayrollRule effective_from + publish flow | All | GREEN | No extraction pressure. Rule versioning is a config concern internal to the monolith. |
 
 ---
 

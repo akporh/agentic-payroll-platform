@@ -8,13 +8,17 @@ from fastapi import APIRouter, HTTPException, Query
 _log = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from psycopg2.errors import UniqueViolation
 from backend.infra.db.session import SessionLocal
 from backend.application import onboarding_service
+from backend.application import rule_set_service
+from backend.application.rule_set_service import RuleSetLockedError
 from backend.api.schemas.pay_cycle import PayCycleCreateSchema
 from backend.api.schemas.grade import GradeCreateSchema
 from backend.api.schemas.designation import DesignationCreateSchema
 from backend.api.schemas.salary_definition import SalaryDefinitionCreateSchema
-from backend.api.schemas.payroll_rule import PayrollRuleCreateSchema, RuleSetPublishSchema
+from backend.api.schemas.payroll_rule import PayrollRuleCreateSchema, PayrollRuleToggleSchema
 from backend.api.schemas.component_metadata import ComponentMetadataCreateSchema
 from backend.domain.onboarding.onboarding_status import get_onboarding_status
 from backend.domain.onboarding.workspace_state_machine import transition_workspace
@@ -995,8 +999,15 @@ def create_payroll_rule_endpoint(workspace_id: str, payload: PayrollRuleCreateSc
             rule_name=payload.rule_name,
             rule_definition_json=payload.rule_definition_json,
             rule_type=payload.rule_type,
+            effective_from=payload.effective_from,
         )
-        db.refresh(r)
+        rule_set_service.auto_publish(
+            db=db,
+            workspace_id=workspace_id,
+            effective_from=payload.effective_from,
+            created_by_uuid=None,
+        )
+        db.commit()
         return {
             "rule_id": str(r.rule_id),
             "workspace_id": str(r.workspace_id),
@@ -1004,39 +1015,29 @@ def create_payroll_rule_endpoint(workspace_id: str, payload: PayrollRuleCreateSc
             "rule_type": r.rule_type,
             "rule_definition_json": r.rule_definition_json,
             "is_active": r.is_active,
+            "effective_from": str(r.effective_from),
         }
+    except RuleSetLockedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc))
+    except IntegrityError as exc:
+        db.rollback()
+        if isinstance(exc.orig, UniqueViolation):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"A rule named '{payload.rule_name}' already exists for "
+                    f"{payload.effective_from}. Choose a different effective date."
+                ),
+            )
+        _log.error("create_payroll_rule integrity error: %s", exc)
+        raise HTTPException(status_code=409, detail="A duplicate entry was detected.")
     except HTTPException:
         raise
     except Exception as exc:
         db.rollback()
         _log.error("create_payroll_rule failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create payroll rule")
-    finally:
-        db.close()
-
-@router.post("/{workspace_id}/rule-set")
-def publish_rule_set_endpoint(workspace_id: str, payload: RuleSetPublishSchema):
-    """Publish a new versioned rule_set snapshot for a workspace.
-
-    Accepts a list of rules each with their own effective_from date.
-    Rules sharing the same date are grouped into one rule_set row.
-    Use this endpoint for rule version updates after initial onboarding.
-    """
-    db = SessionLocal()
-    try:
-        rules = [r.dict() for r in payload.rules]
-        result = onboarding_service.publish_rule_sets(
-            db, workspace_id, rules, created_by=payload.created_by
-        )
-        if not result:
-            raise HTTPException(status_code=422, detail="No rules with effective_from provided")
-        db.commit()
-        return {"published": result}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         db.close()
 
@@ -1175,27 +1176,17 @@ def get_workspace_configuration(workspace_id: str):
             {"wid": workspace_id},
         ).fetchall()
 
-        # Payroll rules — all rules (active + inactive) for management; historical state in rule_set_item.
-        # effective_from is matched via rule_set_item by rule_name + rate to handle same-name rules
-        # that have different rates across periods.
+        # Payroll rules — all versions (active + inactive); effective_from is a native column.
         rules = db.execute(
             text("""
                 SELECT pr.rule_id, pr.rule_name, pr.rule_type,
                        pr.rule_definition_json->>'calculation_method' AS method,
                        pr.is_active,
                        pr.rule_definition_json,
-                       MIN(rs.effective_from) AS effective_from
+                       pr.effective_from
                 FROM payroll_rule pr
-                LEFT JOIN rule_set_item rsi
-                    ON rsi.rule_name = pr.rule_name
-                    AND rsi.rule_definition_json->>'rate' IS NOT DISTINCT FROM pr.rule_definition_json->>'rate'
-                    AND rsi.rule_definition_json->>'amount' IS NOT DISTINCT FROM pr.rule_definition_json->>'amount'
-                LEFT JOIN rule_set rs
-                    ON rs.rule_set_id = rsi.rule_set_id
-                    AND rs.workspace_id = :wid
                 WHERE pr.workspace_id = :wid
-                GROUP BY pr.rule_id, pr.rule_name, pr.rule_type, pr.rule_definition_json, pr.is_active
-                ORDER BY pr.rule_name, effective_from
+                ORDER BY pr.rule_name, pr.effective_from
             """),
             {"wid": workspace_id},
         ).fetchall()
@@ -1359,7 +1350,8 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_component_override failed workspace=%s component=%s: %s", workspace_id, component_code, e)
+        raise HTTPException(status_code=400, detail="Failed to update component override")
     finally:
         db.close()
 
@@ -1609,12 +1601,12 @@ def patch_salary_definition(workspace_id: str, salary_definition_id: str, payloa
 
 
 @router.patch("/{workspace_id}/payroll-rule/{rule_id}")
-def patch_payroll_rule(workspace_id: str, rule_id: str, payload: dict):
-    """Update a payroll rule's is_active, name, or definition (WC-8/WC-9).
+def patch_payroll_rule(workspace_id: str, rule_id: str, payload: PayrollRuleToggleSchema):
+    """Toggle is_active on a payroll rule version (WC-8/WC-9).
 
-    Note: toggles the source payroll_rule record only. In-progress runs read from
-    rule_set_item snapshots and are not affected. Re-publish the rule set for the
-    change to take effect on future runs.
+    Only is_active may be changed in-place. Rate or definition changes must be
+    saved as a new version via POST /{workspace_id}/payroll-rule with an updated
+    effective_from.
     """
     db = SessionLocal()
     try:
@@ -1628,57 +1620,40 @@ def patch_payroll_rule(workspace_id: str, rule_id: str, payload: dict):
         if not existing:
             raise HTTPException(status_code=404, detail="Payroll rule not found.")
 
-        fields = {}
-        if payload.get("is_active") is not None:
-            fields["is_active"] = bool(payload["is_active"])
-        if payload.get("rule_name") is not None:
-            fields["rule_name"] = str(payload["rule_name"])
-        if payload.get("rule_definition_json") is not None:
-            fields["rule_definition_json"] = json.dumps(payload["rule_definition_json"])
-
-        if not fields:
-            raise HTTPException(status_code=422, detail="No fields provided to update.")
-
-        set_parts = []
-        params: dict = {"rid": rule_id, "wid": workspace_id}
-        for k, v in fields.items():
-            if k == "rule_definition_json":
-                set_parts.append(f"{k} = CAST(:rule_definition_json AS jsonb)")
-            else:
-                set_parts.append(f"{k} = :{k}")
-            params[k] = v
-
-        set_parts.append("updated_at = NOW()")
         db.execute(
-            text(f"UPDATE payroll_rule SET {', '.join(set_parts)} WHERE rule_id = :rid AND workspace_id = :wid"),
-            params,
+            text("""
+                UPDATE payroll_rule
+                SET is_active = :is_active, updated_at = NOW()
+                WHERE rule_id = :rid AND workspace_id = :wid
+            """),
+            {"is_active": payload.is_active, "rid": rule_id, "wid": workspace_id},
         )
         db.commit()
-        return {
-            "status": "ok",
-            "rule_id": rule_id,
-            "note": "Re-publish the rule set for this change to take effect on future runs.",
-        }
+        return {"status": "ok", "rule_id": rule_id}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("patch_payroll_rule failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to update payroll rule")
     finally:
         db.close()
 
 
 @router.delete("/{workspace_id}/payroll-rule/{rule_id}")
 def delete_payroll_rule(workspace_id: str, rule_id: str):
-    """Delete a payroll rule.
+    """Soft-delete a payroll rule version (sets is_active = FALSE).
 
-    Safe because rule_set_item snapshots rule content at publish time —
-    historical runs are not affected by deleting the source payroll_rule row.
+    Hard DELETE is prohibited — versioned rows must be preserved for audit.
+    Historical runs read from rule_set_item snapshots and are unaffected.
     """
     db = SessionLocal()
     try:
         result = db.execute(
-            text("DELETE FROM payroll_rule WHERE rule_id = :rid AND workspace_id = :wid"),
+            text("""
+                UPDATE payroll_rule SET is_active = FALSE, updated_at = NOW()
+                WHERE rule_id = :rid AND workspace_id = :wid
+            """),
             {"rid": rule_id, "wid": workspace_id},
         )
         if result.rowcount == 0:
@@ -1689,7 +1664,8 @@ def delete_payroll_rule(workspace_id: str, rule_id: str):
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        _log.error("delete_payroll_rule failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to deactivate payroll rule")
     finally:
         db.close()
 

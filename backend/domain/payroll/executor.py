@@ -46,10 +46,8 @@ from backend.domain.payroll.sequential_executor import (
     run_sequential_payroll,
 )
 from backend.domain.rules.snapshot import build_rules_context_snapshot
-from backend.application.trace_decorators import trace_step
 
 
-@trace_step("Calculate employee payroll")
 def execute_single_employee_payroll(
     payroll_run_id: str,
     employee_id: str,

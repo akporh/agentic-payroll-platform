@@ -48,6 +48,8 @@ export function RunPayroll() {
   const [retryStrategy, setRetryStrategy] = useState<'PER_EMPLOYEE' | 'FULL_RUN'>('PER_EMPLOYEE');
 
   const [loading, setLoading] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [pollingRunId, setPollingRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -60,6 +62,35 @@ export function RunPayroll() {
       .catch(() => setWorkspaceStatus(null))
       .finally(() => setStatusLoading(false));
   }, [workspaceId]);
+
+  // Poll for CALCULATED status after the run is queued
+  useEffect(() => {
+    if (!pollingRunId || !calculating || !workspaceId) return;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100; // ~5 minutes at 3 s intervals
+
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > MAX_ATTEMPTS) {
+        clearInterval(interval);
+        setCalculating(false);
+        setLoading(false);
+        setError('Calculation is taking longer than expected. Check the Runs list in a few minutes.');
+        return;
+      }
+      try {
+        const run = await payrollApi.getRun(workspaceId, pollingRunId);
+        if (['CALCULATED', 'APPROVED', 'PAID'].includes(run.status)) {
+          clearInterval(interval);
+          navigate(`/workspaces/${workspaceId}/payroll/${pollingRunId}/results`);
+        }
+      } catch {
+        // transient network error — keep polling
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [pollingRunId, calculating, workspaceId, navigate]);
 
   const isLive = workspaceStatus === 'LIVE';
 
@@ -85,17 +116,17 @@ export function RunPayroll() {
         ...(periodType === 'CUSTOM' && workingDays ? { working_days: Number(workingDays) } : {}),
         retry_strategy: retryStrategy,
       });
-      toast.show('success', 'Payroll run started — calculating results…');
-      navigate(`/workspaces/${workspaceId}/payroll/${result.run_id}/results`);
+      toast.show('success', 'Payroll queued — calculating results for all employees…');
+      setPollingRunId(result.run_id);
+      setCalculating(true);
+      // loading stays true while calculating — button remains disabled
     } catch (e: unknown) {
-      // Fix E: specific 409 message
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         setError('A run for this period already exists — view it in the Runs list.');
       } else {
         setError(e instanceof Error ? e.message : 'Failed to create payroll run');
       }
-    } finally {
       setLoading(false);
     }
   }
@@ -209,6 +240,14 @@ export function RunPayroll() {
               { value: 'FULL_RUN',     label: 'Full Run',                   description: 'The entire run is retried from scratch on failure' },
             ]}
           />
+
+          {calculating && (
+            <AlertBanner
+              variant="info"
+              title="Calculating payroll"
+              description="Processing all employees — this takes 1–2 minutes. You'll be taken to results automatically."
+            />
+          )}
 
           {error && (
             <AlertBanner variant="error" title="Failed to create run" description={error} />

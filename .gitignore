@@ -62,3 +62,4 @@ docs/terminal benefits.xlsx
 scripts/export_linear_csv.py
 scripts/import_linear.py
 frontend/.vite/
+.vercel

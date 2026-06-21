@@ -56,22 +56,10 @@ export const workspaceApi = {
     payload: {
       rule_name: string;
       rule_definition_json: Record<string, unknown>;
-      rule_type: string;
+      rule_type: 'EARNING' | 'DEDUCTION';
+      effective_from: string;  // ISO date "YYYY-MM-DD"
     }
   ) => api.post(`/${workspaceId}/payroll-rule`, payload),
-
-  publishRuleSet: (
-    workspaceId: string,
-    payload: {
-      rules: Array<{
-        rule_name: string;
-        rule_definition_json: Record<string, unknown>;
-        rule_type?: string;
-        effective_from: string;  // ISO date "YYYY-MM-DD"
-      }>;
-      created_by?: string;  // UUID of publishing user
-    }
-  ) => api.post(`/${workspaceId}/rule-set`, payload),
 
   createComponentMetadata: (
     workspaceId: string,
@@ -111,7 +99,7 @@ export const workspaceApi = {
         salary_definition_id: string; name: string; code: string;
         components: { component_name: string; amount: number }[];
       }[];
-      payroll_rules: { rule_id: string; name: string; rule_type: string; method: string; is_active: boolean; rule_definition_json: Record<string, unknown> }[];
+      payroll_rules: { rule_id: string; name: string; rule_type: string; method: string; is_active: boolean; rule_definition_json: Record<string, unknown>; effective_from: string | null }[];
       component_overrides: { component_name: string; is_active: boolean; proration_strategy: string | null }[];
     }>(`/${workspaceId}/configuration`),
 
@@ -238,7 +226,7 @@ export const workspaceApi = {
     components_jsonb: Array<{ component_name: string; amount: number }>;
   }) => api.patch<{ status: string }>(`/${workspaceId}/salary-definition/${salaryDefinitionId}`, payload),
 
-  updatePayrollRule: (workspaceId: string, ruleId: string, payload: { is_active?: boolean; rule_name?: string; rule_definition_json?: Record<string, unknown> }) =>
+  updatePayrollRule: (workspaceId: string, ruleId: string, payload: { is_active: boolean }) =>
     api.patch<{ status: string }>(`/${workspaceId}/payroll-rule/${ruleId}`, payload),
 
   deletePayrollRule: (workspaceId: string, ruleId: string) =>

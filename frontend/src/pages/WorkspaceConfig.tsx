@@ -17,6 +17,7 @@ import {
   TextInput,
   NumberInput,
   Toggle,
+  DateInput,
 } from '../design-system';
 import { useWorkspaceContext } from '../context/WorkspaceContext';
 
@@ -219,6 +220,25 @@ function LockSmIcon() {
 }
 
 import { extractError } from '../utils/errorUtils';
+
+function getTodayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toDisplayDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function toTitleCase(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatRuleType(rt: string | null | undefined): string {
+  if (!rt) return '—';
+  return rt.charAt(0).toUpperCase() + rt.slice(1).toLowerCase();
+}
 
 // ── Edit Pay Cycle SlideOver ──────────────────────────────────────────────────
 
@@ -1037,6 +1057,7 @@ function AddEarningComponentSlideOver({
       await workspaceApi.createPayrollRule(workspaceId, {
         rule_name: name.trim(),
         rule_type: 'EARNING',
+        effective_from: getTodayIso(),
         rule_definition_json: { calculation_method: 'fixed_amount', amount: amt },
       });
       onSaved();
@@ -1253,17 +1274,26 @@ function AddPayrollRuleSlideOver({
   onSaved: () => void;
 }) {
   const [ruleName, setRuleName] = useState('');
-  const [ruleType, setRuleType] = useState('UNIT_RATE');
+  const [calcMethod, setCalcMethod] = useState('UNIT_RATE');
+  const [ruleCategory, setRuleCategory] = useState<'EARNING' | 'DEDUCTION'>('EARNING');
+  const [effectiveFrom, setEffectiveFrom] = useState('');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setRuleName(''); setRuleType('UNIT_RATE'); setFieldValues({}); setError(null); }
+    if (open) {
+      setRuleName('');
+      setCalcMethod('UNIT_RATE');
+      setRuleCategory('EARNING');
+      setEffectiveFrom(getTodayIso());
+      setFieldValues({});
+      setError(null);
+    }
   }, [open]);
 
-  function handleTypeChange(newType: string) {
-    setRuleType(newType);
+  function handleCalcMethodChange(newType: string) {
+    setCalcMethod(newType);
     setFieldValues({});
   }
 
@@ -1272,7 +1302,7 @@ function AddPayrollRuleSlideOver({
   }
 
   function buildDefinition(): Record<string, unknown> {
-    const method = RULE_TYPE_METHOD[ruleType] ?? ruleType.toLowerCase();
+    const method = RULE_TYPE_METHOD[calcMethod] ?? calcMethod.toLowerCase();
     const def: Record<string, unknown> = { calculation_method: method };
     for (const [k, v] of Object.entries(fieldValues)) {
       const n = parseFloat(v);
@@ -1283,12 +1313,14 @@ function AddPayrollRuleSlideOver({
 
   async function handleSave() {
     if (!ruleName.trim()) { setError('Rule name is required.'); return; }
+    if (!effectiveFrom) { setError('Effective date is required.'); return; }
     setSaving(true);
     setError(null);
     try {
       await workspaceApi.createPayrollRule(workspaceId, {
         rule_name: ruleName.trim(),
-        rule_type: ruleType,
+        rule_type: ruleCategory,
+        effective_from: effectiveFrom,
         rule_definition_json: buildDefinition(),
       });
       onSaved();
@@ -1324,15 +1356,30 @@ function AddPayrollRuleSlideOver({
           placeholder="e.g. Overtime — Weekday"
         />
         <SelectField
-          label="Rule Type"
-          value={ruleType}
-          onChange={handleTypeChange}
+          label="Category"
+          value={ruleCategory}
+          onChange={(v) => setRuleCategory(v as 'EARNING' | 'DEDUCTION')}
+        >
+          <option value="EARNING">Earning</option>
+          <option value="DEDUCTION">Deduction</option>
+        </SelectField>
+        <DateInput
+          label="Effective From"
+          required
+          value={effectiveFrom}
+          onChange={setEffectiveFrom}
+          hint="The date from which this rule version applies. A rule set snapshot is auto-published on save."
+        />
+        <SelectField
+          label="Calculation Method"
+          value={calcMethod}
+          onChange={handleCalcMethodChange}
         >
           {RULE_TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </SelectField>
-        <RuleFields ruleType={ruleType} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
+        <RuleFields ruleType={calcMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
   );
@@ -1363,18 +1410,18 @@ function EditPayrollRuleSlideOver({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [ruleName, setRuleName] = useState('');
-  const [ruleType, setRuleType] = useState('UNIT_RATE');
-  // originalMethod is preserved verbatim — never re-derived — to prevent
+  const [effectiveFrom, setEffectiveFrom] = useState('');
+  // originalMethod preserved verbatim — never re-derived — to prevent
   // calculation_method downgrade (e.g. ot_multiplier → unit_multiplier) on save.
   const [originalMethod, setOriginalMethod] = useState('');
+  const [ruleType, setRuleType] = useState('UNIT_RATE');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && rule) {
-      setRuleName(rule.name);
+      setEffectiveFrom(getTodayIso());
       const def = rule.rule_definition_json ?? {};
       const method = String(def.calculation_method ?? '');
       setOriginalMethod(method);
@@ -1403,12 +1450,15 @@ function EditPayrollRuleSlideOver({
 
   async function handleSave() {
     if (!rule) return;
-    if (!ruleName.trim()) { setError('Rule name is required.'); return; }
+    if (!effectiveFrom) { setError('Effective date is required.'); return; }
     setSaving(true);
     setError(null);
     try {
-      await workspaceApi.updatePayrollRule(workspaceId, rule.rule_id, {
-        rule_name: ruleName.trim(),
+      // POST a new version row — do not PATCH the existing row
+      await workspaceApi.createPayrollRule(workspaceId, {
+        rule_name: rule.name,
+        rule_type: (rule.rule_type as 'EARNING' | 'DEDUCTION') ?? 'EARNING',
+        effective_from: effectiveFrom,
         rule_definition_json: buildDefinition(),
       });
       onSaved();
@@ -1426,30 +1476,32 @@ function EditPayrollRuleSlideOver({
     <SlideOver
       open={open}
       onClose={onClose}
-      title={rule ? `Edit Rule — ${rule.name}` : 'Edit Rule'}
+      title={rule ? `Update Rule — ${rule.name}` : 'Update Rule'}
       footer={
         <div className="flex justify-end gap-3 w-full">
           <Btn variant="secondary" size="md" onClick={onClose}>Cancel</Btn>
           <Btn variant="primary" size="md" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Changes →'}
+            {saving ? 'Saving…' : 'Apply Update →'}
           </Btn>
         </div>
       }
     >
       <div className="space-y-4">
         {error && <AlertBanner variant="error" description={error} />}
-        <TextInput
-          label="Rule Name"
-          required
-          value={ruleName}
-          onChange={(e) => setRuleName(e.target.value)}
-          placeholder="e.g. Overtime — Weekday"
-        />
-        <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Calculation Method</p>
-          <p className="text-sm text-gray-700 font-mono">{methodLabel || '—'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Method cannot be changed. Delete and recreate the rule to change it.</p>
+        <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Current version</p>
+          <p className="text-sm text-gray-800 font-medium truncate">{rule?.name}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formatRuleType(rule?.rule_type)} · {toTitleCase(methodLabel || '—')} · effective {toDisplayDate(rule?.effective_from)}
+          </p>
         </div>
+        <DateInput
+          label="New Effective From"
+          required
+          value={effectiveFrom}
+          onChange={setEffectiveFrom}
+          hint="The updated rule applies from this date. The previous rate stays on record for historical payroll runs."
+        />
         <RuleFields ruleType={ruleType} originalMethod={originalMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
@@ -2452,12 +2504,15 @@ export function WorkspaceConfig() {
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Name</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Type</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Rate / Amount</th>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Effective From</th>
+                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">
+                          Effective From
+                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Date from which this rule version applies.">ⓘ</span>
+                        </th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4 w-28">
                           Status
-                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Current activation state. Historical state per run is visible in the Run Trace.">ⓘ</span>
+                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Active rules apply to the current published rule set. Inactive rules are excluded from payroll runs.">ⓘ</span>
                         </th>
-                        <th className="w-28" />
+                        <th className="w-auto" />
                       </tr>
                     </thead>
                     <tbody>
@@ -2469,15 +2524,22 @@ export function WorkspaceConfig() {
                         return (
                         <tr key={r.rule_id} className="border-b border-gray-50">
                           <td className="py-2 pr-4 text-gray-800 text-sm font-medium">{r.name}</td>
-                          <td className="py-2 pr-4 text-gray-500 text-sm">{r.rule_type}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm">{formatRuleType(r.rule_type)}</td>
                           <td className="py-2 pr-4 text-gray-500 text-sm font-mono">{rateDisplay}</td>
-                          <td className="py-2 pr-4 text-gray-500 text-sm">{r.effective_from ?? '—'}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm">{toDisplayDate(r.effective_from)}</td>
                           <td className="py-2 pr-4 w-28">
                             <StatusBadge status={r.is_active ? 'ACTIVE' : 'INACTIVE'} size="sm" />
                           </td>
                           <td className="py-2 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <RowEditBtn label={r.name} onClick={() => setEditRule(r)} />
+                              <Btn
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setEditRule(r)}
+                                title={`Update rate for ${r.name}`}
+                              >
+                                Update Rate
+                              </Btn>
                               <Btn
                                 variant="secondary"
                                 size="sm"
@@ -2840,7 +2902,6 @@ export function WorkspaceConfig() {
         onClose={() => setEditRule(null)}
         onSaved={loadConfig}
       />
-
       {/* Workspace Activation Confirm Dialog */}
       <ConfirmDialog
         open={activateConfirmOpen}
@@ -2865,9 +2926,9 @@ export function WorkspaceConfig() {
         body={ruleToToggle ? (
           <p className="text-sm text-gray-600">
             {ruleToToggle.is_active
-              ? `"${ruleToToggle.name}" will no longer be applied in future payroll runs.`
-              : `"${ruleToToggle.name}" will be applied in future payroll runs.`}
-            {' '}Re-publish the rule set for this change to take effect.
+              ? `"${ruleToToggle.name}" will be marked inactive and removed from the active rule set.`
+              : `"${ruleToToggle.name}" will be marked active and added to the active rule set.`}
+            {' '}The rule set is updated automatically. Historical payroll runs are not affected — they use the snapshot from when they were processed.
           </p>
         ) : ''}
         confirmLabel={ruleToToggle?.is_active ? 'Deactivate Rule' : 'Activate Rule'}

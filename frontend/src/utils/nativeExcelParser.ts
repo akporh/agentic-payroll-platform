@@ -34,9 +34,10 @@ export const PAYROLL_RECON_ALIASES: AliasMap = {
   pension_employee: ['PENSION (EMPLOYEE)', 'PENSION EMPLOYEE', 'EMPLOYEE PENSION'],
   development_levy: ['DEVELOPMENT LEVY', 'DEV LEVY'],
   nhf:              ['NHF', 'NATIONAL HOUSING FUND'],
-  basic_salary:     ['BASIC SALARY', 'BASIC', 'BASIC PAY'],
-  housing:          ['HOUSING ALLOWANCE', 'HOUSING'],
-  transport:        ['TRANSPORT ALLOWANCE', 'TRANSPORT'],
+  basic_salary:            ['BASIC SALARY', 'BASIC', 'BASIC PAY'],
+  housing:                 ['HOUSING ALLOWANCE', 'HOUSING'],
+  transport:               ['TRANSPORT ALLOWANCE', 'TRANSPORT'],
+  consolidated_allowance:  ['CONSOLIDATED ALLOWANCE', 'CONSOLIDATION ALLOWANCE', 'CONS ALLOW', 'CONSOLIDATED'],
 }
 
 // ── Core functions ────────────────────────────────────────────────────────────

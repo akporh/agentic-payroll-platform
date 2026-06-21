@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, ForeignKey
+from sqlalchemy import Column, Date, DateTime, String, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from backend.infra.db.session import Base
 
@@ -13,3 +13,5 @@ class PayrollRule(Base):
     rule_definition_json = Column(JSONB, nullable=False)
     rule_type = Column(String(100))
     is_active = Column(Boolean, default=True)
+    effective_from = Column(Date, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())

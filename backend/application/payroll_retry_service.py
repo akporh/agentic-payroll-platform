@@ -230,7 +230,7 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     # ── Workspace component overrides — read from snapshot (D2 workspace scoping) ─
     override_rows = db.execute(
         text("""
-            SELECT component_code, overrides_json, proration_strategy
+            SELECT component_code, overrides_json, proration_strategy, is_active
             FROM   client_component_metadata_snapshot
             WHERE  payroll_run_id = :run_id
               AND  workspace_id   = :wid
@@ -241,7 +241,10 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     client_overrides = {r[0]: r[1] for r in override_rows}
     ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
 
-    disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
+    # Read is_active from the dedicated snapshot column (r[3]).
+    # NULL means the snapshot predates this column — treat as active to preserve
+    # existing behaviour for runs created before migration bc1de2f3a4b5.
+    disabled_codes = {r[0] for r in override_rows if r[3] is False}
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 

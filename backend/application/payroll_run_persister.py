@@ -14,7 +14,7 @@ Reference: Phase 1 Business Spec — Payroll Processing Pipeline.
 from decimal import Decimal
 
 from backend.infra.repositories.payroll_run_repo import finalise_payroll_run
-from backend.infra.repositories.payroll_result_repo import save_payroll_result
+from backend.infra.repositories.payroll_result_repo import save_payroll_results_bulk
 from backend.infra.repositories.audit_log_repo import save_audit_log
 from backend.infra.repositories.event_store_repo import save_event
 from backend.application.execution_tracer import NULL_TRACER
@@ -84,30 +84,13 @@ def persist_payroll_run_execution(
             total_net_pay=Decimal(str(totals["total_net_pay"])),
         )
 
-    # 2️⃣ Insert payroll_results
+    # 2️⃣ Bulk insert all payroll_results — single connection, single transaction
     with tracer.step(f"Save {len(results)} employee results"):
-        for r in results:
-            tracer.info(
-                f"Employee {r['employee_id'][:8]}  →  "
-                f"[bold {'green' if r['status'] == 'SUCCESS' else 'red'}]{r['status']}[/bold {'green' if r['status'] == 'SUCCESS' else 'red'}]"
-            )
-            output = r.get("output")
-            component_trace = (
-                output["payroll_result"].get("component_trace_jsonb")
-                if output and output.get("payroll_result")
-                else None
-            )
-            sal_snap = (salary_inputs_by_employee or {}).get(r["employee_id"], {})
-            save_payroll_result(
-                payroll_run_id=payroll_run_id,
-                employee_id=r["employee_id"],
-                status=r["status"],
-                payroll_output=output,
-                error_message=r.get("error"),
-                component_trace=component_trace,
-                employee_context=r.get("employee_context"),
-                salary_inputs_snapshot=sal_snap,
-            )
+        save_payroll_results_bulk(
+            payroll_run_id=payroll_run_id,
+            results=results,
+            salary_inputs_by_employee=salary_inputs_by_employee,
+        )
 
     # 3️⃣ Insert audit logs
     with tracer.step(f"Save {len(audit_logs)} audit entries"):

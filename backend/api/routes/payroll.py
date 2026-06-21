@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SQLInternalError
@@ -39,6 +39,7 @@ router = APIRouter()
 @router.post("/payroll/run")
 def run_payroll(
     payload: dict,
+    background_tasks: BackgroundTasks,
     idempotency_key: str | None = Header(default=None),
 ):
     """
@@ -391,10 +392,12 @@ def run_payroll(
         rule_set_items_for_snapshot = []
 
         rule_rows = db.execute(text("""
-            SELECT rule_id, rule_name, rule_definition_json, is_active
+            SELECT DISTINCT ON (rule_name)
+                rule_id, rule_name, rule_definition_json, is_active
             FROM payroll_rule
             WHERE is_active = TRUE
               AND workspace_id = :workspace_id
+            ORDER BY rule_name, effective_from DESC
         """), {"workspace_id": workspace_id}).fetchall()
 
         payroll_rule_ids  = [str(r[0]) for r in rule_rows]
@@ -435,7 +438,7 @@ def run_payroll(
     # it there rather than into overrides_json.calculations_behaviour.  Both storage
     # locations are reconciled during client_meta construction below.
     override_rows = db.execute(text("""
-        SELECT component_code, overrides_json, proration_strategy
+        SELECT component_code, overrides_json, proration_strategy, is_active
         FROM client_component_metadata
         WHERE workspace_id = :wid
     """), {"wid": workspace_id}).fetchall()
@@ -444,8 +447,9 @@ def run_payroll(
     # Map of component_code → proration_strategy from the dedicated column (may be None)
     ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
 
-    # Remove components the workspace has disabled
-    disabled_codes = {code for code, ov in client_overrides.items() if not ov.get("is_active", True)}
+    # Remove components the workspace has disabled — read is_active from the dedicated
+    # column (r[3]), not from overrides_json. NULL means no override → treat as active.
+    disabled_codes = {r[0] for r in override_rows if r[3] is False}
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 
@@ -798,29 +802,104 @@ def run_payroll(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    # ── Snapshot component metadata + overrides + employee contracts (D3 atomicity) ─
-    _snap_db = SessionLocal()
+    # Build override-rows dict once (pure Python, in-memory — no DB) for snapshot.
     _override_rows_dicts = [
-        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2]}
+        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2], "is_active": r[3]}
         for r in override_rows
     ]
-    try:
-        create_payroll_snapshot(
-            _snap_db,
-            payroll_run_id=payroll_run_id,
-            workspace_id=workspace_id,
-            component_metadata_rows=component_metadata,
-            client_override_rows=_override_rows_dicts,
-            employees_data=employees,
-        )
-    except Exception as exc:
-        logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to create payroll snapshot")
-    finally:
-        _snap_db.close()
 
+    # Snapshot creation moved into the background task so the HTTP response returns
+    # immediately after DRAFT creation.  Previously it blocked here for ~25 s because
+    # SQLAlchemy executemany sends one Neon round-trip per employee row (~100 ms each).
+    background_tasks.add_task(
+        _calculate_and_persist,
+        payroll_run_id            = payroll_run_id,
+        workspace_id              = workspace_id,
+        employees                 = employees,
+        tax_bands                 = tax_bands,
+        statutory_rule_id         = statutory_rule_id,
+        statutory_version         = statutory_version,
+        payroll_rule_ids          = payroll_rule_ids,
+        idempotency_key           = idempotency_key,
+        period_start              = period_start,
+        period_end                = period_end,
+        pay_cycle_definition      = pay_cycle_definition,
+        retry_strategy            = retry_strategy,
+        component_metadata        = component_metadata or None,
+        client_override_rows      = _override_rows_dicts,
+        context                   = context,
+        rules_ctx_snapshot        = rules_ctx_snapshot,
+        rule_set_id               = rule_set_id,
+        statutory_effective_date  = str(statutory_effective_date),
+        run_type                  = run_type,
+        pre_warnings              = _ph_pre_warnings or None,
+        public_holiday_dates      = public_holiday_dates,
+        salary_inputs_by_employee = salary_inputs_by_employee,
+        period_ctx                = period_ctx,
+    )
+    return {
+        "status":         "DRAFT",
+        "payroll_run_id": payroll_run_id,
+    }
+
+
+@router.post("/{workspace_id}/payroll/run")
+def run_payroll_scoped(
+    workspace_id: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    idempotency_key: str | None = Header(default=None),
+):
+    """Workspace-scoped payroll run trigger. Returns immediately with run_id; calculation runs in background."""
+    payload["workspace_id"] = workspace_id
+    result = run_payroll(payload, background_tasks, idempotency_key)
+    return {
+        "run_id": result.get("payroll_run_id", result.get("run_id")),
+        "status": result.get("status"),
+    }
+
+
+def _calculate_and_persist(
+    payroll_run_id: str,
+    workspace_id: str,
+    employees: list,
+    tax_bands: list,
+    statutory_rule_id: str,
+    statutory_version,
+    payroll_rule_ids: list,
+    idempotency_key,
+    period_start: str,
+    period_end: str,
+    pay_cycle_definition,
+    retry_strategy: str,
+    component_metadata,
+    client_override_rows: list,
+    context: dict,
+    rules_ctx_snapshot: dict,
+    rule_set_id,
+    statutory_effective_date: str,
+    run_type: str,
+    pre_warnings,
+    public_holiday_dates: set,
+    salary_inputs_by_employee: dict,
+    period_ctx,
+) -> None:
+    """Background task: snapshot + calculate + persist results for an existing DRAFT run."""
     try:
-        result = execute_and_persist(
+        # Create snapshot here (not in the sync route) so the HTTP response returns
+        # immediately after DRAFT creation.
+        try:
+            create_payroll_snapshot(
+                payroll_run_id=payroll_run_id,
+                workspace_id=workspace_id,
+                component_metadata_rows=component_metadata or [],
+                client_override_rows=client_override_rows,
+                employees_data=employees,
+            )
+        except Exception as exc:
+            logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+
+        execute_and_persist(
             payroll_run_id              = payroll_run_id,
             workspace_id                = workspace_id,
             employees                   = employees,
@@ -835,73 +914,24 @@ def run_payroll(
             period_end                  = period_end,
             pay_cycle_definition        = pay_cycle_definition,
             retry_strategy              = retry_strategy,
-            component_metadata          = component_metadata or None,
+            component_metadata          = component_metadata,
             context                     = context,
             rules_context_snapshot      = rules_ctx_snapshot,
             rule_set_id                 = rule_set_id,
-            statutory_effective_date    = str(statutory_effective_date),
+            statutory_effective_date    = statutory_effective_date,
             run_type                    = run_type,
-            pre_warnings                = _ph_pre_warnings or None,
+            pre_warnings                = pre_warnings,
             public_holidays_snapshot    = sorted(str(d) for d in public_holiday_dates),
             salary_inputs_by_employee   = salary_inputs_by_employee,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except SQLInternalError as exc:
-        error_str = str(exc)
-        if "PAYROLL_ALREADY_EXISTS" in error_str:
-            raise HTTPException(
-                status_code=409,
-                detail="A payroll run already exists for this period.",
-            )
-        if "Payroll readiness failed:" in error_str:
-            import re, json as _json
-            match = re.search(r'Payroll readiness failed: (\[.*?\])', error_str, re.DOTALL)
-            if match:
-                try:
-                    errors = _json.loads(match.group(1))
-                    messages = " | ".join(e["message"] for e in errors)
-                    raise HTTPException(
-                        status_code=422,
-                        detail={"error": "PAYROLL_NOT_READY", "message": messages},
-                    )
-                except (ValueError, KeyError):
-                    pass
-            raise HTTPException(
-                status_code=422,
-                detail={"error": "PAYROLL_NOT_READY", "message": "Payroll readiness check failed."},
-            )
-        raise
-
-    # payroll_run row now exists — safe to claim inputs against it
-    link_inputs_to_run(
-        workspace_id=workspace_id,
-        payroll_run_id=payroll_run_id,
-        period_start=period_ctx.period_start,
-        period_end=period_ctx.period_end,
-    )
-
-    return {
-        "status":         "success",
-        "payroll_run_id": payroll_run_id,
-        "summary":        result["totals"],
-    }
-
-
-@router.post("/{workspace_id}/payroll/run")
-def run_payroll_scoped(
-    workspace_id: str,
-    payload: dict,
-    idempotency_key: str | None = Header(default=None),
-):
-    """Workspace-scoped payroll run trigger. Delegates to the core run logic."""
-    payload["workspace_id"] = workspace_id
-    result = run_payroll(payload, idempotency_key)
-    # Normalise response key for the frontend (run_id vs payroll_run_id)
-    return {
-        "run_id": result.get("payroll_run_id", result.get("run_id")),
-        "status": result.get("status"),
-    }
+        link_inputs_to_run(
+            workspace_id   = workspace_id,
+            payroll_run_id = payroll_run_id,
+            period_start   = period_ctx.period_start,
+            period_end     = period_ctx.period_end,
+        )
+    except Exception:
+        logger.error("Background payroll calculation failed for run %s", payroll_run_id, exc_info=True)
 
 
 @router.get("/{workspace_id}/payroll/runs")
@@ -1536,11 +1566,18 @@ def export_full_detail(workspace_id: str, run_id: str):
         net_pay          = float(r[3] or 0)
         period           = r[7].strftime("%Y-%m") if r[7] else ""
 
-        trace_map = {
-            entry["component"]: entry.get("result", "")
-            for entry in (trace if isinstance(trace, list) else [])
-            if isinstance(entry, dict) and entry.get("component") != "_period_context"
-        }
+        # First-occurrence-with-result wins: proration supplemental entries share
+        # the same component codes but have no "result" key — they must not
+        # overwrite the monetary results from the main execution entries.
+        trace_map: dict[str, str] = {}
+        for _entry in (trace if isinstance(trace, list) else []):
+            if not isinstance(_entry, dict):
+                continue
+            _code = _entry.get("component")
+            if not _code or _code == "_period_context" or _code in trace_map:
+                continue
+            if "result" in _entry:
+                trace_map[_code] = _entry["result"] or ""
 
         gross_pay = sum(
             float(v.get("amount", v) if isinstance(v, dict) else v)

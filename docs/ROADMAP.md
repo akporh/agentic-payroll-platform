@@ -32,6 +32,8 @@
 | **Sprint 27 — Smart Native Upload** | 2✅ (EMP-NATIVE-1, INP-NATIVE-1) | 2✅ (INP-MULTI-1, PAY-RECON-1) | 1🔜 (EMP-REG-5-FIX) | — | — | — |
 | **Sprint 28 — Upload Error Visibility** | 2✅ (UPLOAD-ERR-1, UPLOAD-SKIP-1) | — | — | — | — | — |
 | **Fix — Workspace Activation Coverage** | 3✅ (WS-ACTIVATE-1: Config page · WS-ACTIVATE-2: PayrollRuns READY state · WS-ACTIVATE-3: Setup ExistingConfigView) | — | — | — | — | — |
+| **Sprint PAY-TAX-1 — NG PAYE Bands NTA 2025** | — | — | — | — | — | 1✅ (statutory seed corrected to NTA 2025 schedule) |
+| **Sprint RULE-VER-1 — Payroll Rule Versioning** | 3✅ (RULE-VER-1/2/3: effective_from versioning, auto-publish, UI update) | — | — | — | — | — |
 | **Phase 2 — Agent Layer (Planned)** | Track P (auth) ⬜ | — | — | — | — | Tracks V/W/X/Y ⬜ |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -561,7 +563,7 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint 18, 2026-05-31)
+## Known Test Failures (Pre-existing — Live State as of Sprint PAY-TAX-1, 2026-06-20)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
@@ -569,10 +571,11 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 |---|------|------|------------|------------|-------------|--------|
 | TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
 | TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
-| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ❌ RE-BROKEN Sprint PAY-TAX-1 |
 | TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
 | TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
 | TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ✅ RESOLVED Sprint 18 |
+| TF-7 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | `body["status"] == "success"` fails (returns `"DRAFT"`); API now returns run object with run status, not a success envelope. Likely broken by background-task / bulk-insert performance sprints (Sprints 31–32). Not caused by PAYE band change. | Fix: update assertion to check `body["run_status"] == "CALCULATED"` or whatever the current response schema returns | Sprint after PAY-TAX-1 | ❌ OPEN |
 
 ---
 
@@ -807,6 +810,38 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 | UPLOAD-SKIP-1 | Period inputs bulk upload: `IntegrityError` → silent skip (not error); response adds `skipped` count; re-upload is idempotent | ✅ |
 
 **Files changed:** `NativeUploadFlow.tsx`, `PayrollInputsBulkUpload.tsx`, `EmployeeUpload.tsx`, `payroll_input.py`
+
+---
+
+## Sprint PAY-TAX-1 — NG PAYE Bands NTA 2025
+
+**Sprint date:** 2026-06-20
+**Sprint goal:** Correct statutory PAYE bands to match the Nigeria Tax Act 2025 schedule.
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| PAY-TAX-1 | Seed migration `de1f2a3b4c5d` — update NG PAYE thresholds and rates to NTA 2025; add test coverage | ✅ |
+
+**Files changed:** `migrations/versions/de1f2a3b4c5d_fix_ng_paye_bands_nta_2025.py`, `tests/test_paye.py`
+
+**Known test failures introduced:** TF-7 (`test_payroll_approval_and_lock_e2e`) — pre-existing, not caused by this sprint. See Known Test Failures table.
+
+---
+
+## Sprint RULE-VER-1 — Payroll Rule Versioning + Auto-Publish
+
+**Sprint date:** 2026-06-21
+**Sprint goal:** Add `effective_from` versioning to `payroll_rule`; auto-publish a full rule_set snapshot on every rule save; remove manual Publish Rule Set flow.
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| RULE-VER-1 | Migration `ef2a3b4c5d6e`: add `effective_from DATE NOT NULL`, backfill, dedup, UNIQUE `(workspace_id, rule_name, effective_from)` | ✅ |
+| RULE-VER-2 | Auto-publish: `rule_set_service.auto_publish()` fires on every POST /payroll-rule; locked rule_set → 409; DELETE soft-deletes; PATCH toggle-only with `extra='forbid'` | ✅ |
+| RULE-VER-3 | Frontend: Add Rule gets Category + Effective From; Edit becomes "Update Rate" (POSTs new version); Publish Rule Set SlideOver + drift indicator removed | ✅ |
+
+**Files changed:** `migrations/versions/ef2a3b4c5d6e_add_effective_from_to_payroll_rule.py`, `backend/application/rule_set_service.py`, `backend/api/routes/workspace.py`, `backend/api/routes/payroll.py`, `backend/api/schemas/payroll_rule.py`, `backend/application/onboarding_service.py`, `backend/infra/db/models/payroll_rule.py`, `frontend/src/api/workspace.ts`, `frontend/src/pages/WorkspaceConfig.tsx`
+
+**Retro lessons:** service `db.flush()` vs `db.commit()` when chaining; UNIQUE constraint needs pre-dedup step; Pydantic v2 `extra='forbid'` for restriction schemas; feature removal requires copy audit.
 
 ---
 
