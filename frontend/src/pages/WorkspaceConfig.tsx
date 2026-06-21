@@ -1057,6 +1057,7 @@ function AddEarningComponentSlideOver({
       await workspaceApi.createPayrollRule(workspaceId, {
         rule_name: name.trim(),
         rule_type: 'EARNING',
+        effective_from: getTodayIso(),
         rule_definition_json: { calculation_method: 'fixed_amount', amount: amt },
       });
       onSaved();
