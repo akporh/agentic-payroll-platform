@@ -1,3 +1,5 @@
+from datetime import date as _date
+
 from sqlalchemy import text
 
 from backend.application.decorators import auto_infer_workspace_state
@@ -100,18 +102,19 @@ def create_payroll_rule(
     rule_name: str,
     rule_definition_json: dict,
     rule_type: str,
+    effective_from=None,
 ):
-
     payroll_rule = PayrollRule(
         workspace_id=workspace_id,
         rule_name=rule_name,
         rule_definition_json=rule_definition_json,
         rule_type=rule_type,
         is_active=True,
+        effective_from=effective_from if effective_from is not None else _date(2025, 1, 1),
     )
 
     db.add(payroll_rule)
-    db.commit()
+    db.flush()
 
     return payroll_rule
 

@@ -62,15 +62,6 @@ interface PayrollRule {
   effective_from?: string | null;
 }
 
-interface DriftReport {
-  has_drift: boolean;
-  latest_rule_set_id: string | null;
-  latest_effective_from: string | null;
-  new_rules: string[];
-  modified_rules: string[];
-  removed_rules: string[];
-}
-
 interface ComponentOverride {
   component_name: string;
   overrides_json?: Record<string, unknown>;
@@ -230,10 +221,23 @@ function LockSmIcon() {
 
 import { extractError } from '../utils/errorUtils';
 
-function getTomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+function getTodayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toDisplayDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function toTitleCase(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatRuleType(rt: string | null | undefined): string {
+  if (!rt) return '—';
+  return rt.charAt(0).toUpperCase() + rt.slice(1).toLowerCase();
 }
 
 // ── Edit Pay Cycle SlideOver ──────────────────────────────────────────────────
@@ -1269,17 +1273,26 @@ function AddPayrollRuleSlideOver({
   onSaved: () => void;
 }) {
   const [ruleName, setRuleName] = useState('');
-  const [ruleType, setRuleType] = useState('UNIT_RATE');
+  const [calcMethod, setCalcMethod] = useState('UNIT_RATE');
+  const [ruleCategory, setRuleCategory] = useState<'EARNING' | 'DEDUCTION'>('EARNING');
+  const [effectiveFrom, setEffectiveFrom] = useState('');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setRuleName(''); setRuleType('UNIT_RATE'); setFieldValues({}); setError(null); }
+    if (open) {
+      setRuleName('');
+      setCalcMethod('UNIT_RATE');
+      setRuleCategory('EARNING');
+      setEffectiveFrom(getTodayIso());
+      setFieldValues({});
+      setError(null);
+    }
   }, [open]);
 
-  function handleTypeChange(newType: string) {
-    setRuleType(newType);
+  function handleCalcMethodChange(newType: string) {
+    setCalcMethod(newType);
     setFieldValues({});
   }
 
@@ -1288,7 +1301,7 @@ function AddPayrollRuleSlideOver({
   }
 
   function buildDefinition(): Record<string, unknown> {
-    const method = RULE_TYPE_METHOD[ruleType] ?? ruleType.toLowerCase();
+    const method = RULE_TYPE_METHOD[calcMethod] ?? calcMethod.toLowerCase();
     const def: Record<string, unknown> = { calculation_method: method };
     for (const [k, v] of Object.entries(fieldValues)) {
       const n = parseFloat(v);
@@ -1299,12 +1312,14 @@ function AddPayrollRuleSlideOver({
 
   async function handleSave() {
     if (!ruleName.trim()) { setError('Rule name is required.'); return; }
+    if (!effectiveFrom) { setError('Effective date is required.'); return; }
     setSaving(true);
     setError(null);
     try {
       await workspaceApi.createPayrollRule(workspaceId, {
         rule_name: ruleName.trim(),
-        rule_type: ruleType,
+        rule_type: ruleCategory,
+        effective_from: effectiveFrom,
         rule_definition_json: buildDefinition(),
       });
       onSaved();
@@ -1340,15 +1355,30 @@ function AddPayrollRuleSlideOver({
           placeholder="e.g. Overtime — Weekday"
         />
         <SelectField
-          label="Rule Type"
-          value={ruleType}
-          onChange={handleTypeChange}
+          label="Category"
+          value={ruleCategory}
+          onChange={(v) => setRuleCategory(v as 'EARNING' | 'DEDUCTION')}
+        >
+          <option value="EARNING">Earning</option>
+          <option value="DEDUCTION">Deduction</option>
+        </SelectField>
+        <DateInput
+          label="Effective From"
+          required
+          value={effectiveFrom}
+          onChange={setEffectiveFrom}
+          hint="The date from which this rule version applies. A rule set snapshot is auto-published on save."
+        />
+        <SelectField
+          label="Calculation Method"
+          value={calcMethod}
+          onChange={handleCalcMethodChange}
         >
           {RULE_TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </SelectField>
-        <RuleFields ruleType={ruleType} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
+        <RuleFields ruleType={calcMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
   );
@@ -1379,18 +1409,18 @@ function EditPayrollRuleSlideOver({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [ruleName, setRuleName] = useState('');
-  const [ruleType, setRuleType] = useState('UNIT_RATE');
-  // originalMethod is preserved verbatim — never re-derived — to prevent
+  const [effectiveFrom, setEffectiveFrom] = useState('');
+  // originalMethod preserved verbatim — never re-derived — to prevent
   // calculation_method downgrade (e.g. ot_multiplier → unit_multiplier) on save.
   const [originalMethod, setOriginalMethod] = useState('');
+  const [ruleType, setRuleType] = useState('UNIT_RATE');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && rule) {
-      setRuleName(rule.name);
+      setEffectiveFrom(getTodayIso());
       const def = rule.rule_definition_json ?? {};
       const method = String(def.calculation_method ?? '');
       setOriginalMethod(method);
@@ -1419,12 +1449,15 @@ function EditPayrollRuleSlideOver({
 
   async function handleSave() {
     if (!rule) return;
-    if (!ruleName.trim()) { setError('Rule name is required.'); return; }
+    if (!effectiveFrom) { setError('Effective date is required.'); return; }
     setSaving(true);
     setError(null);
     try {
-      await workspaceApi.updatePayrollRule(workspaceId, rule.rule_id, {
-        rule_name: ruleName.trim(),
+      // POST a new version row — do not PATCH the existing row
+      await workspaceApi.createPayrollRule(workspaceId, {
+        rule_name: rule.name,
+        rule_type: (rule.rule_type as 'EARNING' | 'DEDUCTION') ?? 'EARNING',
+        effective_from: effectiveFrom,
         rule_definition_json: buildDefinition(),
       });
       onSaved();
@@ -1442,136 +1475,33 @@ function EditPayrollRuleSlideOver({
     <SlideOver
       open={open}
       onClose={onClose}
-      title={rule ? `Edit Rule — ${rule.name}` : 'Edit Rule'}
+      title={rule ? `Update Rule — ${rule.name}` : 'Update Rule'}
       footer={
         <div className="flex justify-end gap-3 w-full">
           <Btn variant="secondary" size="md" onClick={onClose}>Cancel</Btn>
           <Btn variant="primary" size="md" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Changes →'}
+            {saving ? 'Saving…' : 'Apply Update →'}
           </Btn>
         </div>
       }
     >
       <div className="space-y-4">
         {error && <AlertBanner variant="error" description={error} />}
-        <TextInput
-          label="Rule Name"
-          required
-          value={ruleName}
-          onChange={(e) => setRuleName(e.target.value)}
-          placeholder="e.g. Overtime — Weekday"
-        />
-        <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Calculation Method</p>
-          <p className="text-sm text-gray-700 font-mono">{methodLabel || '—'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Method cannot be changed. Delete and recreate the rule to change it.</p>
+        <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Current version</p>
+          <p className="text-sm text-gray-800 font-medium truncate">{rule?.name}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formatRuleType(rule?.rule_type)} · {toTitleCase(methodLabel || '—')} · effective {toDisplayDate(rule?.effective_from)}
+          </p>
         </div>
-        <RuleFields ruleType={ruleType} originalMethod={originalMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
-      </div>
-    </SlideOver>
-  );
-}
-
-// ── Publish Rule Set SlideOver ────────────────────────────────────────────────
-
-function PublishRuleSetSlideOver({
-  open,
-  workspaceId,
-  activeRules,
-  driftReport,
-  onClose,
-  onSaved,
-}: {
-  open: boolean;
-  workspaceId: string;
-  activeRules: PayrollRule[];
-  driftReport: DriftReport | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) { setEffectiveFrom(getTomorrow()); setError(null); }
-  }, [open]);
-
-  async function handlePublish() {
-    if (!effectiveFrom) { setError('Effective date is required.'); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      const rules = activeRules.map((r) => ({
-        rule_name: r.name,
-        rule_definition_json: r.rule_definition_json,
-        rule_type: r.rule_type,
-        effective_from: effectiveFrom,
-      }));
-      await workspaceApi.publishRuleSet(workspaceId, { rules });
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(extractError(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const removedRules = driftReport?.removed_rules ?? [];
-
-  return (
-    <SlideOver
-      open={open}
-      onClose={onClose}
-      title="Publish Rule Set"
-      footer={
-        <div className="flex justify-end gap-3 w-full">
-          <Btn variant="secondary" size="md" onClick={onClose}>Cancel</Btn>
-          <Btn variant="primary" size="md" onClick={handlePublish} disabled={saving || !effectiveFrom}>
-            {saving ? 'Publishing…' : 'Publish →'}
-          </Btn>
-        </div>
-      }
-    >
-      <div className="space-y-5">
-        {error && <AlertBanner variant="error" description={error} />}
-
         <DateInput
-          label="Effective Date"
+          label="New Effective From"
           required
-          min={today}
           value={effectiveFrom}
           onChange={setEffectiveFrom}
-          hint="This rule set will apply to payroll runs with a period ending on or after this date. To change rates for a future period, set a future effective date — historical runs are unaffected."
+          hint="The updated rule applies from this date. The previous rate stays on record for historical payroll runs."
         />
-
-        {removedRules.length > 0 && (
-          <AlertBanner
-            variant="warning"
-            description={`The following rules from the previous snapshot are inactive and will not be included: ${removedRules.join(', ')}.`}
-          />
-        )}
-
-        <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-            Rules included in this snapshot ({activeRules.length})
-          </p>
-          {activeRules.length > 0 ? (
-            <ul className="space-y-1">
-              {activeRules.map((r) => (
-                <li key={r.rule_id} className="flex items-center gap-2 text-sm text-gray-700">
-                  <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                  {r.name}
-                  <span className="text-gray-400 text-xs">({r.rule_type})</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-gray-400">No active rules to publish. Activate at least one rule first.</p>
-          )}
-        </div>
+        <RuleFields ruleType={ruleType} originalMethod={originalMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
       </div>
     </SlideOver>
   );
@@ -2121,8 +2051,6 @@ export function WorkspaceConfig() {
   const [editRule, setEditRule] = useState<PayrollRule | null>(null);
   const [ruleChangeBanner, setRuleChangeBanner] = useState(false);
   const [ruleToggleError, setRuleToggleError] = useState<string | null>(null);
-  const [driftReport, setDriftReport] = useState<DriftReport | null>(null);
-  const [publishRuleSetOpen, setPublishRuleSetOpen] = useState(false);
   const [editPhConfigOpen, setEditPhConfigOpen] = useState(false);
   const [addRateCodeOpen, setAddRateCodeOpen] = useState(false);
   const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
@@ -2141,11 +2069,6 @@ export function WorkspaceConfig() {
       .finally(() => setLoading(false));
   }
 
-  function loadDrift() {
-    if (!workspaceId) return;
-    workspaceApi.getDriftReport(workspaceId).then(setDriftReport).catch(() => {});
-  }
-
   function loadPhConfig() {
     if (!workspaceId) return;
     workspaceApi.getPayrollConfig(workspaceId).then(setPhConfig).catch(() => {});
@@ -2156,7 +2079,7 @@ export function WorkspaceConfig() {
     workspaceApi.getRateCodes(workspaceId).then(setRateCodes).catch(() => {});
   }
 
-  useEffect(() => { loadConfig(); loadDrift(); loadPhConfig(); loadRateCodes(); }, [workspaceId]);
+  useEffect(() => { loadConfig(); loadPhConfig(); loadRateCodes(); }, [workspaceId]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -2569,24 +2492,9 @@ export function WorkspaceConfig() {
           {/* Payroll Rules tab */}
           {activeTab === 'rules' && (
             <div className="space-y-5">
-              {/* Drift indicator — shown when payroll_rule library diverges from latest published snapshot */}
-              {driftReport?.has_drift && (
-                driftReport.latest_rule_set_id === null ? (
-                  <AlertBanner
-                    variant="warning"
-                    description="No rule set has been published yet. Rules defined here are not active in payroll calculations. Use 'Publish Rule Set' to activate them."
-                  />
-                ) : (
-                  <AlertBanner
-                    variant="info"
-                    description={`${driftReport.new_rules.length + driftReport.modified_rules.length + driftReport.removed_rules.length} rule(s) have changes since the last publish (effective ${driftReport.latest_effective_from ?? '—'}). Publish a new rule set for these to take effect in payroll runs.`}
-                  />
-                )
-              )}
               <Card>
                 <SectionHeader label="Payroll Rules" count={config.payroll_rules.length}>
                   <Btn variant="secondary" size="sm" onClick={() => setAddRuleOpen(true)}>Add Rule</Btn>
-                  <Btn variant="primary" size="sm" onClick={() => setPublishRuleSetOpen(true)}>Publish Rule Set →</Btn>
                 </SectionHeader>
                 {config.payroll_rules.length > 0 ? (
                   <table className="w-full text-sm mt-2">
@@ -2596,14 +2504,14 @@ export function WorkspaceConfig() {
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Type</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">Rate / Amount</th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4">
-                          First Published
-                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Date this rule was first included in a published rule set.">ⓘ</span>
+                          Effective From
+                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Date from which this rule version applies.">ⓘ</span>
                         </th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4 w-28">
                           Status
-                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Active rules are included in the next rule set you publish. Inactive rules are excluded.">ⓘ</span>
+                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Active rules apply to the current published rule set. Inactive rules are excluded from payroll runs.">ⓘ</span>
                         </th>
-                        <th className="w-28" />
+                        <th className="w-auto" />
                       </tr>
                     </thead>
                     <tbody>
@@ -2615,15 +2523,22 @@ export function WorkspaceConfig() {
                         return (
                         <tr key={r.rule_id} className="border-b border-gray-50">
                           <td className="py-2 pr-4 text-gray-800 text-sm font-medium">{r.name}</td>
-                          <td className="py-2 pr-4 text-gray-500 text-sm">{r.rule_type}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm">{formatRuleType(r.rule_type)}</td>
                           <td className="py-2 pr-4 text-gray-500 text-sm font-mono">{rateDisplay}</td>
-                          <td className="py-2 pr-4 text-gray-500 text-sm">{r.effective_from ?? '—'}</td>
+                          <td className="py-2 pr-4 text-gray-500 text-sm">{toDisplayDate(r.effective_from)}</td>
                           <td className="py-2 pr-4 w-28">
                             <StatusBadge status={r.is_active ? 'ACTIVE' : 'INACTIVE'} size="sm" />
                           </td>
                           <td className="py-2 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <RowEditBtn label={r.name} onClick={() => setEditRule(r)} />
+                              <Btn
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setEditRule(r)}
+                                title={`Update rate for ${r.name}`}
+                              >
+                                Update Rate
+                              </Btn>
                               <Btn
                                 variant="secondary"
                                 size="sm"
@@ -2986,15 +2901,6 @@ export function WorkspaceConfig() {
         onClose={() => setEditRule(null)}
         onSaved={loadConfig}
       />
-      <PublishRuleSetSlideOver
-        open={publishRuleSetOpen}
-        workspaceId={workspaceId}
-        activeRules={(config?.payroll_rules ?? []).filter((r) => r.is_active)}
-        driftReport={driftReport}
-        onClose={() => setPublishRuleSetOpen(false)}
-        onSaved={() => { loadConfig(); loadDrift(); }}
-      />
-
       {/* Workspace Activation Confirm Dialog */}
       <ConfirmDialog
         open={activateConfirmOpen}
@@ -3019,10 +2925,9 @@ export function WorkspaceConfig() {
         body={ruleToToggle ? (
           <p className="text-sm text-gray-600">
             {ruleToToggle.is_active
-              ? `"${ruleToToggle.name}" will be marked inactive and excluded from the next rule set you publish.`
-              : `"${ruleToToggle.name}" will be marked active and included in the next rule set you publish.`}
-            {' '}Historical payroll runs are not affected — they use the snapshot from when they were processed.
-            {' '}Publish a new rule set for this change to take effect in future runs.
+              ? `"${ruleToToggle.name}" will be marked inactive and removed from the active rule set.`
+              : `"${ruleToToggle.name}" will be marked active and added to the active rule set.`}
+            {' '}The rule set is updated automatically. Historical payroll runs are not affected — they use the snapshot from when they were processed.
           </p>
         ) : ''}
         confirmLabel={ruleToToggle?.is_active ? 'Deactivate Rule' : 'Activate Rule'}

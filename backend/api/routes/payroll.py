@@ -392,10 +392,12 @@ def run_payroll(
         rule_set_items_for_snapshot = []
 
         rule_rows = db.execute(text("""
-            SELECT rule_id, rule_name, rule_definition_json, is_active
+            SELECT DISTINCT ON (rule_name)
+                rule_id, rule_name, rule_definition_json, is_active
             FROM payroll_rule
             WHERE is_active = TRUE
               AND workspace_id = :workspace_id
+            ORDER BY rule_name, effective_from DESC
         """), {"workspace_id": workspace_id}).fetchall()
 
         payroll_rule_ids  = [str(r[0]) for r in rule_rows]
