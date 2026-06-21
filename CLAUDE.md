@@ -92,6 +92,9 @@ During bulk upload (`handleImport`), `grade_code` is **always null** — never t
 
 - Sprints 1–21: closed
 - Sprint 22: closed (EMP-BULK-1, EMP-BULK-2, EMP-BULK-3)
+- Sprints 24–28: closed (Employee Lifecycle UX, Smart Upload, Upload Error Visibility)
+- Sprint PAY-TAX-1: closed (NG PAYE bands corrected to NTA 2025)
+- Sprint RULE-VER-1: closed (payroll rule versioning + auto-publish, 2026-06-21)
 
 ---
 
