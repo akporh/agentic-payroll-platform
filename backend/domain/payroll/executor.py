@@ -203,6 +203,7 @@ def _run_sequential(
     historical_period_contexts = full_context.get("historical_period_contexts") or {}
     current_rule_set_id = full_context.get("current_rule_set_id")
     current_rule_set_effective_from = full_context.get("current_rule_set_effective_from")
+    rule_floor_dates = full_context.get("rule_floor_dates")  # None for legacy callers/tests
 
     # PH & OT context — populated by payroll.py route (C4 — PH-8)
     expected_hours = full_context.get("expected_hours")
@@ -241,13 +242,16 @@ def _run_sequential(
             rate_code_map=rate_code_map,
             shift_type=shift_type,
             employee_context=employee_context,
+            rule_floor_dates=rule_floor_dates,
         )
-        # Merge percentage_of_sum traces (including not_applied eligibility decisions)
-        # into component_trace_jsonb via the sequential executor's supplemental trace
-        # mechanism. Other _rule_trace entries remain discarded (tracked as N1).
-        _pct_sum_traces = [t for t in _rule_trace if t.get("method") == "percentage_of_sum"]
-        if _pct_sum_traces:
-            full_context["_supplemental_traces"] = _pct_sum_traces
+        # Merge ALL rule_evaluator trace entries (unit_multiplier, daily_rate_deduction,
+        # fixed_amount, ot_multiplier, percentage_of_sum, and any not_applied/unrecognised
+        # entries) into component_trace_jsonb via the sequential executor's supplemental
+        # trace mechanism. Previously only percentage_of_sum entries survived here, which
+        # discarded resolution_source/rate_used/warning for every other method — exactly
+        # the signal that would have surfaced historical-rate substitution bugs earlier.
+        if _rule_trace:
+            full_context["_supplemental_traces"] = _rule_trace
 
     # --- Mid-period hire / termination proration ---
     # Applied after apply_payroll_rules so daily_rate_deduction uses the correct

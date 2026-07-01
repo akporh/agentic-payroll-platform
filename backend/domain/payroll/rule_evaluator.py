@@ -36,6 +36,23 @@ from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
 
+
+class NoHistoricalRuleVersionError(Exception):
+    """Raised when a rule has no version on or before reference_date for this workspace —
+    i.e. reference_date genuinely predates all known history for this rule (not merely a
+    missing rule_set snapshot, which auto_publish()/the backfill script should have covered).
+    """
+
+    def __init__(self, rule_name: str, reference_date):
+        self.rule_name = rule_name
+        self.reference_date = reference_date
+        super().__init__(
+            f"No historical rate exists for rule '{rule_name}' as of {reference_date}. "
+            "This input predates all known versions of this rule for this workspace — "
+            "verify the input's reference_date, or add an earlier payroll_rule version "
+            "if this rate genuinely existed before the platform's records begin."
+        )
+
 # All recognised calculation_method values in payroll_rule.rule_definition_json.
 # D3: Python-level validation mirrors the DB CHECK constraint added in migration
 # 2b3c4d5e6f7a. Keep in sync with the constraint when adding new methods.
@@ -90,6 +107,7 @@ def apply_payroll_rules(
     rate_code_map: dict | None = None,
     shift_type: str | None = None,
     employee_context: dict | None = None,
+    rule_floor_dates: dict[str, str] | None = None,
 ) -> tuple[dict, list]:
     """Apply workspace payroll rules to salary components.
 
@@ -128,6 +146,12 @@ def apply_payroll_rules(
             UUID of the current rule set (stored in trace for auditing).
         current_rule_set_effective_from:
             effective_from of the current rule set (stored in trace).
+        rule_floor_dates:
+            {rule_name: earliest_known_effective_from} — when supplied (not None),
+            enables strict mode: a historical reference_date earlier than the rule's
+            known floor raises NoHistoricalRuleVersionError instead of silently
+            falling back to the current rule. None (the default, used by legacy
+            callers/tests) preserves the original current_fallback behaviour.
 
     Returns:
         (modified_salary_components, rule_trace)
@@ -181,6 +205,7 @@ def apply_payroll_rules(
                         name, _ev_ref, current_rules_by_name,
                         _hist_rule_sets, period_start, period_end,
                         current_rule_set_id, current_rule_set_effective_from,
+                        rule_floor_dates,
                     )
                     _last_rate = Decimal(str(_resolved_defn.get("rate", 0)))
                     _total += (_ev_qty * _last_rate).quantize(
@@ -197,9 +222,11 @@ def apply_payroll_rules(
                 _single = len(_positive) == 1
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "applied",
                     "amount":               str(_total),
+                    "result":               str(_total),
                     "note":                 _note,
                     "rule_set_id":          _res_meta["rule_set_id"],
                     "rule_effective_from":  _res_meta["rule_effective_from"],
@@ -213,12 +240,15 @@ def apply_payroll_rules(
                     name, None, current_rules_by_name,
                     _hist_rule_sets, period_start, period_end,
                     current_rule_set_id, current_rule_set_effective_from,
+                    rule_floor_dates,
                 )
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "not_applied",
                     "amount":               "0",
+                    "result":               None,
                     "note":                 f"no {input_field!r} in employee_inputs",
                     "rule_set_id":          _res_meta["rule_set_id"],
                     "rule_effective_from":  _res_meta["rule_effective_from"],
@@ -232,22 +262,47 @@ def apply_payroll_rules(
         elif method == "daily_rate_deduction":
             _drd_events = _to_events(employee_inputs.get(input_field))
             input_val = sum(Decimal(str(e.get("quantity") or 0)) for e in _drd_events)
-            _first_ref = _drd_events[0].get("reference_date") if _drd_events else None
-            resolved_defn, resolution_meta = _resolve_rule(
-                name, _first_ref, current_rules_by_name,
-                _hist_rule_sets, period_start, period_end,
-                current_rule_set_id, current_rule_set_effective_from,
-            )
-            eff_wd, eff_cd = _resolve_period_ctx(
-                _first_ref, working_days, calendar_days,
-                _hist_period_ctx, period_start, period_end,
-            )
-            eff_wd_dec = Decimal(str(eff_wd))
-            ref_date_str = str(_first_ref) if _first_ref else None
+
+            # Group events by the (working_days, calendar_days) that applies to each
+            # event's own reference_date — a deduction spanning both a historical and
+            # the current period must apply each portion's own period divisor, not
+            # resolve once for the whole batch from the first event's date alone.
+            _groups: dict[tuple, dict] = {}
+            for _ev in (_drd_events or [{"quantity": 0, "reference_date": None}]):
+                _qty = Decimal(str(_ev.get("quantity") or 0))
+                _ref = _ev.get("reference_date")
+                _resolved_defn, _meta = _resolve_rule(
+                    name, _ref, current_rules_by_name,
+                    _hist_rule_sets, period_start, period_end,
+                    current_rule_set_id, current_rule_set_effective_from,
+                    rule_floor_dates,
+                )
+                _wd, _cd = _resolve_period_ctx(
+                    _ref, working_days, calendar_days,
+                    _hist_period_ctx, period_start, period_end,
+                )
+                key = (_wd, _cd)
+                g = _groups.setdefault(key, {"qty": Decimal("0"), "meta": _meta, "ref": _ref})
+                g["qty"] += _qty
+
+            _single_group = len(_groups) == 1
+            if _single_group:
+                ((_only_wd, _only_cd), _only_group), = _groups.items()
+                resolution_meta = _only_group["meta"]
+                ref_date_str = str(_only_group["ref"]) if _only_group["ref"] else None
+            else:
+                resolution_meta = {
+                    "rule_set_id": None, "rule_effective_from": None,
+                    "resolution_source": None, "warning": None,
+                }
+                ref_date_str = None
+
             if input_val > 0:
                 total_deducted = Decimal("0")
                 prorated_codes: list[str] = []
                 skipped_codes:  list[str] = []
+                any_fallback = False
+                group_notes: list[str] = []
                 for code in list(components.keys()):
                     strategy = (
                         client_meta.get(code, {})
@@ -257,61 +312,89 @@ def apply_payroll_rules(
                     if strategy is None:
                         skipped_codes.append(code)
                         continue  # component is not proratable
-
-                    # Dispatch on the strategy value using period-resolved counts
-                    if strategy == "work_days":
-                        divisor = eff_wd_dec
-                    elif strategy == "calendar_days":
-                        divisor = Decimal(str(eff_cd))
-                    elif strategy == "fixed_30":
-                        divisor = Decimal("30")
-                    else:
-                        # Unrecognised strategy — skip rather than silently corrupt
+                    if strategy not in ("work_days", "calendar_days", "fixed_30"):
                         skipped_codes.append(f"{code}(unknown:{strategy})")
                         continue
 
-                    if not divisor:
+                    per_code_deduction = Decimal("0")
+                    any_valid_divisor = False
+                    for (eff_wd, eff_cd), g in _groups.items():
+                        if g["meta"]["resolution_source"] == "current_fallback":
+                            any_fallback = True
+                        if strategy == "work_days":
+                            divisor = Decimal(str(eff_wd))
+                        elif strategy == "calendar_days":
+                            divisor = Decimal(str(eff_cd))
+                        else:
+                            divisor = Decimal("30")
+
+                        if not divisor:
+                            continue  # this group's divisor is zero — skip only this group's slice
+
+                        any_valid_divisor = True
+                        comp_daily_rate = (
+                            components[code] / divisor
+                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                        per_code_deduction += (
+                            comp_daily_rate * g["qty"]
+                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                    if not any_valid_divisor:
+                        # Every group's divisor was zero — the code is fully skipped,
+                        # never partially "prorated" with a zero amount.
                         skipped_codes.append(f"{code}(zero_divisor)")
                         continue
 
-                    comp_daily_rate = (
-                        components[code] / divisor
-                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-                    deduction_for_component = (
-                        comp_daily_rate * input_val
-                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
                     components[code] = max(
                         Decimal("0"),
-                        components[code] - deduction_for_component,
+                        components[code] - per_code_deduction,
                     )
-                    total_deducted += deduction_for_component
+                    total_deducted += per_code_deduction
                     prorated_codes.append(f"{code}({strategy})")
+
+                if not _single_group:
+                    group_notes = [
+                        f"{g['qty']}d@{eff_wd}wd"
+                        f"{'(historical, rule_set ' + str(g['meta']['rule_set_id']) + ')' if g['meta']['resolution_source'] == 'historical' else ''}"
+                        f"{'(current fallback — no history)' if g['meta']['resolution_source'] == 'current_fallback' else ''}"
+                        for (eff_wd, eff_cd), g in _groups.items()
+                    ]
 
                 note = (
                     f"{input_val} absent days — deducted from: {prorated_codes}"
                     + (f"; skipped (no proration_strategy): {skipped_codes}" if skipped_codes else "")
+                    + (f"; spans {len(_groups)} periods: {' + '.join(group_notes)}" if not _single_group else "")
                 )
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "applied",
                     "amount":               str(-total_deducted),
+                    "result":               str(-total_deducted),
                     "note":                 note,
                     "rule_set_id":          resolution_meta["rule_set_id"],
                     "rule_effective_from":  resolution_meta["rule_effective_from"],
                     "reference_date":       ref_date_str,
                     "rate_used":            None,
                     "resolution_source":    resolution_meta["resolution_source"],
-                    "warning":              resolution_meta.get("warning"),
+                    "warning":              (
+                        resolution_meta.get("warning")
+                        if _single_group
+                        else ("One or more periods in this multi-period deduction used the "
+                              "current rule set because no historical rule set covers them."
+                              if any_fallback else None)
+                    ),
                 })
             else:
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "not_applied",
                     "amount":               "0",
+                    "result":               None,
                     "note":                 f"no {input_field!r} in employee_inputs",
                     "rule_set_id":          resolution_meta["rule_set_id"],
                     "rule_effective_from":  resolution_meta["rule_effective_from"],
@@ -322,11 +405,16 @@ def apply_payroll_rules(
                 })
 
         # ── fixed_amount ──────────────────────────────────────────────────
+        # No input_field / employee event / reference_date concept exists for this
+        # method (confirmed: it's a flat, run-scoped amount, e.g. accident-free
+        # bonus). reference_date=None is correct by design — do not "fix" this to
+        # thread a per-event date without re-verifying that conclusion first.
         elif method == "fixed_amount":
             resolved_defn, resolution_meta = _resolve_rule(
                 name, None, current_rules_by_name,
                 _hist_rule_sets, period_start, period_end,
                 current_rule_set_id, current_rule_set_effective_from,
+                rule_floor_dates,
             )
             ref_date_str = None
             amount = Decimal(str(resolved_defn.get("amount", 0)))
@@ -342,9 +430,11 @@ def apply_payroll_rules(
                 components[name] = amount
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "applied",
                     "amount":               str(amount),
+                    "result":               str(amount),
                     "note":                 "all conditions met",
                     "rule_set_id":          resolution_meta["rule_set_id"],
                     "rule_effective_from":  resolution_meta["rule_effective_from"],
@@ -356,9 +446,11 @@ def apply_payroll_rules(
             else:
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "not_applied",
                     "amount":               "0",
+                    "result":               None,
                     "note":                 reason,
                     "rule_set_id":          resolution_meta["rule_set_id"],
                     "rule_effective_from":  resolution_meta["rule_effective_from"],
@@ -370,15 +462,45 @@ def apply_payroll_rules(
 
         # ── ot_multiplier (C4 — PH-8) ─────────────────────────────────────────
         elif method == "ot_multiplier":
-            rate_code   = current_defn.get("rate_code")
             input_field = current_defn.get("input_field", "")
 
             # Resolve quantity from employee inputs
             events   = _to_events(employee_inputs.get(input_field))
             quantity = sum(Decimal(str(e.get("quantity") or 0)) for e in events)
 
+            # The rule definition itself (rate_code / input_field / manual_adj_field)
+            # IS versioned via payroll_rule, so resolve it per the triggering event's
+            # own reference_date — this fixes cases where a workspace changed which
+            # rate_code an OT rule maps to over time. rate_code_registry's numeric
+            # multiplier/base values have NO versioning column at all (no
+            # effective_from) — true historical resolution of those is not possible
+            # without a schema change (# TODO(rate-code-versioning): add
+            # effective_from/history to rate_code_registry if OT multipliers are ever
+            # found to change over time). Until then, the multiplier/base lookup below
+            # stays current-only, but resolution_source is labelled honestly rather
+            # than hardcoded — see _ot_meta handling after the rate_code_map lookup.
+            _ot_ref = events[0].get("reference_date") if events else None
+            resolved_defn, _ot_meta = _resolve_rule(
+                name, _ot_ref, current_rules_by_name,
+                _hist_rule_sets, period_start, period_end,
+                current_rule_set_id, current_rule_set_effective_from,
+                rule_floor_dates,
+            )
+            rate_code = resolved_defn.get("rate_code") or current_defn.get("rate_code")
+            if _ot_meta["resolution_source"] == "current":
+                _ot_resolution_source = "current"
+                _ot_warning = None
+            else:
+                _ot_resolution_source = "current_fallback"
+                _ot_warning = (
+                    "rate_code_registry has no historical versioning — multiplier/base "
+                    f"for '{rate_code}' could not be verified against the rate in effect "
+                    f"on {_ot_ref}; current value used."
+                )
+            _ot_ref_str = str(_ot_ref) if _ot_ref else None
+
             # Floor validation for MANUAL_PH_ADJUSTMENT inputs (C7 — PH-5)
-            manual_adj_field = current_defn.get("manual_adj_field")
+            manual_adj_field = resolved_defn.get("manual_adj_field") or current_defn.get("manual_adj_field")
             if manual_adj_field:
                 adj_events    = _to_events(employee_inputs.get(manual_adj_field))
                 manual_adj    = sum(Decimal(str(e.get("quantity") or 0)) for e in adj_events)
@@ -408,20 +530,22 @@ def apply_payroll_rules(
                 if base == "basic_daily" and shift_type in (None, "DAY"):
                     trace.append({
                         "rule":              name,
+                        "component":         name,
                         "method":            method,
                         "status":            "not_applied",
                         "amount":            "0",
+                        "result":            None,
                         "note":              f"shift_type={shift_type!r} — not a shift worker",
                         "rate_code":         rate_code,
                         "multiplier":        str(multiplier),
                         "base_rate":         None,
                         "quantity":          str(quantity),
-                        "rule_set_id":       current_rule_set_id,
-                        "rule_effective_from": current_rule_set_effective_from,
-                        "reference_date":    None,
+                        "rule_set_id":       _ot_meta["rule_set_id"],
+                        "rule_effective_from": _ot_meta["rule_effective_from"],
+                        "reference_date":    _ot_ref_str,
                         "rate_used":         None,
-                        "resolution_source": "current",
-                        "warning":           None,
+                        "resolution_source": _ot_resolution_source,
+                        "warning":           _ot_warning,
                     })
                     continue
 
@@ -459,9 +583,11 @@ def apply_payroll_rules(
                 components[name] = amount
                 trace.append({
                     "rule":              name,
+                    "component":         name,
                     "method":            method,
                     "status":            "applied",
                     "amount":            str(amount),
+                    "result":            str(amount),
                     "note":              (
                         f"{quantity} units × {base_rate} ({base}) × {multiplier} multiplier"
                     ),
@@ -469,29 +595,37 @@ def apply_payroll_rules(
                     "multiplier":        str(multiplier),
                     "base_rate":         str(base_rate),
                     "quantity":          str(quantity),
-                    "rule_set_id":       current_rule_set_id,
-                    "rule_effective_from": current_rule_set_effective_from,
-                    "reference_date":    None,
+                    "rule_set_id":       _ot_meta["rule_set_id"],
+                    "rule_effective_from": _ot_meta["rule_effective_from"],
+                    "reference_date":    _ot_ref_str,
                     "rate_used":         str(base_rate),
-                    "resolution_source": "current",
-                    "warning":           None,
+                    "resolution_source": _ot_resolution_source,
+                    "warning":           _ot_warning,
                 })
             else:
                 trace.append({
                     "rule":              name,
+                    "component":         name,
                     "method":            method,
                     "status":            "not_applied",
                     "amount":            "0",
+                    "result":            None,
                     "note":              f"no {input_field!r} in employee_inputs or quantity is zero",
-                    "rule_set_id":       current_rule_set_id,
-                    "rule_effective_from": current_rule_set_effective_from,
-                    "reference_date":    None,
+                    "rule_set_id":       _ot_meta["rule_set_id"],
+                    "rule_effective_from": _ot_meta["rule_effective_from"],
+                    "reference_date":    _ot_ref_str,
                     "rate_used":         None,
-                    "resolution_source": "current",
-                    "warning":           None,
+                    "resolution_source": _ot_resolution_source,
+                    "warning":           _ot_warning,
                 })
 
         # ── percentage_of_sum (Sprint 13 M3) ─────────────────────────────────
+        # No input_field / employee event / reference_date concept exists for this
+        # method — it sums already-computed salary_components for the CURRENT run's
+        # own period (e.g. "X% of gross pay this period"), never a dated input.
+        # resolution_source="current" is correct by design and accurate; it is not a
+        # bug that this branch never calls _resolve_rule. Do not "fix" this without
+        # re-verifying that conclusion first.
         elif method == "percentage_of_sum":
             rate_val = current_defn.get("rate")
             if rate_val is None:
@@ -508,9 +642,11 @@ def apply_payroll_rules(
                 )
                 trace.append({
                     "rule":                 name,
+                    "component":            name,
                     "method":               method,
                     "status":               "not_applied",
                     "amount":               "0",
+                    "result":               None,
                     "note":                 "base_components list is empty — misconfiguration",
                     "rule_set_id":          current_rule_set_id,
                     "rule_effective_from":  current_rule_set_effective_from,
@@ -527,9 +663,11 @@ def apply_payroll_rules(
                 if not ctx_val:
                     trace.append({
                         "rule":                 name,
+                        "component":            name,
                         "method":               method,
                         "status":               "not_applied",
                         "amount":               "0",
+                        "result":               None,
                         "note":                 (
                             f"eligibility_field '{eligibility_field}' "
                             f"resolved to {ctx_val!r} — rule did not fire"
@@ -560,9 +698,11 @@ def apply_payroll_rules(
 
             trace_entry: dict = {
                 "rule":                  name,
+                "component":             name,
                 "method":                method,
                 "status":                "applied",
                 "amount":                str(amount),
+                "result":                str(amount),
                 "note":                  (
                     f"rate {rate} × base_total {base_total} = {amount}"
                 ),
@@ -586,12 +726,15 @@ def apply_payroll_rules(
                 name, None, current_rules_by_name,
                 _hist_rule_sets, period_start, period_end,
                 current_rule_set_id, current_rule_set_effective_from,
+                rule_floor_dates,
             )
             trace.append({
                 "rule":                 name,
+                "component":            name,
                 "method":               method or "unknown",
                 "status":               "not_applied",
                 "amount":               "0",
+                "result":               None,
                 "note":                 f"unrecognised calculation_method: {method!r}",
                 "rule_set_id":          _res_meta["rule_set_id"],
                 "rule_effective_from":  _res_meta["rule_effective_from"],
@@ -613,12 +756,19 @@ def _resolve_rule(
     period_end,
     current_rule_set_id: str | None,
     current_rule_set_effective_from: str | None,
+    rule_floor_dates: dict[str, str] | None = None,
 ) -> tuple[dict, dict]:
     """Return (rule_definition_json, resolution_meta) for the given rule.
 
     Uses the current rule set when reference_date is None or within the
     current period.  Falls back to the most-recently-effective historical
     rule set whose effective_from <= reference_date for cross-period inputs.
+
+    When rule_floor_dates is supplied (strict mode — always populated by the
+    production route/executor), a reference_date earlier than the rule's known
+    floor raises NoHistoricalRuleVersionError instead of silently falling back
+    to the current rule set. rule_floor_dates=None (legacy/test callers)
+    preserves the original current_fallback behaviour unchanged.
 
     resolution_meta keys: rule_set_id, rule_effective_from, resolution_source
     resolution_source values: "current" | "historical" | "current_fallback"
@@ -655,7 +805,15 @@ def _resolve_rule(
             "resolution_source":    "historical",
         }
 
-    # No historical set covers this date — fall back to current to avoid silent no-op
+    # No historical rule_set covers this date. Distinguish a backfill gap (shouldn't
+    # happen once every historical payroll_rule.effective_from has a snapshot — fall
+    # back defensively, as before) from a genuine gap where the rule never existed
+    # this far back for this workspace (must fail loudly, per-employee only).
+    if rule_floor_dates is not None:
+        floor_str = rule_floor_dates.get(rule_name)
+        if floor_str is None or ref_str < floor_str:
+            raise NoHistoricalRuleVersionError(rule_name, reference_date)
+
     row = current_rules_by_name.get(rule_name, {})
     return row.get("rule_definition_json") or {}, {
         "rule_set_id":          current_rule_set_id,

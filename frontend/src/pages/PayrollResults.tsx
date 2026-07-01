@@ -701,6 +701,15 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
       </svg>
     );
 
+    // Shown when a rule resolved to the CURRENT rate because no historical rule set
+    // could verify it for this input's reference_date — surfaces exactly the kind of
+    // silent rate substitution that historically went unnoticed in the audit trail.
+    const AmberWarningIcon = () => (
+      <svg className="inline w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008ZM10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.29 2.25h17.78A1.5 1.5 0 0 0 22.18 18L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z" />
+      </svg>
+    );
+
     return (
       <div className="bg-slate-50 border-t border-gray-200">
         {/* Mini column headers — labelled to match parent columns */}
@@ -720,6 +729,7 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
           const isDeduct   = DEDUCT_METHODS.has(e.method);
           const isNet      = e.method === 'net_formula';
           const isSummary  = e.method === 'sum_earnings' || e.method === 'net_formula';
+          const isFallback = e.resolution_source === 'current_fallback';
 
           return (
             <div
@@ -735,6 +745,9 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
                 {!isSummary && (
                   <span className="ml-2 text-[10px] text-gray-400">{e.method}</span>
                 )}
+                {e.reference_date && (
+                  <span className="ml-2 text-[10px] text-gray-400">({e.reference_date})</span>
+                )}
               </div>
               <div className="px-4 py-1.5 text-right tabular-nums text-gray-700">
                 {isEarning && amount != null ? formatNaira(amount) : ''}
@@ -745,7 +758,12 @@ function ResultsTab({ run, results, totals, timeline, canExport, canDownloadDeta
               <div className="px-4 py-1.5 text-right tabular-nums text-gray-900">
                 {isNet && amount != null ? formatNaira(amount) : ''}
               </div>
-              <div className="px-4 py-1.5 flex items-center justify-center">
+              <div className="px-4 py-1.5 flex items-center justify-center gap-1">
+                {isFallback && (
+                  <span title={e.warning ?? 'Resolved using current rate — no historical rule set covers this reference date.'}>
+                    <AmberWarningIcon />
+                  </span>
+                )}
                 {hasResult ? <CheckIcon /> : <span className="text-gray-300">—</span>}
               </div>
             </div>

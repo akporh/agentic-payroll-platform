@@ -196,7 +196,11 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
     so cross-workspace collisions are impossible.
 
     Body: { "rows": [ { employee_number, input_code, quantity?, reference_date? } ] }
-    Returns: { "created": N, "errors": [ { "row": i, "detail": "..." } ] }
+    Returns: { "created": N, "skipped": N, "skipped_detail": [ { row, employee_number,
+              input_code, reference_date } ], "errors": [ { "row": i, "detail": "..." } ] }
+    skipped_detail exists so an operator can trace a duplicate-row rejection back to
+    the source file — dedup behaviour itself is intentional and unchanged; this only
+    adds visibility.
     """
     rows = payload.get("rows", [])
     if not rows:
@@ -221,6 +225,7 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
 
         created = 0
         skipped = 0
+        skipped_detail = []
         errors  = []
 
         # Validate all rows first, collect those ready to insert
@@ -263,13 +268,14 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                     continue
 
             valid_inserts.append({
-                "row_num":        row_num,
-                "workspace_id":   workspace_id,
-                "employee_id":    employee_id,
-                "input_code":     input_code,
-                "input_category": valid_codes[input_code],
-                "quantity":       quantity,
-                "reference_date": reference_date,
+                "row_num":         row_num,
+                "workspace_id":    workspace_id,
+                "employee_id":     employee_id,
+                "employee_number": employee_number,
+                "input_code":      input_code,
+                "input_category":  valid_codes[input_code],
+                "quantity":        quantity,
+                "reference_date":  reference_date,
             })
 
         # Insert all valid rows using the outer session — one round-trip per row
@@ -302,6 +308,12 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                 db.rollback()
                 if isinstance(exc.orig, UniqueViolation):
                     skipped += 1
+                    skipped_detail.append({
+                        "row":             v["row_num"],
+                        "employee_number": v["employee_number"],
+                        "input_code":      v["input_code"],
+                        "reference_date":  str(v["reference_date"]) if v["reference_date"] else None,
+                    })
                 else:
                     _log.error("Unexpected IntegrityError on row %d: %s", v["row_num"], exc)
                     errors.append({"row": v["row_num"], "detail": "Failed to save input — data constraint violation"})
@@ -310,7 +322,7 @@ def bulk_add_inputs(workspace_id: str, payload: dict):
                 _log.error("Unexpected error on row %d: %s", v["row_num"], exc)
                 errors.append({"row": v["row_num"], "detail": "Failed to save input — unexpected error"})
 
-        return {"created": created, "skipped": skipped, "errors": errors}
+        return {"created": created, "skipped": skipped, "skipped_detail": skipped_detail, "errors": errors}
     except HTTPException:
         raise
     except Exception as exc:

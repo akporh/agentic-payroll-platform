@@ -323,9 +323,8 @@ export function NativeUploadFlow<TRow>({
   // ── Done ──────────────────────────────────────────────────────────────────
   if (submitResult) {
     const failedDetails = submitResult.details?.filter((d) => d.status === 'failed') ?? [];
-    const skippedCount =
-      submitResult.skippedCount ??
-      (submitResult.details?.filter((d) => d.status === 'skipped').length ?? 0);
+    const skippedDetails = submitResult.details?.filter((d) => d.status === 'skipped') ?? [];
+    const skippedCount = submitResult.skippedCount ?? skippedDetails.length;
 
     return (
       <div className="space-y-4">
@@ -336,6 +335,64 @@ export function NativeUploadFlow<TRow>({
         />
         {skippedCount > 0 && (
           <AlertBanner variant="info" title={`${skippedCount} already exist — skipped`} />
+        )}
+
+        {/* Duplicates are not validation errors — always visible when present, not
+            gated behind failedDetails, so the operator can go verify against the
+            source file rather than a bare count. */}
+        {skippedDetails.length > 0 && (
+          <div
+            style={{ borderRadius: 'var(--radius-card)' }}
+            className="border border-blue-200 bg-blue-50 p-4 space-y-3"
+          >
+            <div>
+              <p className="text-sm font-semibold text-blue-900">
+                {skippedDetails.length} {skippedDetails.length === 1 ? 'row' : 'rows'} already existed — not re-added
+              </p>
+              <p className="mt-0.5 text-sm text-blue-800">
+                Verify these against the source file — a duplicate may be a real data-entry error.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadErrorsCsv(
+                  'upload_duplicates.csv',
+                  ['Reference', 'Name', 'Detail'],
+                  skippedDetails.map((d) => [d.employee_number, d.name, d.error ?? '']),
+                )
+              }
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-blue-400 bg-white text-sm font-medium text-blue-800 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download duplicates ({skippedDetails.length} {skippedDetails.length === 1 ? 'row' : 'rows'})
+            </button>
+            <div className="rounded-lg border border-blue-100 overflow-auto max-h-56 bg-white">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0">
+                  <tr className="bg-blue-50 border-b border-blue-100">
+                    <th className="px-3 py-2 text-left font-semibold text-blue-700 whitespace-nowrap">Reference</th>
+                    <th className="px-3 py-2 text-left font-semibold text-blue-700">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skippedDetails.map((d, i) => (
+                    <tr key={i} className="border-b border-blue-50 last:border-0">
+                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                        {d.name}
+                        {d.name !== d.employee_number && (
+                          <span className="ml-1 font-mono text-gray-400">({d.employee_number})</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-blue-700">{d.error ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {/* Layer 2 — action required: what to do */}

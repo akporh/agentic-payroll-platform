@@ -331,3 +331,52 @@ class TestShiftAllowanceInSequentialExecutor:
 
         assert "SHIFT2" not in out["results"] or out["results"].get("SHIFT2") == Decimal("0")
         assert out["results"]["GROSS_PAY"] == Decimal("200000")
+
+
+# ---------------------------------------------------------------------------
+# Historical rate resolution honesty labeling (RULE-VER historical-rate fix)
+# ---------------------------------------------------------------------------
+
+class TestOtMultiplierHistoricalLabeling:
+    """rate_code_registry has no versioning column — multiplier/base can never be
+    verified against history. A cross-period event must be labelled
+    current_fallback with an explicit warning, not falsely asserted "current"."""
+
+    def test_current_period_event_labeled_current(self):
+        from datetime import date
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("200000")},
+            payroll_rules=[SHIFT2_RULE],
+            employee_inputs={"shift2_days": [{"quantity": 20, "reference_date": date(2024, 3, 15)}]},
+            client_meta={},
+            expected_days=20,
+            rate_code_map=RATE_CODE_MAP,
+            shift_type="2_SHIFT",
+            period_start=date(2024, 3, 1),
+            period_end=date(2024, 3, 31),
+        )
+        assert components["SHIFT2"] == Decimal("20000.00")
+        assert trace[0]["resolution_source"] == "current"
+        assert trace[0]["warning"] is None
+
+    def test_cross_period_event_labeled_current_fallback_with_warning(self):
+        from datetime import date
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("200000")},
+            payroll_rules=[SHIFT2_RULE],
+            employee_inputs={"shift2_days": [{"quantity": 20, "reference_date": date(2024, 1, 15)}]},
+            client_meta={},
+            expected_days=20,
+            rate_code_map=RATE_CODE_MAP,
+            shift_type="2_SHIFT",
+            period_start=date(2024, 3, 1),
+            period_end=date(2024, 3, 31),
+            # No historical_rule_sets supplied — simulates no snapshot covering Jan.
+        )
+        # Amount is still computed (best-effort, current rate_code_registry values —
+        # no schema exists to do otherwise) but must be labelled honestly.
+        assert components["SHIFT2"] == Decimal("20000.00")
+        assert trace[0]["resolution_source"] == "current_fallback"
+        assert trace[0]["warning"] is not None
+        assert "rate_code_registry" in trace[0]["warning"]
+        assert trace[0]["reference_date"] == "2024-01-15"

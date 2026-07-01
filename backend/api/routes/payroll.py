@@ -756,6 +756,24 @@ def run_payroll(
         and Decimal(str(_itf_annual_payroll)) >= Decimal("50000000")
     )
 
+    # ── Rule floor dates — earliest known payroll_rule.effective_from per rule_name ──
+    # Lets the domain layer (rule_evaluator._resolve_rule) distinguish "no rule_set
+    # snapshot covers this historical date" (should not happen once every historical
+    # payroll_rule.effective_from has a snapshot — resolve defensively as before) from
+    # "this rule genuinely never existed this far back for this workspace" (must raise,
+    # per-employee only — see NoHistoricalRuleVersionError). is_active = TRUE only:
+    # a soft-deleted rule version is treated as if it never existed, per decision.
+    _floor_rows = db.execute(
+        text("""
+            SELECT rule_name, MIN(effective_from) AS floor_date
+            FROM payroll_rule
+            WHERE workspace_id = :wid AND is_active = TRUE
+            GROUP BY rule_name
+        """),
+        {"wid": workspace_id},
+    ).fetchall()
+    rule_floor_dates = {r[0]: str(r[1]) for r in _floor_rows}
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -773,6 +791,7 @@ def run_payroll(
         "historical_period_contexts":       historical_period_contexts,
         "current_rule_set_id":              rule_set_id,
         "current_rule_set_effective_from":  rule_set_effective_from,
+        "rule_floor_dates":                 rule_floor_dates,
         # ── PH & OT context (C1 — PH-2, C4 — PH-8) ─────────────────────────
         "expected_hours":                   expected_hours,
         "expected_days":                    expected_days,
