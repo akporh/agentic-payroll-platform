@@ -289,9 +289,9 @@ async def commit_onboarding(request: Request):
             db.execute(
                 text("""
                     INSERT INTO payroll_rule (
-                        rule_id, workspace_id, rule_name, rule_definition_json, rule_type, is_active
+                        rule_id, workspace_id, rule_name, rule_definition_json, rule_type, is_active, effective_from
                     )
-                    VALUES (:id, :workspace_id, :name, :definition, :rule_type, TRUE)
+                    VALUES (:id, :workspace_id, :name, :definition, :rule_type, TRUE, :effective_from)
                 """),
                 {
                     "id": str(uuid4()),
@@ -301,6 +301,7 @@ async def commit_onboarding(request: Request):
                         rule.get("definition") or rule.get("rule_definition_json") or {}
                     ),
                     "rule_type": rule.get("rule_type"),
+                    "effective_from": rule.get("effective_from") or str(_date(2025, 1, 1)),
                 },
             )
 
