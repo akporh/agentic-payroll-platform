@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { workspaceApi } from '../api/workspace';
 import { api } from '../api/client';
 import { onboardingApi } from '../api/onboarding';
-import type { ValidateResponse, PreviewResponse, CommitResponse } from '../types/onboarding';
+import type { ValidateResponse, CommitResponse } from '../types/onboarding';
 import type { Workspace } from '../types/workspace';
 import type { WorkspacePayrollConfig, RateCode } from '../types/payroll';
 import { ContentHeader, Card, Btn, AlertBanner, ConfirmDialog, OnboardingStepper, Breadcrumb } from '../design-system';
@@ -19,7 +19,7 @@ import { extractError } from '../utils/errorUtils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type CommitStage = 'idle' | 'validated' | 'previewed' | 'committed';
+type CommitStage = 'idle' | 'validated' | 'committed';
 
 // ── Helpers (shared logic, same as JsonOnboarding) ────────────────────────────
 
@@ -82,7 +82,6 @@ export function WorkspaceSetup() {
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [validateResult, setValidateResult] = useState<ValidateResponse | null>(null);
-  const [previewResult, setPreviewResult] = useState<PreviewResponse | null>(null);
   const [commitResult, setCommitResult] = useState<CommitResponse | null>(null);
 
   // ── UI ────────────────────────────────────────────────────────────────────
@@ -188,9 +187,6 @@ export function WorkspaceSetup() {
   const salaryDefCount = Array.isArray(compensation?.salary_definitions) ? (compensation.salary_definitions as unknown[]).length : 0;
   const payrollRuleCount = Array.isArray(rules?.payroll_rules) ? (rules.payroll_rules as unknown[]).length : 0;
   const payCycleSet = structure?.pay_cycle != null && Object.keys(structure.pay_cycle as object).length > 0;
-  const aiWarnings: string[] = previewResult?.warnings
-    ? previewResult.warnings.map((w) => (typeof w === 'string' ? w : String(w)))
-    : [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -214,7 +210,6 @@ export function WorkspaceSetup() {
     setCommitStage('idle');
     setActionError(null);
     setValidateResult(null);
-    setPreviewResult(null);
     setCommitResult(null);
   }
 
@@ -619,28 +614,6 @@ export function WorkspaceSetup() {
                       ).join(' · ')}
                     />
                   </div>
-                )}
-              </Card>
-            )}
-
-            {previewResult && (
-              <Card title="Hard Validation + AI Review">
-                {aiWarnings.length > 0 && (
-                  <AlertBanner variant="warning" title="AI Critic Warnings (non-blocking)" description={aiWarnings.join(' · ')} />
-                )}
-                {previewResult.status === 'invalid' && previewResult.errors && (
-                  <div className="mt-2">
-                    <AlertBanner
-                      variant="error"
-                      title="Hard Validation Failed"
-                      description={previewResult.errors.map((e) => `${e.field}: ${e.message}`).join(' · ')}
-                    />
-                  </div>
-                )}
-                {previewResult.status === 'valid' && (
-                  <p className="text-sm text-green-700 font-medium mt-2">
-                    Hard validation passed. Ready to commit.
-                  </p>
                 )}
               </Card>
             )}

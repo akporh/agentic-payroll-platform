@@ -14,19 +14,6 @@ export interface ValidateResponse {
   warnings: ValidationWarning[];
 }
 
-export interface PreviewData {
-  employees_sql: string;
-  salary_definitions_sql: string;
-  payroll_rules_sql: string;
-}
-
-export interface PreviewResponse {
-  status: 'valid' | 'invalid';
-  warnings: string[];
-  errors?: ValidationError[];
-  preview?: PreviewData;
-}
-
 export interface CommitResponse {
   status: 'success' | 'invalid' | 'error';
   message?: string;

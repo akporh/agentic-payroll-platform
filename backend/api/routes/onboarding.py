@@ -1,9 +1,9 @@
 """
 Onboarding routes.
 
-Exposes upload and preview endpoints for the onboarding pipeline.
-No business logic lives here — validation, review, and SQL generation
-happen in the domain layer.
+Exposes upload, preview (validation-only), and commit endpoints for
+the onboarding pipeline. No business logic lives here — validation,
+review, and SQL generation happen in the domain layer.
 
 Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
 """
@@ -20,11 +20,6 @@ logger = logging.getLogger(__name__)
 from backend.domain.onboarding.loader import emit_onboarding_sql
 from backend.domain.onboarding.workspace_state_machine import transition_workspace
 from backend.domain.onboarding.hard_validator import validate_workspace_for_state
-from backend.domain.onboarding.sql_emitter import (
-    emit_employees_sql,
-    emit_salary_definitions_sql,
-    emit_payroll_rules_sql,
-)
 from backend.domain.onboarding.review_runner import review_client_onboarding
 from backend.application import onboarding_service
 from backend.infra.repositories.workspace_config_repo import upsert_workspace_payroll_config
@@ -94,14 +89,10 @@ async def upload_onboarding(request: Request):
 
 @router.post("/onboarding/preview")
 async def preview_onboarding(request: Request):
-    """Generate a SQL preview for an onboarding payload.
+    """Validate an onboarding payload without executing anything.
 
-    Validates the payload first using the existing review pipeline.
-    If invalid, returns validation errors. If valid, generates
-    structured SQL statements for each entity type without executing
-    anything.
-
-    No DB writes. No execution. Preview only.
+    Runs the existing review pipeline and returns validation status,
+    errors, and warnings. No DB writes. No execution.
     """
     try:
         payload = await request.json()
@@ -138,22 +129,9 @@ async def preview_onboarding(request: Request):
                 "warnings": warnings,
             }
 
-        employees = payload.get("employees", [])
-        salary_definitions = payload.get("salary_definitions", [])
-        payroll_rules = payload.get("payroll_rules", [])
-
         return {
             "status": "valid",
             "warnings": warnings,
-            "preview": {
-                "employees_sql": emit_employees_sql(workspace_id, employees),
-                "salary_definitions_sql": emit_salary_definitions_sql(
-                    workspace_id, salary_definitions
-                ),
-                "payroll_rules_sql": emit_payroll_rules_sql(
-                    workspace_id, payroll_rules
-                ),
-            },
         }
 
     except Exception as e:
