@@ -79,6 +79,7 @@ from backend.infra.repositories.payroll_result_repo import get_employee_context_
 from backend.infra.json_utils import sanitize_jsonb as _sanitize
 from backend.infra.repositories.rate_code_repo import list_rate_codes
 from backend.application.snapshot_service import validate_snapshot_complete
+from backend.application.rule_set_service import resolve_effective_rules
 
 
 def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
@@ -309,25 +310,17 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
             original_snapshot.get("rule_set", {}).get("effective_from")
         )
     else:
-        rule_rows = db.execute(
-            text("""
-                SELECT rule_id, rule_name, rule_definition_json, is_active
-                FROM   payroll_rule
-                WHERE  is_active    = TRUE
-                  AND  workspace_id = :wid
-            """),
-            {"wid": workspace_id},
-        ).fetchall()
+        resolved_rules = resolve_effective_rules(db, workspace_id, period_end, active_only=True)
 
-        payroll_rule_ids = [str(r[0]) for r in rule_rows]
+        payroll_rule_ids = [r["rule_id"] for r in resolved_rules]
         payroll_rules_full = [
             {
-                "rule_id":              str(r[0]),
-                "rule_name":            r[1],
-                "rule_definition_json": r[2],
-                "is_active":            r[3],
+                "rule_id":              r["rule_id"],
+                "rule_name":            r["rule_name"],
+                "rule_definition_json": r["rule_definition_json"],
+                "is_active":            True,
             }
-            for r in rule_rows
+            for r in resolved_rules
         ]
         current_rule_set_effective_from = None
 

@@ -19,6 +19,35 @@ class RuleSetLockedError(Exception):
     """Rule set for the given date is referenced by a payroll_run and cannot be replaced."""
 
 
+def resolve_effective_rules(db, workspace_id: str, as_of_date, active_only: bool = False) -> list:
+    """Return the latest payroll_rule row per rule_name effective on or before as_of_date.
+
+    Shared by every "give me the applicable rule set for this workspace as of
+    this date" call site (current-period run resolution, retry, and the
+    legacy/no-rule_set-published cross-period fallback) so the resolution rule
+    only needs to change in one place.
+
+    Returns rows shaped (rule_id, rule_name, rule_definition_json, rule_type).
+    """
+    active_clause = "AND is_active = TRUE" if active_only else ""
+    rows = db.execute(
+        text(f"""
+            SELECT DISTINCT ON (rule_name)
+                rule_id, rule_name, rule_definition_json, rule_type
+            FROM payroll_rule
+            WHERE workspace_id = :wid
+              AND effective_from <= :as_of_date
+              {active_clause}
+            ORDER BY rule_name, effective_from DESC
+        """),
+        {"wid": workspace_id, "as_of_date": as_of_date},
+    ).fetchall()
+    return [
+        {"rule_id": str(r[0]), "rule_name": r[1], "rule_definition_json": r[2], "rule_type": r[3]}
+        for r in rows
+    ]
+
+
 def auto_publish(db, workspace_id: str, effective_from: date, created_by_uuid: str | None = None) -> str:
     """Snapshot all active payroll_rule rows for workspace into a rule_set.
 

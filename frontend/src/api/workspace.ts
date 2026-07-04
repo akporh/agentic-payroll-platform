@@ -181,6 +181,20 @@ export const workspaceApi = {
       }[];
     }>(`/${workspaceId}/payroll/input-codes`),
 
+  // Date-aware variant — resolves the rate effective as of each requested
+  // reference date, instead of whichever rule row happens to be is_active.
+  getInputCodesByDate: (workspaceId: string, referenceDates: string[]) =>
+    api.post<{
+      input_codes: Record<string, {
+        code: string;
+        category: string;
+        rule_name: string;
+        calculation_method: string;
+        rule_rate?: number | null;
+        rule_amount?: number | null;
+      }[]>;
+    }>(`/${workspaceId}/payroll/input-codes/by-date`, { reference_dates: referenceDates }),
+
   // PH-6 — Workspace Payroll Config
   getPayrollConfig: (workspaceId: string) =>
     api.get<WorkspacePayrollConfig>(`/workspaces/${workspaceId}/payroll-config`),

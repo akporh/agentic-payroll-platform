@@ -356,7 +356,7 @@ def apply_payroll_rules(
                 if not _single_group:
                     group_notes = [
                         f"{g['qty']}d@{eff_wd}wd"
-                        f"{'(historical, rule_set ' + str(g['meta']['rule_set_id']) + ')' if g['meta']['resolution_source'] == 'historical' else ''}"
+                        f"{'(historical, rule_set ' + (str(g['meta']['rule_set_id']) if g['meta']['rule_set_id'] is not None else 'legacy') + ')' if g['meta']['resolution_source'] == 'historical' else ''}"
                         f"{'(current fallback — no history)' if g['meta']['resolution_source'] == 'current_fallback' else ''}"
                         for (eff_wd, eff_cd), g in _groups.items()
                     ]

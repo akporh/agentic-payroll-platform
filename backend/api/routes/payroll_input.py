@@ -13,6 +13,7 @@ contains an `input_field` key contributes one valid code; the rule_type
 import logging
 from datetime import date
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from psycopg2.errors import UniqueViolation
@@ -75,6 +76,22 @@ def _load_workspace_input_codes(db, workspace_id: str) -> dict:
     return codes
 
 
+def _shape_input_code(rule_name: str, defn: dict | None, rule_type: str | None) -> dict | None:
+    """Build the input-code entry for a rule, or None if it has no input_field."""
+    defn = defn or {}
+    input_field = defn.get("input_field")
+    if not input_field:
+        return None
+    return {
+        "code":               input_field,
+        "category":           rule_type or "EARNING",
+        "rule_name":          rule_name,
+        "calculation_method": defn.get("calculation_method", ""),
+        "rule_rate":          defn.get("rate"),
+        "rule_amount":        defn.get("amount"),
+    }
+
+
 @router.get("/{workspace_id}/payroll/input-codes")
 def list_input_codes(workspace_id: str):
     """Return valid input codes for the workspace, derived from active payroll rules.
@@ -95,20 +112,60 @@ def list_input_codes(workspace_id: str):
             {"wid": workspace_id},
         ).fetchall()
 
-        codes = []
-        for rule_name, defn, rule_type in rows:
-            input_field = (defn or {}).get("input_field")
-            if input_field:
-                codes.append({
-                    "code":               input_field,
-                    "category":           rule_type or "EARNING",
-                    "rule_name":          rule_name,
-                    "calculation_method": (defn or {}).get("calculation_method", ""),
-                    "rule_rate":          (defn or {}).get("rate"),
-                    "rule_amount":        (defn or {}).get("amount"),
-                })
+        codes = [
+            shaped
+            for rule_name, defn, rule_type in rows
+            if (shaped := _shape_input_code(rule_name, defn, rule_type)) is not None
+        ]
 
         return {"input_codes": codes}
+    finally:
+        db.close()
+
+
+class InputCodesByDateSchema(BaseModel):
+    model_config = {"extra": "forbid"}
+    reference_dates: list[str] = Field(max_length=200)
+
+
+@router.post("/{workspace_id}/payroll/input-codes/by-date")
+def list_input_codes_by_date(workspace_id: str, payload: InputCodesByDateSchema):
+    """Return input codes with rates resolved as of each requested reference date.
+
+    Unlike GET /payroll/input-codes (which returns whichever payroll_rule row
+    happens to be flagged is_active, with no date awareness), this resolves the
+    rule version that was actually effective on each requested date — the
+    latest effective_from <= that date. Used by the Payroll Inputs page so a
+    historical input shows the rate that applied at the time, not today's rate.
+
+    Does not filter on is_active: a version can be the historically-correct
+    resolution for a past date even if a newer version now supersedes it.
+    """
+    ref_dates = sorted({_parse_period_date(d) for d in payload.reference_dates})
+
+    db = SessionLocal()
+    try:
+        if not ref_dates:
+            return {"input_codes": {}}
+
+        rows = db.execute(
+            text("""
+                SELECT DISTINCT ON (rule_name, ref_date)
+                    rule_name, ref_date, rule_definition_json, rule_type
+                FROM payroll_rule, UNNEST(CAST(:reference_dates AS date[])) AS ref_date
+                WHERE workspace_id = :wid AND effective_from <= ref_date
+                ORDER BY rule_name, ref_date, effective_from DESC
+            """),
+            {"wid": workspace_id, "reference_dates": ref_dates},
+        ).fetchall()
+
+        input_codes: dict = {str(d): [] for d in ref_dates}
+        for rule_name, ref_date, defn, rule_type in rows:
+            shaped = _shape_input_code(rule_name, defn, rule_type)
+            if shaped is not None:
+                input_codes[str(ref_date)].append(shaped)
+
+        return {"input_codes": input_codes}
     finally:
         db.close()
 
