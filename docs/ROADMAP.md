@@ -861,9 +861,31 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 
 **No migration.** All three fixes are query-logic changes only.
 
-**Deferred to Sprint B (not started, needs another `/architect` pass):** retiring `is_active` as a stored "current version" flag, a usage-based `locked_at` lock replacing today's soft-delete, a deletion audit log, and remediation of the existing soft-deleted-row backlog. Full punch list in `handoff_note.md` — the last `/arch-council` pass (4th) found the lock mechanism's write path (`auto_publish`) never populates the field it depends on, among other gaps.
+**Sprint B — PARKED (5th `/architect` pass, 2026-07-04):** re-verified against fresh code reads that the correctness problem motivating the lock/audit/hard-delete design (D1 — multiple `payroll_rule` rows can be `is_active=TRUE` at once) is already neutralised by Sprint A: every live resolution call site is now date-driven (`DISTINCT ON` + `effective_from <=` ordering), so ambiguous active rows can no longer produce a wrong calculation, regardless of how the data got that way. `source_rule_id` was confirmed to not exist anywhere in code (the v3 proposal was never implemented — nothing to backfill). A proper rule-lifecycle state machine (`DRAFT → CURRENT → SUPERSEDED → WITHDRAWN`, replacing the plain `is_active` boolean) was discussed as a UI-clarity improvement only — not a correctness fix — and parked at the user's decision. If revived, it is a UI/reporting feature, not a bug fix, and does not need the `locked_at`/audit-log apparatus. Full punch list and rationale in `handoff_note.md`.
 
 **Retro lessons:** original bug report was mis-diagnosed twice before the actual defective query (`payroll_input.py`'s `list_input_codes`, flat/no-date-filter) was found — worth checking the literal endpoint behind a UI bug report before designing a fix around adjacent, real-but-different defects found during investigation. Two independent architecture reviewers (architect + principal engineer) run in sequence across 4 design iterations caught issues each other's summaries alone would have missed.
+
+---
+
+## Sprint B-UI — Payroll Rule Versioning Copy Cleanup
+
+**Sprint date:** 2026-07-05
+**Sprint goal:** Fix stale UI copy and controls on the Payroll Rules tab left over from before rule resolution became date-driven (Sprint A) and before auto-publish replaced the manual Publish Rule Set flow (RULE-VER-3). Scoped via `/pm`, UX-checked via `/ux-designer`, reviewed via `/frontend-designer`. No backend or schema change.
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| B-UI-1 | Removed the Activate/Deactivate toggle on payroll rules (misleadingly implied `is_active` means "currently in effect") | ✅ |
+| B-UI-2 | Replaced it with a standalone, one-way "Withdraw" trash-icon action — same pattern as the existing Custom Allowances card, now shared via one generalized `ConfirmDialog` ("Withdraw this rule?" / confirm label "Withdraw Rule") | ✅ |
+| B-UI-3 | Fixed `handleRuleDeleteConfirm` to update `is_active: false` in place instead of filtering the row out of the list — a withdrawn rule now stays visible with a new `WITHDRAWN` `StatusBadge` (added to `design-system/components/Status.tsx`), matching the backend's soft-delete/audit-preserved model | ✅ |
+| B-UI-4 | Removed the stale "rule changes take effect only after the rule set is re-published… Go to Workspace Setup →" banner — dead advice since RULE-VER-3 removed the manual publish flow | ✅ |
+| B-UI-5 | Rewrote the Status column tooltip to describe date-driven resolution instead of implying active/inactive means current/not-current | ✅ |
+| — | "Current version" label in the Update Rule modal — reviewed and confirmed NOT a defect (row-scoped, correct); dropped from scope | Not needed |
+
+**Files changed:** `frontend/src/pages/WorkspaceConfig.tsx`, `frontend/src/design-system/components/Status.tsx`.
+
+**`/frontend-designer` found and fixed:** the new and pre-existing icon-only Withdraw buttons had no padding (~14×14px tap target, below the house 44×44px minimum for icon-only buttons, per the Sprint 26 finding) — fixed with `min-w-[44px] min-h-[44px]` + flex centering on both instances.
+
+**Also confirmed correct (excluded from this commit):** an unrelated, unrequested uncommitted change was found in `frontend/src/pages/PayrollInputsBulkUpload.tsx` during this session — it reverts the native bulk-upload quantity calculation back to the "cell = quantity" assumption that Sprint 27 explicitly overturned (`docs/design/ui-decisions.md:179-184`, "Decided: Sprint 27 (overturned original 'cell = quantity' assumption)"). Left untouched in the working tree at the user's request — being handled separately, not part of Sprint B-UI.
 
 ---
 
