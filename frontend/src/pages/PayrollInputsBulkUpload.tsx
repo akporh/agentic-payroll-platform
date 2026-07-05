@@ -218,8 +218,8 @@ export function PayrollInputsBulkUpload() {
   // ── Native upload helpers (wide format: one column per input type × period) ───
   //
   // Column headers encode: "THE MONTH OF {MONTH} {YEAR} {INPUT TYPE} @ N{AMOUNT}"
-  // Each non-empty cell = total amount paid → quantity = cell_value / payroll_rule_amount.
-  // The @AMOUNT in the header IS the payroll rule rate (operator copies it from the rule).
+  // Each non-empty cell IS the literal quantity — the @AMOUNT in the header (the
+  // payroll rule rate) is informational only and is not divided out.
 
   const INPUT_REQUIRED_TARGETS = useMemo(() => [
     { value: '__employee_no__', label: 'Employee Number / ID' },
@@ -299,12 +299,10 @@ export function PayrollInputsBulkUpload() {
         const numVal = parseFloat(raw);
         if (isNaN(numVal) || numVal <= 0) continue;
 
-        // quantity = cell_value / header_rate (@N1000.00 in the column header)
-        const { period, amount: headerRate } = parseInputColumnHeader(m.detectedHeader);
+        // Cell holds the literal quantity — the @N{rate} in the header is not divided out.
+        const { period } = parseInputColumnHeader(m.detectedHeader);
         const reference_date = period ? `${period}-01` : undefined;
-        const quantity = headerRate && headerRate > 0
-          ? parseFloat((numVal / headerRate).toFixed(4))
-          : numVal;
+        const quantity = numVal;
 
         parsedRows.push({ employee_number, input_code: m.proposedTarget!, quantity, reference_date });
       }
