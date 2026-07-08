@@ -184,6 +184,14 @@ export function TopBar({
             >
               System Reference ↗
             </a>
+            <a
+              href="/architecture/agent-layer-architecture.html"
+              target="_blank"
+              rel="noreferrer"
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100"
+            >
+              Agent Architecture ↗
+            </a>
             <button className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Sign out</button>
           </div>
         )}
