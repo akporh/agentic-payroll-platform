@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Payroll Platform — Architecture Document</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.6/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232635;
+    --border: #2e3147;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --success: #22c55e;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --info: #38bdf8;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --tag-bg: #1e2235;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .header-left h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  .header-left p {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .pill-revision { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .pill-approved { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+  .pill-planned  { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+
+  /* ── Tab Nav ── */
+  .tab-nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tab-nav::-webkit-scrollbar { display: none; }
+
+  .tab-btn {
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+  /* ── Content ── */
+  .content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Section components ── */
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: -0.02em;
+  }
+
+  .section-subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 28px;
+    max-width: 700px;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 32px 0;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-body {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  /* ── Diagram boxes ── */
+  .diagram-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    margin: 20px 0;
+    overflow: hidden;
+  }
+
+  .diagram-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .diagram-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .diagram-inner {
+    padding: 24px;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+  }
+
+  .diagram-inner .mermaid {
+    min-width: 100%;
+  }
+
+  /* ── Grid layouts ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .content { padding: 20px 16px; }
+    .header { padding: 16px 20px; }
+  }
+
+  /* ── Blocking conditions ── */
+  .blocking-list { list-style: none; }
+
+  .blocking-item {
+    display: flex;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .blocking-item:last-child { border-bottom: none; }
+
+  .blocking-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .blocking-item.resolved .blocking-num {
+    background: rgba(34,197,94,0.2);
+    color: #86efac;
+  }
+
+  .blocking-text strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
+  .blocking-text span { color: var(--text-muted); font-size: 12px; }
+
+  /* ── Decision table ── */
+  .decision-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .decision-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .decision-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+
+  .decision-table tr:last-child td { border-bottom: none; }
+  .decision-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .decision-table td.muted { color: var(--text-muted); }
+  .decision-table td code {
+    background: var(--tag-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+  }
+
+  /* ── Phase timeline ── */
+  .phase-timeline {
+    display: flex;
+    gap: 0;
+    margin: 24px 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .phase-block {
+    flex: 1;
+    padding: 16px;
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    text-decoration: none;
+  }
+
+  .phase-block:last-child { border-right: none; }
+  .phase-block:hover { background: rgba(255,255,255,0.04); }
+
+  .phase-block.current { background: rgba(99,102,241,0.08); border-bottom: 2px solid var(--accent); }
+
+  .phase-block-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .phase-block-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .phase-block-items {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* ── Track pills ── */
+  .track-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .track-P { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .track-V { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .track-W { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+  .track-X { background: rgba(34,197,94,0.15); color: #86efac; }
+  .track-Y { background: rgba(56,189,248,0.15); color: #7dd3fc; }
+
+  /* ── Story rows ── */
+  .story-list { list-style: none; }
+
+  .story-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .story-row:last-child { border-bottom: none; }
+  .story-id { color: var(--text-dim); font-family: monospace; font-size: 12px; width: 36px; flex-shrink: 0; margin-top: 1px; }
+  .story-text { flex: 1; color: var(--text); }
+  .story-note { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+  .story-tag { flex-shrink: 0; }
+
+  /* ── Gap tag ── */
+  .gap { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .gap-critical { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .gap-high    { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .gap-medium  { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+
+  /* ── Callout ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    background: rgba(99,102,241,0.06);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 16px 0;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .callout.warn { border-color: var(--warn); background: rgba(245,158,11,0.06); }
+  .callout.danger { border-color: var(--danger); background: rgba(239,68,68,0.06); }
+  .callout.success { border-color: var(--success); background: rgba(34,197,94,0.06); }
+
+  .callout strong { color: var(--text); }
+
+  /* Mermaid theming */
+  .mermaid svg { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     HEADER
+══════════════════════════════════════ -->
+<header class="header">
+  <div class="header-left">
+    <h1>Agentic Payroll Platform — Agent Layer Architecture</h1>
+    <p>Phase 2 intelligent layer design · Arch-council reviewed 2026-06-11</p>
+  </div>
+  <span class="status-pill pill-revision">● NEEDS REVISION</span>
+</header>
+
+<!-- ══════════════════════════════════════
+     TAB NAV
+══════════════════════════════════════ -->
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('overview',this)">Overview</button>
+  <button class="tab-btn" onclick="showTab('asis',this)">As-Is Architecture</button>
+  <button class="tab-btn" onclick="showTab('track-p',this)"><span class="track-pill track-P">P</span> Auth Pre-req</button>
+  <button class="tab-btn" onclick="showTab('track-v',this)"><span class="track-pill track-V">V</span> Agent Foundation</button>
+  <button class="tab-btn" onclick="showTab('track-w',this)"><span class="track-pill track-W">W</span> Chat Agent (2A)</button>
+  <button class="tab-btn" onclick="showTab('track-x',this)"><span class="track-pill track-X">X</span> Proactive Agents (2B)</button>
+  <button class="tab-btn" onclick="showTab('track-y',this)"><span class="track-pill track-Y">Y</span> Autonomous (2C)</button>
+  <button class="tab-btn" onclick="showTab('decisions',this)">Key Decisions</button>
+</nav>
+
+<!-- ══════════════════════════════════════
+     CONTENT
+══════════════════════════════════════ -->
+<main class="content">
+
+<!-- ── OVERVIEW ── -->
+<section id="overview" class="tab-panel active">
+  <h2 class="section-title">Phase 2 Agent Layer</h2>
+  <p class="section-subtitle">AI-powered operator assistant built on top of the deterministic payroll engine. Agents reason over engine outputs — they do not replace deterministic rules.</p>
+
+  <!-- Phase timeline -->
+  <div class="phase-timeline">
+    <div class="phase-block">
+      <div class="phase-block-label">Phase 1 (current)</div>
+      <div class="phase-block-title">Deterministic Engine</div>
+      <div class="phase-block-items">Rule-based payroll · PAYE · Pension · NHF · Timesheet derivation</div>
+    </div>
+    <div class="phase-block current">
+      <div class="phase-block-label">Track P · Pre-req</div>
+      <div class="phase-block-title">Authentication</div>
+      <div class="phase-block-items">JWT auth · operator_id · workspace_id from token · audit identity</div>
+    </div>
+    <div class="phase-block">
+      <div class="phase-block-label">Track V · Foundation</div>
+      <div class="phase-block-title">Event + Tool Layer</div>
+      <div class="phase-block-items">Outbox · missing events · PII sanitisation · tool definitions · notifications</div>
+    </div>
+    <div class="phase-block">
+      <div class="phase-block-label">Tracks W → X · 2A+2B</div>
+      <div class="phase-block-title">Chat + Proactive</div>
+      <div class="phase-block-items">Operator chat · Vercel AI Gateway · GPT-4o fallback · prep · recon · trace agents</div>
+    </div>
+    <div class="phase-block">
+      <div class="phase-block-label">Track Y · 2C</div>
+      <div class="phase-block-title">Autonomous</div>
+      <div class="phase-block-items">Compliance monitoring · guided onboarding · email notifications</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top: 24px;">
+    <!-- Blocking conditions -->
+    <div class="card">
+      <div class="card-title">
+        <span style="color:var(--danger)">⊗</span> Blocking Conditions (5)
+      </div>
+      <ul class="blocking-list">
+        <li class="blocking-item">
+          <span class="blocking-num">1</span>
+          <div class="blocking-text">
+            <strong>No authentication system</strong>
+            <span><code>performed_by = "admin@internal"</code> hardcoded. workspace_id from request body, not JWT. Track P resolves.</span>
+          </div>
+        </li>
+        <li class="blocking-item">
+          <span class="blocking-num">2</span>
+          <div class="blocking-text">
+            <strong>NDPR data residency</strong>
+            <span>Employee PII (name, TIN, RSA, bank) must not reach Anthropic. PII sanitisation contract in Track V resolves.</span>
+          </div>
+        </li>
+        <li class="blocking-item">
+          <span class="blocking-num">3</span>
+          <div class="blocking-text">
+            <strong>Transactional outbox + event gaps</strong>
+            <span>Events written post-commit (fire-and-forget). Reconciliation MISMATCH, enrollment, status changes have no events. Track V resolves.</span>
+          </div>
+        </li>
+        <li class="blocking-item">
+          <span class="blocking-num">4</span>
+          <div class="blocking-text">
+            <strong>explain_component_trace must use structured slot-filling</strong>
+            <span>LLM must not introduce numbers not sourced from trace data. Tool design constraint, not a prompt instruction. Track V resolves.</span>
+          </div>
+        </li>
+        <li class="blocking-item">
+          <span class="blocking-num">5</span>
+          <div class="blocking-text">
+            <strong>agent_session_log must wait for auth</strong>
+            <span>Placeholder operator_id audit trail is worse than none. Ships after Track P.</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Technology decisions -->
+    <div>
+      <div class="card">
+        <div class="card-title">Technology Decisions</div>
+        <table class="decision-table">
+          <tbody>
+            <tr><td>Primary LLM (chat)</td><td class="muted">Claude Sonnet 4.6</td></tr>
+            <tr><td>Primary LLM (investigation)</td><td class="muted">Claude Opus 4.8</td></tr>
+            <tr><td>Fallback LLM</td><td class="muted">GPT-4o (auto-reroute, silent)</td></tr>
+            <tr><td>LLM routing</td><td class="muted">Vercel AI Gateway</td></tr>
+            <tr><td>Task queue</td><td class="muted">APScheduler (no Celery)</td></tr>
+            <tr><td>Conversation history</td><td class="muted">Ephemeral session + audit log</td></tr>
+            <tr><td>workspace_id source</td><td class="muted">JWT only — never message content</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <strong>Write actions in Phase 2B:</strong> service-layer <code>pending_action_id</code> + structured confirmation UI component. Natural-language "yes" in chat is not sufficient confirmation for financial mutations.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── AS-IS ── -->
+<section id="asis" class="tab-panel">
+  <h2 class="section-title">As-Is Architecture</h2>
+  <p class="section-subtitle">Current state — synchronous request-response, write-only events, no authentication. Documented from codebase audit 2026-06-11.</p>
+
+  <!-- System overview -->
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">System Overview — Current State</span>
+      <span class="status-pill pill-revision" style="font-size:10px;">No Auth · Write-Only Events</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    subgraph Frontend
+        UI[Pages and Components]
+    end
+    subgraph Backend
+        Routes[API Routes]
+        Services[Application Services]
+        Domain[Domain Logic Pure]
+        Repos[Repositories Raw SQL]
+    end
+    subgraph Database
+        Tables[(Payroll Tables)]
+        EventStore[(event store write only)]
+        AuditLog[(audit log write only)]
+    end
+    UI -->|no JWT workspace from body| Routes
+    Routes --> Services
+    Services --> Domain
+    Services --> Repos
+    Repos --> Tables
+    Services -->|after commit fire and forget| EventStore
+    Services -->|after commit fire and forget| AuditLog
+    style EventStore fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+    style AuditLog fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Auth gap -->
+    <div class="diagram-box">
+      <div class="diagram-header">
+        <span class="diagram-label">Auth Gap — Identity is a String Literal</span>
+      </div>
+      <div class="diagram-inner">
+        <div class="mermaid">
+graph LR
+    Req[HTTP Request] -->|workspace from body| Route[API Route]
+    Req -->|X-Performed-By optional| Route
+    Route -->|performed by hardcoded| DB[(Database)]
+    Route -->|workspace id untrusted| DB
+    style Route fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+      </div>
+      </div>
+    </div>
+
+    <!-- Event gap -->
+    <div class="diagram-box">
+      <div class="diagram-header">
+        <span class="diagram-label">Event Store — Write-Only, No Consumer</span>
+      </div>
+      <div class="diagram-inner">
+        <div class="mermaid">
+graph TB
+    Transition[State Transition] -->|DB commit| DB[(payroll run)]
+    DB -->|after commit may be lost| ES[(event store)]
+    ES --> Void[no consumer]
+    Missing[Missing events] -.->|not emitted| ES
+    style ES fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+    style Void fill:#1a1a1a,stroke:#333,color:#555
+    style Missing fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gaps register -->
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">As-Is Gap Register</div>
+    <ul class="story-list">
+      <li class="story-row">
+        <span class="story-id">GAP-1</span>
+        <div class="story-text">No authentication — <code>performed_by = "admin@internal"</code> hardcoded in service layer; workspace_id from request body<div class="story-note">Affects: every route, every audit log row, every event_store entry</div></div>
+        <span class="gap gap-critical">Critical</span>
+      </li>
+      <li class="story-row">
+        <span class="story-id">GAP-2</span>
+        <div class="story-text">Event store is write-only — no consumer, no dispatcher, no reaction logic<div class="story-note">events exist in the DB but have zero downstream effect</div></div>
+        <span class="gap gap-critical">Critical</span>
+      </li>
+      <li class="story-row">
+        <span class="story-id">GAP-3</span>
+        <div class="story-text">Missing events: reconciliation MISMATCH, employee enrollment, status change (ACTIVE/INACTIVE), payroll input submitted<div class="story-note">Proactive agents in Phase 2B cannot trigger without these events</div></div>
+        <span class="gap gap-critical">Critical</span>
+      </li>
+      <li class="story-row">
+        <span class="story-id">GAP-4</span>
+        <div class="story-text">Events written post-commit (fire-and-forget) — process crash between commit and event write causes silent event loss<div class="story-note">Transactional outbox pattern required</div></div>
+        <span class="gap gap-high">High</span>
+      </li>
+      <li class="story-row">
+        <span class="story-id">GAP-5</span>
+        <div class="story-text">No background task infrastructure — payroll execution is a blocking HTTP call; no async processing<div class="story-note">APScheduler required for event consumer worker</div></div>
+        <span class="gap gap-high">High</span>
+      </li>
+      <li class="story-row">
+        <span class="story-id">GAP-6</span>
+        <div class="story-text">No notification layer — agents can find problems but have nowhere to surface them proactively<div class="story-note">Required before Phase 2B proactive agents</div></div>
+        <span class="gap gap-high">High</span>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── TRACK P ── -->
+<section id="track-p" class="tab-panel">
+  <h2 class="section-title"><span class="track-pill track-P">P</span> Track P — Authentication</h2>
+  <p class="section-subtitle">Pre-requisite for all of Phase 2 AND for Phase 1 route hardening. Resolves GAP-1. Also closes Track I #35 (P2-2) and Q7 (no actor identity) from the payroll backlog.</p>
+
+  <div class="callout danger">
+    <strong>Gate:</strong> No Phase 2A sprint begins until Track P is complete and verified. Every agent tool call, every audit log entry, and every workspace isolation guarantee depends on this.
+  </div>
+
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">To-Be: After Track P — Verified Identity Everywhere</span>
+      <span class="status-pill pill-planned" style="font-size:10px;">⬜ Not Started</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    subgraph AuthFlow[Authentication Flow]
+        Login[POST auth login] -->|verify| OperatorTable[(operator table)]
+        OperatorTable -->|sign| JWT[JWT Token]
+    end
+    subgraph Protected[Every Protected Route]
+        Request[HTTP Request] --> Dep[get current operator]
+        Dep -->|decode and verify| Claims[verified claims]
+        Claims --> Handler[Route Handler]
+        Handler -->|workspace from JWT only| DB[(Database)]
+        Handler -->|performed by from token| AuditLog[(audit log)]
+    end
+    JWT --> Request
+    style Claims fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+    style AuditLog fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Stories</div>
+      <ul class="story-list">
+        <li class="story-row">
+          <span class="story-id">P1</span>
+          <div class="story-text"><code>operator</code> table — id, workspace_id, email, role, password_hash<div class="story-note">Stable identity anchor for all downstream audit writes</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">P2</span>
+          <div class="story-text"><code>POST /auth/login</code> → JWT with workspace_id + operator_id claims</div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">P3</span>
+          <div class="story-text">FastAPI <code>get_current_operator</code> dependency — injected into all routes<div class="story-note">Replaces hardcoded "admin@internal"</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">P4</span>
+          <div class="story-text">workspace_id extracted from JWT in all routes — never from request body<div class="story-note"><strong>Non-negotiable invariant</strong></div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">P5</span>
+          <div class="story-text">performed_by populated from JWT identity across all audit writes and state transitions<div class="story-note">Closes Track I #35 (P2-2) and Q7 atomically</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">P6</span>
+          <div class="story-text">Session workspace_id locked from JWT at chat session creation — new session required on workspace switch</div>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">What This Unblocks</div>
+        <div class="card-body">
+          <ul style="margin-left:16px; line-height:2.2;">
+            <li>Track I #35 — real identity in performed_by (P2-2)</li>
+            <li>Q7 — actor identity on timesheet state transitions</li>
+            <li>agent_session_log (W5) — operator_id is now real</li>
+            <li>Workspace isolation guarantee for all agent tool calls</li>
+            <li>Meaningful audit trail for payroll dispute resolution</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout success" style="margin-top:16px;">
+        <strong>Scope discipline:</strong> Role-based permissions, MFA, and SSO are deferred. This sprint delivers minimum viable auth — verified identity and workspace isolation only.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRACK V ── -->
+<section id="track-v" class="tab-panel">
+  <h2 class="section-title"><span class="track-pill track-V">V</span> Track V — Agent Foundation</h2>
+  <p class="section-subtitle">Transforms the write-only event system into a reactive foundation. Closes all event gaps. Establishes the tool layer and PII sanitisation contract that every agent depends on.</p>
+
+  <!-- Outbox pattern -->
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">V1+V2 — Transactional Outbox + Event Gap Closure</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph LR
+    Change[State Change] -->|same transaction| Outbox[(outbox table)]
+    Outbox --> Poll[Poll outbox]
+    Poll -->|move| ES[(event store)]
+    Poll -->|mark done| Processed[processed at]
+    E1[reconciliation MISMATCH] -.->|via outbox| Outbox
+    E2[employee ENROLLED] -.->|via outbox| Outbox
+    E3[employee STATUS CHANGED] -.->|via outbox| Outbox
+    E4[payroll input SUBMITTED] -.->|via outbox| Outbox
+    subgraph Transaction[Single DB Transaction]
+        Change
+        Outbox
+    end
+    subgraph Relay[Relay Worker APScheduler]
+        Poll
+        Processed
+        ES
+    end
+    subgraph NewEvents[New Events V2]
+        E1
+        E2
+        E3
+        E4
+    end
+    style ES fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+    style Outbox fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <!-- Tool layer + PII -->
+  <div class="diagram-box" style="margin-top:16px;">
+    <div class="diagram-header">
+      <span class="diagram-label">V4+V5 — PII Sanitisation + Tool Layer</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    Agent[LLM Agent] -->|tool call via JWT| ToolDef[Tool Definition]
+    ToolDef -->|SQL workspace scoped| DB[(PostgreSQL)]
+    DB -->|raw row| Serialiser[Tool Serialiser]
+    Serialiser --> S1[full name]
+    Serialiser --> S2[tin]
+    Serialiser --> S3[rsa pin]
+    Serialiser --> S4[bank account]
+    Serialiser --> S5[employee number]
+    Serialiser --> K1[employee id UUID]
+    Serialiser --> K2[amounts as string]
+    Serialiser --> K3[component names]
+    Serialiser --> K4[dates and status]
+    Serialiser --> K5[run id]
+    K1 --> Agent
+    K2 --> Agent
+    K3 --> Agent
+    K4 --> Agent
+    K5 --> Agent
+    FE[Frontend] -->|maps UUID to name| Display[Operator sees name]
+    Agent --> FE
+    subgraph Strip[Stripped before LLM]
+        S1
+        S2
+        S3
+        S4
+        S5
+    end
+    subgraph Keep[Sent to LLM safe]
+        K1
+        K2
+        K3
+        K4
+        K5
+    end
+    style Strip fill:#2a1f1f,stroke:#7f3030,color:#fca5a5
+    style Keep fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title">Tool Definitions (V5) — all read-only</div>
+      <table class="decision-table">
+        <thead><tr><th>Tool</th><th>Result Cap</th></tr></thead>
+        <tbody>
+          <tr><td><code>get_employee</code></td><td class="muted">—</td></tr>
+          <tr><td><code>get_employees</code></td><td class="muted">50 rows</td></tr>
+          <tr><td><code>get_payroll_run</code></td><td class="muted">—</td></tr>
+          <tr><td><code>get_run_results</code></td><td class="muted">100 rows</td></tr>
+          <tr><td><code>explain_component_trace</code></td><td class="muted">slot-fill only</td></tr>
+          <tr><td><code>get_reconciliation</code></td><td class="muted">—</td></tr>
+          <tr><td><code>get_pending_inputs</code></td><td class="muted">200 rows</td></tr>
+          <tr><td><code>get_enrollment_status</code></td><td class="muted">—</td></tr>
+          <tr><td><code>get_statutory_rules</code></td><td class="muted">—</td></tr>
+          <tr><td><code>get_salary_definitions</code></td><td class="muted">50 rows</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">V3 — Event Consumer Worker</div>
+      <div class="card-body" style="margin-bottom:12px;">APScheduler polling loop on <code>event_store</code>. Single-worker constraint: in a multi-uvicorn deployment, the polling loop fires N times without a distributed lock — document and enforce before deploy.</div>
+      <div class="card-title" style="margin-top:16px;">V7 — Notification Layer</div>
+      <div class="card-body"><code>workspace_notification</code> table: workspace_id · operator_id · type · message · entity_ref · read_at · created_at. In-app only in Phase 2A. Email deferred to Track Y.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRACK W ── -->
+<section id="track-w" class="tab-panel">
+  <h2 class="section-title"><span class="track-pill track-W">W</span> Track W — Operator Chat Agent (Phase 2A)</h2>
+  <p class="section-subtitle">Read-only conversational interface. Operators ask questions in natural language; the agent answers using live workspace data. No write capabilities in Phase 2A.</p>
+
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">Chat Agent — Full System Flow</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    subgraph FE[Frontend]
+        Bubble[Chat Bubble] --> Panel[Chat Panel]
+    end
+    subgraph API[Backend Chat API]
+        Auth2[JWT verify] --> CtxInject[Context Injected]
+    end
+    subgraph GW[Vercel AI Gateway]
+        Primary[Claude Sonnet primary]
+        Fallback[GPT-4o fallback]
+        Primary -.->|unavailable| Fallback
+    end
+    subgraph ToolsLayer[Tool Layer V5]
+        T1[get employee]
+        T2[get run results]
+        T3[explain trace]
+        T4[get reconciliation]
+    end
+    subgraph AuditStore[Audit after Track P]
+        SessionLog[(agent session log)]
+    end
+    Panel -->|message plus JWT| Auth2
+    CtxInject --> Primary
+    Primary -->|tool calls| T1
+    Primary -->|tool calls| T2
+    Primary -->|tool calls| T3
+    T1 -->|PII stripped| Primary
+    T2 -->|PII stripped| Primary
+    T3 -->|PII stripped| Primary
+    Primary -->|stream| Panel
+    CtxInject --> SessionLog
+    style Fallback fill:#1a1f2a,stroke:#3d4b6b,color:#7dd3fc
+    style SessionLog fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px;">
+    <!-- Chat modes -->
+    <div class="card">
+      <div class="card-title">Three Agent Modes</div>
+      <ul class="story-list">
+        <li class="story-row">
+          <span class="story-id" style="color:var(--accent2);">①</span>
+          <div class="story-text"><strong>Navigation Guide</strong><div class="story-note">"How do I run payroll for March?" → answer + deep-link to the exact page</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id" style="color:var(--accent2);">②</span>
+          <div class="story-text"><strong>State Explainer</strong><div class="story-note">"Why is Adaobi not in this run?" → agent queries employee status, contract, enrollment; explains in plain English</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id" style="color:var(--accent2);">③</span>
+          <div class="story-text"><strong>Action Planner</strong><div class="story-note">"I need to process a mid-month joiner" → step-by-step sequence contextual to current workspace state</div></div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Sprint breakdown -->
+    <div class="card">
+      <div class="card-title">Sprint Breakdown</div>
+      <ul class="story-list">
+        <li class="story-row">
+          <span class="story-id">W1</span>
+          <div class="story-text">Chat API endpoint — streaming, workspace context injection at session start<div class="story-note">Sprint A2</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">W2</span>
+          <div class="story-text">Vercel AI Gateway — Claude Sonnet primary / GPT-4o fallback / zero-data-retention mode<div class="story-note">Sprint A2 — ships with W1</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">W3</span>
+          <div class="story-text">Rate limiting — N requests per workspace/minute + hard daily ceiling<div class="story-note"><strong>Sprint A2 — non-negotiable, not deferred to A4</strong></div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">W4</span>
+          <div class="story-text">Chat UI — floating bubble, panel, streaming renderer<div class="story-note">Sprint A3</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">W5</span>
+          <div class="story-text">agent_session_log — workspace_id, operator_id, turn_sequence, tool_calls_jsonb, 7yr retention<div class="story-note">Sprint A4 — ships after Track P (operator_id must be real)</div></div>
+        </li>
+        <li class="story-row">
+          <span class="story-id">W6</span>
+          <div class="story-text">Degraded mode UX — graceful copy when both providers unavailable; payroll ops unblocked<div class="story-note">Sprint A4</div></div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Component trace note -->
+  <div class="callout warn" style="margin-top:8px;">
+    <strong>explain_component_trace design constraint:</strong> The LLM fills named slots from structured trace data only. It cannot introduce numeric values not present in the <code>component_trace_jsonb</code> source. This is enforced at the tool serialisation layer — a prompt instruction alone is not a reliable guardrail for numeric reasoning.
+  </div>
+</section>
+
+<!-- ── TRACK X ── -->
+<section id="track-x" class="tab-panel">
+  <h2 class="section-title"><span class="track-pill track-X">X</span> Track X — Proactive Agents (Phase 2B)</h2>
+  <p class="section-subtitle">Event-triggered agents that surface issues before operators discover them manually. First write-capable phase — all mutations require structured confirmation.</p>
+
+  <div class="callout danger" style="margin-bottom:20px;">
+    <strong>Pre-condition before Phase 2B sprint planning:</strong> Confirmation protocol must be fully specified. Mechanism: structured confirmation UI component (not chat reply) showing exact record ID, field, and new value — backed by service-layer <code>pending_action_id</code>. Natural-language "yes" in chat is not sufficient for financial mutations.
+  </div>
+
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">Proactive Agent Architecture — Event-Triggered</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    subgraph Events[Event Store]
+        E1[reconciliation MISMATCH]
+        E2[payroll run CREATED]
+        E3[employee ENROLLED]
+    end
+    subgraph Consumer[Event Consumer]
+        Dispatcher[Event Dispatcher]
+    end
+    subgraph Agents[Proactive Agents]
+        PrepAgent[Prep Agent X2]
+        ReconAgent[Reconciliation Agent X3]
+        TraceAgent[Trace Agent X4]
+    end
+    subgraph ToolsB[Tool Layer]
+        T6[get pending inputs]
+        T7[get enrollment status]
+        T8[get reconciliation]
+        T9[explain trace]
+    end
+    subgraph Confirm[Confirmation Layer]
+        Pending[pending action id]
+        ConfirmUI[Confirmation Component]
+        DB2[(PostgreSQL)]
+    end
+    E1 --> Dispatcher
+    E2 --> Dispatcher
+    E3 --> Dispatcher
+    Dispatcher -->|CREATED| PrepAgent
+    Dispatcher -->|MISMATCH| ReconAgent
+    PrepAgent --> T6
+    PrepAgent --> T7
+    ReconAgent --> T8
+    TraceAgent --> T9
+    PrepAgent -->|issue found| Notif[in-app notification]
+    ReconAgent -->|result and options| Chat[Chat Panel]
+    Chat -->|operator chooses| Pending
+    Pending --> ConfirmUI
+    ConfirmUI -->|operator confirms| DB2
+    style ConfirmUI fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+    style Pending fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title">X2 — Payroll Prep Agent</div>
+      <div class="card-body" style="margin-bottom:12px;"><strong>Trigger:</strong> operator navigates to New Run</div>
+      <ul class="story-list">
+        <li class="story-row"><span class="story-id" style="color:var(--warn);">→</span><div class="story-text">Missing timesheets for enrolled employees</div></li>
+        <li class="story-row"><span class="story-id" style="color:var(--warn);">→</span><div class="story-text">Employees enrolled but no salary definition</div></li>
+        <li class="story-row"><span class="story-id" style="color:var(--warn);">→</span><div class="story-text">Contracts expiring within this pay period</div></li>
+        <li class="story-row"><span class="story-id" style="color:var(--warn);">→</span><div class="story-text">Input quantities anomalous vs previous period</div></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-title">X3 — Reconciliation Investigation Agent</div>
+      <div class="card-body" style="margin-bottom:12px;"><strong>Trigger:</strong> <code>reconciliation.MISMATCH</code> event</div>
+      <div class="card-body">Queries component trace, compares expected vs actual totals, identifies the specific employee + component that caused the delta. Presents plain-English root cause + resolution options. Operator confirms via structured UI component — not chat reply.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRACK Y ── -->
+<section id="track-y" class="tab-panel">
+  <h2 class="section-title"><span class="track-pill track-Y">Y</span> Track Y — Autonomous Agents (Phase 2C)</h2>
+  <p class="section-subtitle">Future state. Agents that operate with minimal operator prompting. Not planned until Phase 2B is proven in production.</p>
+
+  <div class="diagram-box">
+    <div class="diagram-header">
+      <span class="diagram-label">Final State — Full Agent Layer Architecture</span>
+    </div>
+    <div class="diagram-inner">
+      <div class="mermaid">
+graph TB
+    Operator[Payroll Operator] --> ChatUI2[Chat UI]
+    ChatAPI2[Chat API] -->|stream| ChatUI2
+    Engine[Deterministic Engine] -->|state changes| EventInfra[Event Infrastructure]
+    EventInfra -->|events| PrepA[Prep Agent]
+    EventInfra -->|events| ReconA[Recon Agent]
+    PrepA -->|alerts| Operator
+    ReconA -->|alerts| Operator
+    ComplianceA[Compliance Monitoring] -->|proposals| Operator
+    OnboardA[Onboarding Agent] -->|proposals| Operator
+    FIRS[FIRS PenCom] -.->|monitored| ComplianceA
+    ChatAPI2 --> Gateway2[Vercel AI Gateway]
+    PrepA --> Gateway2
+    ReconA --> Gateway2
+    ComplianceA --> Gateway2
+    OnboardA --> Gateway2
+    Gateway2 --> Claude2[Claude primary]
+    Gateway2 -.->|fallback| GPT42[GPT-4o fallback]
+    Auth3[Auth Layer]
+    TraceA[Trace Agent]
+    subgraph Platform[Payroll Platform]
+        Engine
+        EventInfra
+        Auth3
+    end
+    subgraph ChatLayer[Chat Layer W]
+        ChatUI2
+        ChatAPI2
+    end
+    subgraph ProactiveLayer[Proactive Layer X]
+        PrepA
+        ReconA
+        TraceA
+    end
+    subgraph AutonomousLayer[Autonomous Layer Y]
+        ComplianceA
+        OnboardA
+    end
+    subgraph ExternalSvc[External Services]
+        Gateway2
+        Claude2
+        GPT42
+        FIRS
+    end
+    style AutonomousLayer fill:#1a1f2a,stroke:#3d4b6b,color:#7dd3fc
+    style Gateway2 fill:#1a2a1a,stroke:#2d6b2d,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title">Y1 — Compliance Monitoring</div>
+      <div class="card-body">Monitors for FIRS/PenCom statutory rule changes. Compares against current <code>statutory_rule</code> table. Flags delta. Proposes migration. Requires operator approval before applying.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Y2 — Onboarding Agent</div>
+      <div class="card-body">Guided bulk import. Interprets messy Excel. Maps columns. Proposes salary definition assignments. Runs dry-run payroll before committing. Requires confirmed PII handling policy.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Y3 — Email Notifications</div>
+      <div class="card-body">Extends the in-app notification layer (V7) to outbound email. Payroll completion, MISMATCH alerts, compliance flags. Deferred until in-app notifications are proven in production.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── DECISIONS ── -->
+<section id="decisions" class="tab-panel">
+  <h2 class="section-title">Key Decisions</h2>
+  <p class="section-subtitle">All decisions locked by arch-council review on 2026-06-11. Do not contradict when scoping Phase 2 sprints.</p>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">Technology Decisions</div>
+    <table class="decision-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Primary LLM (chat)</td>
+          <td><code>claude-sonnet-4-6</code></td>
+          <td class="muted">Speed + cost appropriate for conversational latency</td>
+        </tr>
+        <tr>
+          <td>Primary LLM (investigation agents)</td>
+          <td><code>claude-opus-4-8</code></td>
+          <td class="muted">Deeper reasoning for component trace + reconciliation investigation</td>
+        </tr>
+        <tr>
+          <td>Fallback LLM</td>
+          <td><code>GPT-4o</code></td>
+          <td class="muted">Auto-reroute on Anthropic unavailability; silent to operator; logged in session</td>
+        </tr>
+        <tr>
+          <td>LLM routing</td>
+          <td>Vercel AI Gateway</td>
+          <td class="muted">Unified API; zero-data-retention mode; per-workspace observability; model fallbacks</td>
+        </tr>
+        <tr>
+          <td>Task queue</td>
+          <td>APScheduler (no Celery)</td>
+          <td class="muted">Current scale does not justify Celery operational overhead; single-worker constraint documented; distributed lock required for multi-process</td>
+        </tr>
+        <tr>
+          <td>Conversation history</td>
+          <td>Ephemeral session + agent_session_log</td>
+          <td class="muted">No full replay; audit trail only; 7-year retention for payroll dispute resolution</td>
+        </tr>
+        <tr>
+          <td>workspace_id source</td>
+          <td>JWT only</td>
+          <td class="muted">Never from message content — prompt injection could shift workspace context with catastrophic cross-client data exposure in a multi-tenant bureau</td>
+        </tr>
+        <tr>
+          <td>Tool granularity</td>
+          <td>Narrow domain-shaped tools</td>
+          <td class="muted">Not generic SQL-like queries — keeps capability surface auditable; prevents LLM constructing arbitrary data access patterns</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">Ordering + Gate Rules</div>
+    <table class="decision-table">
+      <thead>
+        <tr><th>Rule</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Track P before all of Phase 2</td>
+          <td class="muted">No Phase 2A sprint begins until JWT auth is complete and verified</td>
+        </tr>
+        <tr>
+          <td>V1 + V2 together</td>
+          <td class="muted">Transactional outbox and event gap closure ship in the same sprint — outbox alone without new events does not unblock proactive agents</td>
+        </tr>
+        <tr>
+          <td>Rate limiting (W3) ships in Sprint A2</td>
+          <td class="muted">Not deferred to Sprint A4 — unbounded Claude API calls before rate limiting creates cost and DoS risk</td>
+        </tr>
+        <tr>
+          <td>agent_session_log (W5) ships after Track P</td>
+          <td class="muted">Placeholder operator_id audit trail is worse than none</td>
+        </tr>
+        <tr>
+          <td>Phase 2B confirmation protocol</td>
+          <td class="muted">Must be fully specified before Phase 2B sprint planning — mechanism is a structured UI component with service-layer pending_action_id, not a chat reply</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Security Invariants (non-negotiable)</div>
+    <ul class="story-list">
+      <li class="story-row">
+        <span class="story-id" style="color:var(--danger);">⊗</span>
+        <div class="story-text"><strong>workspace_id from JWT only</strong><div class="story-note">Never from message content, request body, or tool call parameters</div></div>
+      </li>
+      <li class="story-row">
+        <span class="story-id" style="color:var(--danger);">⊗</span>
+        <div class="story-text"><strong>PII stripped before LLM context</strong><div class="story-note">name, TIN, RSA pin, bank account, employee_number — removed at tool serialisation layer; UUID-only reference in LLM context</div></div>
+      </li>
+      <li class="story-row">
+        <span class="story-id" style="color:var(--danger);">⊗</span>
+        <div class="story-text"><strong>Tool results as structured JSON envelopes</strong><div class="story-note">Freeform string fields (descriptions, notes) wrapped with labels — never raw interpolation into system prompt</div></div>
+      </li>
+      <li class="story-row">
+        <span class="story-id" style="color:var(--danger);">⊗</span>
+        <div class="story-text"><strong>No write tools in Phase 2A</strong><div class="story-note">Read-only throughout Tracks P and W. Write capability introduced only in Phase 2B with pending_action_id + structured confirmation</div></div>
+      </li>
+      <li class="story-row">
+        <span class="story-id" style="color:var(--danger);">⊗</span>
+        <div class="story-text"><strong>Decimal serialisation in LLM context = string</strong><div class="story-note">NOT float (which is lossy and produces "₦124,999.9999999998"). The existing project JSONB rule (float) does NOT apply to LLM context</div></div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<!-- ══════════════════════════════════════
+     SCRIPT
+══════════════════════════════════════ -->
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    themeVariables: {
+      background: '#1a1d27',
+      primaryColor: '#2e3147',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#3d4160',
+      lineColor: '#4b5280',
+      secondaryColor: '#232635',
+      tertiaryColor: '#1a1d27',
+      edgeLabelBackground: '#1a1d27',
+      clusterBkg: '#1a1d27',
+      clusterBorder: '#2e3147',
+      titleColor: '#e2e8f0',
+      nodeTextColor: '#e2e8f0',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      fontSize: '13px'
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20
+    }
+  });
+
+  function renderDiagrams(panelId) {
+    const panel = document.getElementById(panelId);
+    const nodes = Array.from(panel.querySelectorAll('.mermaid'));
+    if (!nodes.length) return;
+    nodes.forEach(el => {
+      // Preserve source text on first visit (Mermaid replaces it with SVG)
+      if (!el.dataset.src) el.dataset.src = el.textContent.trim();
+      // Restore source so Mermaid has something to parse on re-visit
+      el.textContent = el.dataset.src;
+      el.removeAttribute('data-processed');
+    });
+    mermaid.run({ nodes });
+  }
+
+  function showTab(id, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if (btn) btn.classList.add('active');
+    // Render after the element is visible so Mermaid gets real dimensions
+    requestAnimationFrame(() => renderDiagrams(id));
+  }
+</script>
+</body>
+</html>
