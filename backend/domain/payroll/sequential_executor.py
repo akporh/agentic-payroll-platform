@@ -772,9 +772,11 @@ def run_sequential_payroll(
             trace_entry.update(_extras)
         execution_trace.append(trace_entry)
 
-    # Append percentage_of_sum rule traces (applied + not_applied eligibility decisions)
-    # from the rule evaluator. These include compliance-critical not_applied entries
-    # (C1) and must be in component_trace_jsonb for union audit purposes.
+    # Append ALL rule_evaluator trace entries (unit_multiplier, daily_rate_deduction,
+    # fixed_amount, ot_multiplier, percentage_of_sum — applied + not_applied/eligibility
+    # decisions). These include compliance-critical not_applied entries (C1) and
+    # resolution_source/warning fields needed to audit historical-rate resolution, and
+    # must be in component_trace_jsonb for union audit purposes.
     supplemental = ctx.get("_supplemental_traces") or []
     execution_trace.extend(supplemental)
 

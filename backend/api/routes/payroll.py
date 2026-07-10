@@ -24,6 +24,7 @@ from backend.application.payroll_run_service import execute_and_persist
 from backend.application.snapshot_service import create_payroll_snapshot
 from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
+from backend.application.rule_set_service import resolve_effective_rules
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
 from backend.application.reconciliation_service import reconcile_payroll_run, get_reconciliation_status, resolve_reconciliation
 from backend.infra.repositories.execution_trace_repo import get_trace_steps, get_legacy_executor_stats
@@ -391,24 +392,19 @@ def run_payroll(
         rule_set_effective_from = None
         rule_set_items_for_snapshot = []
 
-        rule_rows = db.execute(text("""
-            SELECT DISTINCT ON (rule_name)
-                rule_id, rule_name, rule_definition_json, is_active
-            FROM payroll_rule
-            WHERE is_active = TRUE
-              AND workspace_id = :workspace_id
-            ORDER BY rule_name, effective_from DESC
-        """), {"workspace_id": workspace_id}).fetchall()
+        resolved_rules = resolve_effective_rules(
+            db, workspace_id, period_ctx.period_end, active_only=True,
+        )
 
-        payroll_rule_ids  = [str(r[0]) for r in rule_rows]
+        payroll_rule_ids  = [r["rule_id"] for r in resolved_rules]
         payroll_rules_full = [
             {
-                "rule_id":              str(r[0]),
-                "rule_name":            r[1],
-                "rule_definition_json": r[2],
-                "is_active":            r[3],
+                "rule_id":              r["rule_id"],
+                "rule_name":            r["rule_name"],
+                "rule_definition_json": r["rule_definition_json"],
+                "is_active":            True,
             }
-            for r in rule_rows
+            for r in resolved_rules
         ]
 
     # --- Load Component Metadata for sequential executor ---
@@ -573,6 +569,29 @@ def run_payroll(
                                 for r in h_items
                             ],
                         }
+                else:
+                    # No rule_set has ever been published for this workspace (legacy,
+                    # pre-versioning) — resolve directly against payroll_rule so
+                    # cross-period/arrears inputs still get the historically-correct
+                    # rate instead of silently falling back to the current one.
+                    synthetic_key = f"legacy:{ref_dt}"
+                    if synthetic_key not in seen_rs_ids:
+                        seen_rs_ids.add(synthetic_key)
+                        legacy_items = resolve_effective_rules(hist_db, workspace_id, ref_dt)
+
+                        if legacy_items:
+                            hist_rs_map[synthetic_key] = {
+                                "id":             None,
+                                "effective_from": str(ref_dt),
+                                "items": [
+                                    {
+                                        "rule_name":            r["rule_name"],
+                                        "rule_definition_json": r["rule_definition_json"],
+                                        "rule_type":            r["rule_type"],
+                                    }
+                                    for r in legacy_items
+                                ],
+                            }
 
                 # Build historical PeriodContext for this month (F5 fix: correct working_days)
                 key = (ref_dt.year, ref_dt.month)
@@ -756,6 +775,24 @@ def run_payroll(
         and Decimal(str(_itf_annual_payroll)) >= Decimal("50000000")
     )
 
+    # ── Rule floor dates — earliest known payroll_rule.effective_from per rule_name ──
+    # Lets the domain layer (rule_evaluator._resolve_rule) distinguish "no rule_set
+    # snapshot covers this historical date" (should not happen once every historical
+    # payroll_rule.effective_from has a snapshot — resolve defensively as before) from
+    # "this rule genuinely never existed this far back for this workspace" (must raise,
+    # per-employee only — see NoHistoricalRuleVersionError). is_active = TRUE only:
+    # a soft-deleted rule version is treated as if it never existed, per decision.
+    _floor_rows = db.execute(
+        text("""
+            SELECT rule_name, MIN(effective_from) AS floor_date
+            FROM payroll_rule
+            WHERE workspace_id = :wid AND is_active = TRUE
+            GROUP BY rule_name
+        """),
+        {"wid": workspace_id},
+    ).fetchall()
+    rule_floor_dates = {r[0]: str(r[1]) for r in _floor_rows}
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -773,6 +810,7 @@ def run_payroll(
         "historical_period_contexts":       historical_period_contexts,
         "current_rule_set_id":              rule_set_id,
         "current_rule_set_effective_from":  rule_set_effective_from,
+        "rule_floor_dates":                 rule_floor_dates,
         # ── PH & OT context (C1 — PH-2, C4 — PH-8) ─────────────────────────
         "expected_hours":                   expected_hours,
         "expected_days":                    expected_days,

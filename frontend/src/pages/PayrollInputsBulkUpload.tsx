@@ -130,7 +130,12 @@ export function PayrollInputsBulkUpload() {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [dropState, setDropState] = useState<DropZoneState>('idle');
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ created: number; skipped?: number; errors: { row: number; detail: string }[] } | null>(null);
+  const [result, setResult] = useState<{
+    created: number;
+    skipped?: number;
+    skipped_detail?: { row: number; employee_number: string; input_code: string; reference_date: string | null }[];
+    errors: { row: number; detail: string }[];
+  } | null>(null);
   const [inputDefs, setInputDefs] = useState<InputCodeDef[]>([]);
   const [inputDefsLoaded, setInputDefsLoaded] = useState(false);
   const [codeMap, setCodeMap] = useState<Map<string, string>>(new Map());
@@ -179,7 +184,12 @@ export function PayrollInputsBulkUpload() {
     setResult(null);
     try {
       const validRows = rows.filter((r) => !r._error).map(({ _error: _e, ...rest }) => rest);
-      const res = await api.post<{ created: number; skipped: number; errors: { row: number; detail: string }[] }>(
+      const res = await api.post<{
+        created: number;
+        skipped: number;
+        skipped_detail: { row: number; employee_number: string; input_code: string; reference_date: string | null }[];
+        errors: { row: number; detail: string }[];
+      }>(
         `/${workspaceId}/payroll/inputs/bulk`,
         { rows: validRows },
       );
@@ -208,8 +218,8 @@ export function PayrollInputsBulkUpload() {
   // ── Native upload helpers (wide format: one column per input type × period) ───
   //
   // Column headers encode: "THE MONTH OF {MONTH} {YEAR} {INPUT TYPE} @ N{AMOUNT}"
-  // Each non-empty cell = total amount paid → quantity = cell_value / payroll_rule_amount.
-  // The @AMOUNT in the header IS the payroll rule rate (operator copies it from the rule).
+  // Each non-empty cell IS the literal quantity — the @AMOUNT in the header (the
+  // payroll rule rate) is informational only and is not divided out.
 
   const INPUT_REQUIRED_TARGETS = useMemo(() => [
     { value: '__employee_no__', label: 'Employee Number / ID' },
@@ -289,12 +299,10 @@ export function PayrollInputsBulkUpload() {
         const numVal = parseFloat(raw);
         if (isNaN(numVal) || numVal <= 0) continue;
 
-        // quantity = cell_value / header_rate (@N1000.00 in the column header)
-        const { period, amount: headerRate } = parseInputColumnHeader(m.detectedHeader);
+        // Cell holds the literal quantity — the @N{rate} in the header is not divided out.
+        const { period } = parseInputColumnHeader(m.detectedHeader);
         const reference_date = period ? `${period}-01` : undefined;
-        const quantity = headerRate && headerRate > 0
-          ? parseFloat((numVal / headerRate).toFixed(4))
-          : numVal;
+        const quantity = numVal;
 
         parsedRows.push({ employee_number, input_code: m.proposedTarget!, quantity, reference_date });
       }
@@ -359,7 +367,12 @@ export function PayrollInputsBulkUpload() {
     try {
       const parseFailures = rows.filter((r) => r._error);
       const valid = rows.filter((r) => !r._error).map(({ _error: _e, ...r }) => r);
-      const res = await api.post<{ created: number; skipped: number; errors: { row: number; detail: string }[] }>(
+      const res = await api.post<{
+        created: number;
+        skipped: number;
+        skipped_detail: { row: number; employee_number: string; input_code: string; reference_date: string | null }[];
+        errors: { row: number; detail: string }[];
+      }>(
         `/${workspaceId}/payroll/inputs/bulk`,
         { rows: valid },
       );
@@ -378,17 +391,26 @@ export function PayrollInputsBulkUpload() {
           status: 'failed' as const,
           error: e.detail,
         })),
+        // Duplicates are intentionally NOT auto-merged or dropped — surfaced so the
+        // operator can go verify against the source file, per product decision.
+        ...(res.skipped_detail || []).map((s) => ({
+          name: `Row ${s.row}`,
+          employee_number: s.employee_number,
+          status: 'skipped' as const,
+          error: `${s.input_code}${s.reference_date ? ` @ ${s.reference_date}` : ''} — already exists`,
+        })),
       ];
 
       const skipped = res.skipped || 0;
       const parts = [];
       if (res.created > 0) parts.push(`${res.created} added`);
       if (skipped > 0) parts.push(`${skipped} already exist — skipped`);
-      if (allFailed.length > 0) parts.push(`${allFailed.length} failed`);
+      const failedCount = allFailed.filter((d) => d.status === 'failed').length;
+      if (failedCount > 0) parts.push(`${failedCount} failed`);
       const message = parts.length > 0 ? parts.join(', ') : 'No inputs processed';
 
       return {
-        success: allFailed.length === 0,
+        success: failedCount === 0,
         message,
         skippedCount: skipped,
         details: allFailed.length > 0 ? allFailed : undefined,
@@ -716,6 +738,58 @@ export function PayrollInputsBulkUpload() {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {/* Duplicates — always visible when present (not gated behind errors), since
+              this is not a validation failure: the operator needs to go verify against
+              the source file whether an apparent duplicate is a real data-entry error.
+              Dedup behaviour itself is unchanged — this is visibility only. */}
+          {result.skipped_detail && result.skipped_detail.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const csv = ['"Row","Employee","Input Code","Reference Date"',
+                    ...result.skipped_detail!.map((s) =>
+                      `"${s.row}","${s.employee_number}","${s.input_code}","${s.reference_date ?? ''}"`
+                    )
+                  ].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = 'upload_duplicates.csv'; a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-md border border-blue-400 bg-white text-sm font-medium text-blue-800 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download duplicates ({result.skipped_detail.length} {result.skipped_detail.length === 1 ? 'row' : 'rows'})
+              </button>
+              <div className="rounded-lg border border-blue-100 overflow-auto max-h-56">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0">
+                    <tr className="bg-blue-50 border-b border-blue-100">
+                      <th className="px-3 py-2 text-left font-semibold text-blue-700 whitespace-nowrap">Row</th>
+                      <th className="px-3 py-2 text-left font-semibold text-blue-700">Employee</th>
+                      <th className="px-3 py-2 text-left font-semibold text-blue-700">Input Code</th>
+                      <th className="px-3 py-2 text-left font-semibold text-blue-700">Reference Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.skipped_detail.map((s, i) => (
+                      <tr key={i} className="border-b border-blue-50 last:border-0">
+                        <td className="px-3 py-2 font-mono text-gray-700">{s.row}</td>
+                        <td className="px-3 py-2 text-gray-700">{s.employee_number}</td>
+                        <td className="px-3 py-2 text-gray-700">{s.input_code}</td>
+                        <td className="px-3 py-2 text-gray-500">{s.reference_date?.slice(0, 10) ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

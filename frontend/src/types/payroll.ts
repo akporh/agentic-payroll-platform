@@ -24,6 +24,17 @@ export interface ComponentTraceEntry {
   result: string | null;  // Decimal serialised as string; null for the period header
   annualization_factor?: string;
   period_fraction?: string;
+  // Rule-evaluator historical resolution metadata (rule_evaluator.py's _resolve_rule).
+  // resolution_source: "current" (accurate, resolved against the run's own period) |
+  // "historical" (resolved against a past rule_set snapshot) | "current_fallback"
+  // (no historical rate could be verified — current rate was used; see warning).
+  resolution_source?: 'current' | 'historical' | 'current_fallback' | null;
+  rule_effective_from?: string | null;
+  reference_date?: string | null;
+  rate_used?: string | null;
+  warning?: string | null;
+  rule_set_id?: string | null;
+  note?: string;
 }
 
 export interface PayrollResult {

@@ -79,6 +79,7 @@ from backend.infra.repositories.payroll_result_repo import get_employee_context_
 from backend.infra.json_utils import sanitize_jsonb as _sanitize
 from backend.infra.repositories.rate_code_repo import list_rate_codes
 from backend.application.snapshot_service import validate_snapshot_complete
+from backend.application.rule_set_service import resolve_effective_rules
 
 
 def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
@@ -309,25 +310,17 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
             original_snapshot.get("rule_set", {}).get("effective_from")
         )
     else:
-        rule_rows = db.execute(
-            text("""
-                SELECT rule_id, rule_name, rule_definition_json, is_active
-                FROM   payroll_rule
-                WHERE  is_active    = TRUE
-                  AND  workspace_id = :wid
-            """),
-            {"wid": workspace_id},
-        ).fetchall()
+        resolved_rules = resolve_effective_rules(db, workspace_id, period_end, active_only=True)
 
-        payroll_rule_ids = [str(r[0]) for r in rule_rows]
+        payroll_rule_ids = [r["rule_id"] for r in resolved_rules]
         payroll_rules_full = [
             {
-                "rule_id":              str(r[0]),
-                "rule_name":            r[1],
-                "rule_definition_json": r[2],
-                "is_active":            r[3],
+                "rule_id":              r["rule_id"],
+                "rule_name":            r["rule_name"],
+                "rule_definition_json": r["rule_definition_json"],
+                "is_active":            True,
             }
-            for r in rule_rows
+            for r in resolved_rules
         ]
         current_rule_set_effective_from = None
 
@@ -349,6 +342,21 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     # ot_multiplier and shift-allowance rules resolve correctly on retry.
     rate_code_map = {row["code"]: row for row in list_rate_codes(workspace_id)}
 
+    # rule_floor_dates — unlike historical_rule_sets (deliberately frozen from the
+    # original snapshot, per the F2 fix above), this is safe and correct to re-query
+    # live on retry: a floor date only ever moves earlier as more history is loaded,
+    # so re-querying cannot corrupt the determinism that F2 protects against.
+    _floor_rows = db.execute(
+        text("""
+            SELECT rule_name, MIN(effective_from) AS floor_date
+            FROM payroll_rule
+            WHERE workspace_id = :wid AND is_active = TRUE
+            GROUP BY rule_name
+        """),
+        {"wid": workspace_id},
+    ).fetchall()
+    rule_floor_dates = {r[0]: str(r[1]) for r in _floor_rows}
+
     context = {
         "tax_bands":                        tax_bands,
         "pension_employee_rate":            pension_employee_rate,
@@ -364,6 +372,7 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "historical_rule_sets":             historical_rule_sets,
         "current_rule_set_id":              rule_set_id,
         "current_rule_set_effective_from":  current_rule_set_effective_from,
+        "rule_floor_dates":                 rule_floor_dates,
         "expected_hours":                   expected_hours,
         "expected_days":                    expected_days,
         "ph_dates_used":                    ph_dates_used,

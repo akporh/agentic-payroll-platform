@@ -17,6 +17,7 @@ from backend.domain.payroll.rule_evaluator import (
     apply_payroll_rules,
     _resolve_rule,
     _resolve_period_ctx,
+    NoHistoricalRuleVersionError,
 )
 
 
@@ -473,6 +474,65 @@ class TestResolveRule:
         assert defn == {}
         assert meta["resolution_source"] == "current"
 
+    # -- rule_floor_dates (strict mode) --------------------------------------
+
+    def test_no_matching_set_with_floor_date_backfill_gap_falls_back(self):
+        """rule_floor_dates says the rule existed as far back as 2023-06-01, but
+        the earliest historical rule_set snapshot only covers 2024-01-01 onward
+        (a backfill gap) — falls back to current, does not raise."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY",
+            date(2023, 8, 1),    # after the rule's floor, before any covering rule_set
+            CURRENT_RULES,
+            HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+            {"OVERTIME_PAY": "2023-06-01"},
+        )
+        assert meta["resolution_source"] == "current_fallback"
+        assert defn["rate"] == 6000
+
+    def test_no_matching_set_before_floor_date_raises(self):
+        """rule_floor_dates supplied and reference_date predates the rule's known
+        floor — genuinely no history exists this far back — must raise."""
+        with pytest.raises(NoHistoricalRuleVersionError):
+            _resolve_rule(
+                "OVERTIME_PAY",
+                date(2020, 6, 1),    # before the rule's floor (2024-01-01)
+                CURRENT_RULES,
+                HISTORICAL_RULE_SETS,
+                PERIOD_START, PERIOD_END,
+                CURRENT_RS_ID, "2024-03-01",
+                {"OVERTIME_PAY": "2024-01-01"},
+            )
+
+    def test_no_floor_date_entry_raises(self):
+        """rule_floor_dates supplied but has no entry for this rule at all
+        (workspace has zero payroll_rule rows for this rule_name) — must raise."""
+        with pytest.raises(NoHistoricalRuleVersionError):
+            _resolve_rule(
+                "OVERTIME_PAY",
+                date(2020, 6, 1),
+                CURRENT_RULES,
+                HISTORICAL_RULE_SETS,
+                PERIOD_START, PERIOD_END,
+                CURRENT_RS_ID, "2024-03-01",
+                {},
+            )
+
+    def test_none_rule_floor_dates_preserves_legacy_fallback(self):
+        """rule_floor_dates=None (the default, all legacy/test callers) preserves
+        the original current_fallback behaviour — no raise, ever."""
+        defn, meta = _resolve_rule(
+            "OVERTIME_PAY",
+            date(2020, 6, 1),
+            CURRENT_RULES,
+            HISTORICAL_RULE_SETS,
+            PERIOD_START, PERIOD_END,
+            CURRENT_RS_ID, "2024-03-01",
+        )
+        assert meta["resolution_source"] == "current_fallback"
+
 
 # ---------------------------------------------------------------------------
 # Temporal resolution — _resolve_period_ctx
@@ -593,5 +653,36 @@ class TestTemporalRateResolution:
         # deduction = 10000.00 × 1 = 10000.00
         # BASIC after = 230000 - 10000 = 220000
         assert components["BASIC"] == Decimal("220000.00")
+
+    def test_deduction_spanning_two_periods_uses_each_periods_own_divisor(self):
+        """3 absence days in January (working_days=23) + 2 in March (working_days=21)
+        must each be deducted at their OWN period's daily divisor — not resolved
+        once from the first event's date for the whole 5-day total (the bug this
+        test guards against: pre-fix, only the first event's period applied to the
+        entire summed quantity)."""
+        client_meta = {
+            "BASIC": {"calculations_behaviour": {"proration_strategy": "work_days"}}
+        }
+        rules = [_rule("Absence Deduction", "daily_rate_deduction", input_field="absent_days")]
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("230000")},
+            payroll_rules=rules,
+            employee_inputs={"absent_days": [
+                {"quantity": 3, "reference_date": date(2024, 1, 15)},
+                {"quantity": 2, "reference_date": date(2024, 3, 15)},
+            ]},
+            client_meta=client_meta,
+            working_days=21,   # March (current period)
+            calendar_days=31,
+            historical_period_contexts={(2024, 1): {"working_days": 23, "calendar_days": 31}},
+            period_start=PERIOD_START,
+            period_end=PERIOD_END,
+        )
+        # January: 230000/23 = 10000.00/day × 3 = 30000.00
+        # March:   230000/21 = 10952.38/day × 2 = 21904.76
+        # total deducted = 51904.76
+        assert components["BASIC"] == Decimal("178095.24")
+        assert trace[0]["status"] == "applied"
+        assert "spans 2 periods" in trace[0]["note"]
 
 

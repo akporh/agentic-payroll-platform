@@ -72,7 +72,11 @@ A signal moves to **AMBER** when it is approaching threshold. **RED** means eval
 |------|--------|--------|---------|-------|
 | 2026-06-12 | Phase 1 baseline | All | GREEN | Initial doc — no extraction pressure |
 | 2026-06-18 | is_active fix | All | GREEN | No extraction pressure. Retry path correctness defect flagged — internal to monolith, no extraction implication. |
+| 2026-07-01 | RULE-VER historical rate resolution fix | All | GREEN | No extraction pressure. Bug-fix within existing rule_set/payroll_rule versioning model, no new module boundary. |
 | 2026-06-20 | PayrollRule effective_from + publish flow | All | GREEN | No extraction pressure. Rule versioning is a config concern internal to the monolith. |
+| 2026-07-04 | Rule Versioning Integrity Fix (D1+D2+D3) | All | GREEN | No extraction pressure. Fixing is_active supersession gap, period-unaware display queries, and legacy fallback ceiling filter — all internal to existing payroll_rule/rule_set model, no new module boundary. |
+| 2026-07-04 | Rule Versioning Integrity Fix v3 (locked_at + source_rule_id + deletion audit log) | All | GREEN | No extraction pressure. Third design pass, still entirely internal to payroll_rule/rule_set_item schema and existing calculation paths — no new service boundary implied. |
+| 2026-07-04 | Rule Versioning Integrity Fix v4 (corrected display-bug fix + historical fallback + floor protection) | All | GREEN | No extraction pressure. Fourth design pass, correcting prior passes' misdiagnosis of the display bug and historical resolution gap — still fully internal to existing payroll_rule/rule_set/payroll_input code, no new module boundary. |
 
 ---
 

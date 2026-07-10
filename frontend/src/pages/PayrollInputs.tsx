@@ -12,7 +12,7 @@
  * she has committed to include. The pending count tells her how much is ready.
  */
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { payrollInputApi } from '../api/payrollInput';
 import { workspaceApi } from '../api/workspace';
@@ -41,6 +41,13 @@ interface InputCodeDef {
   calculation_method: string;
   rule_rate?: number | null;
   rule_amount?: number | null;
+}
+
+// Normalises a reference_date (or null, meaning "today") to the first-of-month
+// key the backend buckets rates under.
+function monthKey(raw: string | null | undefined): string {
+  const base = raw ? raw : new Date().toISOString();
+  return base.slice(0, 7) + '-01';
 }
 
 function showsQty(def: InputCodeDef | undefined) {
@@ -119,7 +126,8 @@ export function PayrollInputs() {
 
   const [inputs, setInputs] = useState<PayrollInput[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [inputDefs, setInputDefs] = useState<InputCodeDef[]>([]);
+  const [inputDefsByDate, setInputDefsByDate] = useState<Record<string, InputCodeDef[]>>({});
+  const fetchedDateKeys = useRef<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [issues, setIssues] = useState<{ total: number; deactivated_with_inputs: number; unmatched_with_inputs: number; period_label: string } | null>(null);
@@ -148,23 +156,50 @@ export function PayrollInputs() {
   const [addEmployeeId, setAddEmployeeId] = useState('');
   const [inputRows, setInputRows] = useState<InputRow[]>([{ _id: crypto.randomUUID(), code: '', qty: '', period: '' }]);
 
+  // Fetches any month buckets not already cached, merging results into state.
+  function ensureInputDefsFor(keys: string[]) {
+    if (!workspaceId) return;
+    const missing = keys.filter((k) => !fetchedDateKeys.current.has(k));
+    if (missing.length === 0) return;
+    missing.forEach((k) => fetchedDateKeys.current.add(k));
+    workspaceApi.getInputCodesByDate(workspaceId, missing)
+      .then((res) => {
+        setInputDefsByDate((prev) => ({ ...prev, ...res.input_codes }));
+      })
+      .catch(() => {
+        // Roll back so a retry (e.g. a later render) can attempt these keys again.
+        missing.forEach((k) => fetchedDateKeys.current.delete(k));
+      });
+  }
+
   useEffect(() => {
     if (!workspaceId) return;
     Promise.all([
       workspaceApi.getEmployees(workspaceId),
       payrollInputApi.list(workspaceId),
-      workspaceApi.getInputCodes(workspaceId),
       payrollApi.getInputIssues(workspaceId).catch(() => null),
     ])
-      .then(([emps, data, codesData, issuesData]) => {
+      .then(([emps, data, issuesData]) => {
         setEmployees(emps);
         setInputs(data.inputs);
-        setInputDefs(codesData.input_codes);
         setIssues(issuesData);
+
+        const keys = new Set<string>([monthKey(null)]);
+        data.inputs.forEach((inp) => keys.add(monthKey(inp.reference_date)));
+        ensureInputDefsFor([...keys]);
       })
       .catch((e) => setPageError(e.message))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
+
+  // Add/Edit form's period picker can select a month with no cached rate
+  // bucket yet (e.g. a brand-new past period) — fetch it on demand.
+  useEffect(() => {
+    if (!panelOpen) return;
+    ensureInputDefsFor([monthKey(effectivePeriod)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelOpen, effectivePeriod]);
 
   function resetForm() {
     setEditingInputId(null);
@@ -232,6 +267,7 @@ export function PayrollInputs() {
     if (succeeded > 0) {
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
+      ensureInputDefsFor(data.inputs.map((inp) => monthKey(inp.reference_date)));
       window.dispatchEvent(new Event('payroll-inputs-changed'));
     }
 
@@ -279,6 +315,7 @@ export function PayrollInputs() {
       }
       const data = await payrollInputApi.list(workspaceId);
       setInputs(data.inputs);
+      ensureInputDefsFor(data.inputs.map((inp) => monthKey(inp.reference_date)));
       window.dispatchEvent(new Event('payroll-inputs-changed'));
       resetForm();
       setPanelOpen(false);
@@ -301,7 +338,10 @@ export function PayrollInputs() {
     }
   }
 
-  const selectedDef = inputDefs.find((d) => d.code === inputCode);
+  // The rate/amount preview must reflect the period being entered, not "today" —
+  // an operator editing a past-period input needs to see that period's rate.
+  const currentFormDefs = inputDefsByDate[monthKey(effectivePeriod)] ?? [];
+  const selectedDef = currentFormDefs.find((d) => d.code === inputCode);
   const validRowCount = inputRows.filter((r) => r.code && !r._done).length;
 
   // Group input codes by category for DD-6
@@ -310,13 +350,138 @@ export function PayrollInputs() {
     label: `${e.full_name} (${e.employee_number})`,
   }));
 
-  const inputCodeOptions = inputDefs.map((d) => ({
+  // The set of available codes doesn't meaningfully vary by date — today's
+  // bucket (always fetched) is used for the dropdown/options list.
+  const todayDefs = inputDefsByDate[monthKey(null)] ?? [];
+
+  const inputCodeOptions = todayDefs.map((d) => ({
     value: d.code,
     label: `${d.rule_name}${d.code !== d.rule_name ? ` (${d.code})` : ''}`,
     group: d.category,
   }));
 
   const pendingCount = inputs.length;
+
+  // ── Sorting ──────────────────────────────────────────────────────────────
+  type SortKey = 'employee' | 'code' | 'period';
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  function toggleSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir('asc');
+    } else {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    }
+  }
+
+  const sortedInputs = (() => {
+    if (!sortKey) return inputs;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...inputs].sort((a, b) => {
+      if (sortKey === 'employee') {
+        return dir * a.employee_name.localeCompare(b.employee_name);
+      }
+      if (sortKey === 'code') {
+        return dir * a.input_code.localeCompare(b.input_code);
+      }
+      // period — inputs without a reference_date ("current") always sort last
+      if (!a.reference_date && !b.reference_date) return 0;
+      if (!a.reference_date) return 1;
+      if (!b.reference_date) return -1;
+      return dir * a.reference_date.localeCompare(b.reference_date);
+    });
+  })();
+
+  function SortIcon({ active, dir }: { active: boolean; dir: 'asc' | 'desc' }) {
+    if (!active) {
+      return (
+        <svg className="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4M8 15l4 4 4-4" />
+        </svg>
+      );
+    }
+    return (
+      <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        {dir === 'asc' ? (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 15l4-4 4 4" />
+        ) : (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4 4 4-4" />
+        )}
+      </svg>
+    );
+  }
+
+  // ── Group by employee (alphabetical groups, period-sorted within group) ────
+  const [groupByEmployee, setGroupByEmployee] = useState(false);
+
+  function periodSort(a: PayrollInput, b: PayrollInput) {
+    if (!a.reference_date && !b.reference_date) return 0;
+    if (!a.reference_date) return 1;
+    if (!b.reference_date) return -1;
+    return a.reference_date.localeCompare(b.reference_date);
+  }
+
+  const groupedInputs = (() => {
+    if (!groupByEmployee) return null;
+    const byEmployee = new Map<string, PayrollInput[]>();
+    for (const inp of inputs) {
+      const list = byEmployee.get(inp.employee_id);
+      if (list) list.push(inp);
+      else byEmployee.set(inp.employee_id, [inp]);
+    }
+    return [...byEmployee.values()]
+      .sort((a, b) => a[0].employee_name.localeCompare(b[0].employee_name))
+      .map((group) => [...group].sort(periodSort));
+  })();
+
+  function renderInputRow(inp: PayrollInput) {
+    // Resolve the rate as of this input's own reference_date — not "today's"
+    // rate — so a historical input shows the rate that actually applied then.
+    const def = (inputDefsByDate[monthKey(inp.reference_date)] ?? []).find((d) => d.code === inp.input_code);
+    const displayRate   = def?.rule_rate   != null ? `₦${Number(def.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
+    const displayAmount = def?.rule_amount != null ? `₦${Number(def.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
+    return (
+      <tr key={inp.payroll_input_id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+        <td className="px-4 py-3">
+          <p className="font-medium text-gray-800">{inp.employee_name}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inp.employee_number}</p>
+        </td>
+        <td className="px-4 py-3 font-mono text-xs text-gray-600">{inp.input_code}</td>
+        <td className="px-4 py-3">
+          <CategoryBadge category={inp.input_category} />
+        </td>
+        <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.quantity ?? '—'}</td>
+        <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayRate}</td>
+        <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayAmount}</td>
+        <td className="px-4 py-3 text-right text-gray-500 text-xs">
+          {inp.reference_date ? inp.reference_date.slice(0, 7) : <span className="text-gray-400 italic">current</span>}
+        </td>
+        <td className="px-4 py-3 text-gray-400 text-xs">{inp.source}</td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1">
+            <IconBtn
+              label={`Edit input for ${inp.employee_name}`}
+              size="sm"
+              className="text-gray-400 hover:text-blue-600"
+              onClick={() => openEdit(inp)}
+            >
+              <PencilIcon />
+            </IconBtn>
+            <IconBtn
+              label={`Delete input for ${inp.employee_name}`}
+              size="sm"
+              className="text-gray-400 hover:text-red-600"
+              onClick={() => handleDelete(inp.payroll_input_id)}
+            >
+              <TrashIcon />
+            </IconBtn>
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="max-w-5xl">
@@ -376,6 +541,19 @@ export function PayrollInputs() {
       )}
 
       {/* Inputs table */}
+      {!loading && inputs.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={groupByEmployee}
+              onChange={(e) => setGroupByEmployee(e.target.checked)}
+              className="rounded border-gray-300 text-brand focus:ring-brand"
+            />
+            Group by employee
+          </label>
+        </div>
+      )}
       <Card padding="sm">
         {loading ? (
           <table className="w-full">
@@ -403,61 +581,43 @@ export function PayrollInputs() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 sticky top-0">
-                  {['Employee', 'Code', 'Category', 'Qty', 'Rate', 'Amount', 'For Period', 'Source', ''].map((h, i) => (
-                    <th
-                      key={i}
-                      className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 ${i >= 3 && i <= 6 ? 'text-right' : 'text-left'} ${i === 8 ? 'w-10' : ''}`}
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  {(['Employee', 'Code', 'Category', 'Qty', 'Rate', 'Amount', 'For Period', 'Source', ''] as const).map((h, i) => {
+                    const key: SortKey | null = h === 'Employee' ? 'employee' : h === 'Code' ? 'code' : h === 'For Period' ? 'period' : null;
+                    const active = key !== null && sortKey === key;
+                    return (
+                      <th
+                        key={i}
+                        className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 ${i >= 3 && i <= 6 ? 'text-right' : 'text-left'} ${i === 8 ? 'w-10' : ''}`}
+                      >
+                        {key && !groupByEmployee ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(key)}
+                            className={`inline-flex items-center gap-1 hover:text-gray-700 ${i >= 3 && i <= 6 ? 'flex-row-reverse' : ''}`}
+                          >
+                            {h}
+                            <SortIcon active={active} dir={active ? sortDir : 'asc'} />
+                          </button>
+                        ) : h}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {inputs.map((inp) => {
-                  const def = inputDefs.find((d) => d.code === inp.input_code);
-                  const displayRate   = def?.rule_rate   != null ? `₦${Number(def.rule_rate).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
-                  const displayAmount = def?.rule_amount != null ? `₦${Number(def.rule_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}` : '—';
-                  return (
-                  <tr key={inp.payroll_input_id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{inp.employee_name}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inp.employee_number}</p>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{inp.input_code}</td>
-                    <td className="px-4 py-3">
-                      <CategoryBadge category={inp.input_category} />
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{inp.quantity ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayRate}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{displayAmount}</td>
-                    <td className="px-4 py-3 text-right text-gray-500 text-xs">
-                      {inp.reference_date ? inp.reference_date.slice(0, 7) : <span className="text-gray-400 italic">current</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{inp.source}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <IconBtn
-                          label={`Edit input for ${inp.employee_name}`}
-                          size="sm"
-                          className="text-gray-400 hover:text-blue-600"
-                          onClick={() => openEdit(inp)}
-                        >
-                          <PencilIcon />
-                        </IconBtn>
-                        <IconBtn
-                          label={`Delete input for ${inp.employee_name}`}
-                          size="sm"
-                          className="text-gray-400 hover:text-red-600"
-                          onClick={() => handleDelete(inp.payroll_input_id)}
-                        >
-                          <TrashIcon />
-                        </IconBtn>
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
+                {groupedInputs
+                  ? groupedInputs.map((group) => (
+                      <Fragment key={group[0].employee_id}>
+                        <tr className="bg-gray-50/80">
+                          <td colSpan={9} className="px-4 py-1.5 text-xs font-semibold text-gray-600">
+                            {group[0].employee_name}
+                            <span className="ml-2 font-mono font-normal text-gray-400">{group[0].employee_number}</span>
+                          </td>
+                        </tr>
+                        {group.map(renderInputRow)}
+                      </Fragment>
+                    ))
+                  : sortedInputs.map(renderInputRow)}
               </tbody>
             </table>
           </div>
@@ -584,7 +744,7 @@ export function PayrollInputs() {
               {/* Input rows */}
               <div className="divide-y divide-gray-100">
                 {inputRows.map((row, idx) => {
-                  const rowDef = inputDefs.find((d) => d.code === row.code);
+                  const rowDef = todayDefs.find((d) => d.code === row.code);
                   const needsQty = showsQty(rowDef);
                   return (
                     <div key={row._id} className="px-3 py-2 space-y-1">
@@ -604,7 +764,7 @@ export function PayrollInputs() {
                             ].join(' ')}
                           >
                             <option value="">Select code…</option>
-                            {inputDefs.map((d) => (
+                            {todayDefs.map((d) => (
                               <option key={d.code} value={d.code}>
                                 {d.rule_name}
                               </option>

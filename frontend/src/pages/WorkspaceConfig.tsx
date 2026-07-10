@@ -2045,13 +2045,10 @@ export function WorkspaceConfig() {
   const [addOverrideOpen, setAddOverrideOpen] = useState(false);
   const [addRuleOpen, setAddRuleOpen] = useState(false);
   const [addEarningOpen, setAddEarningOpen] = useState(false);
-  const [ruleToToggle, setRuleToToggle] = useState<PayrollRule | null>(null);
-  const [ruleToggling, setRuleToggling] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<PayrollRule | null>(null);
   const [ruleDeleting, setRuleDeleting] = useState(false);
   const [editRule, setEditRule] = useState<PayrollRule | null>(null);
-  const [ruleChangeBanner, setRuleChangeBanner] = useState(false);
-  const [ruleToggleError, setRuleToggleError] = useState<string | null>(null);
+  const [ruleActionError, setRuleActionError] = useState<string | null>(null);
   const [editPhConfigOpen, setEditPhConfigOpen] = useState(false);
   const [addRateCodeOpen, setAddRateCodeOpen] = useState(false);
   const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
@@ -2106,50 +2103,23 @@ export function WorkspaceConfig() {
     }
   }
 
-  async function handleRuleToggleConfirm() {
-    if (!workspaceId || !ruleToToggle) return;
-    setRuleToggling(true);
-    setRuleToggleError(null);
-    const newActive = !ruleToToggle.is_active;
-    // Optimistic update
-    setConfig((prev) => prev ? {
-      ...prev,
-      payroll_rules: prev.payroll_rules.map((r) =>
-        r.rule_id === ruleToToggle.rule_id ? { ...r, is_active: newActive } : r
-      ),
-    } : prev);
-    const toggled = ruleToToggle;
-    setRuleToToggle(null);
-    try {
-      await workspaceApi.updatePayrollRule(workspaceId, toggled.rule_id, { is_active: newActive });
-      setRuleChangeBanner(true);
-    } catch (e) {
-      // Rollback
-      setConfig((prev) => prev ? {
-        ...prev,
-        payroll_rules: prev.payroll_rules.map((r) =>
-          r.rule_id === toggled.rule_id ? { ...r, is_active: !newActive } : r
-        ),
-      } : prev);
-      setRuleToggleError(extractError(e));
-    } finally {
-      setRuleToggling(false);
-    }
-  }
-
   async function handleRuleDeleteConfirm() {
     if (!workspaceId || !ruleToDelete) return;
     setRuleDeleting(true);
-    const deleted = ruleToDelete;
+    const withdrawn = ruleToDelete;
     setRuleToDelete(null);
     try {
-      await workspaceApi.deletePayrollRule(workspaceId, deleted.rule_id);
+      await workspaceApi.deletePayrollRule(workspaceId, withdrawn.rule_id);
+      // Soft-delete only — the row stays visible with a Withdrawn badge,
+      // it is never removed from the list (matches backend: is_active=false, row preserved for audit).
       setConfig((prev) => prev ? {
         ...prev,
-        payroll_rules: prev.payroll_rules.filter((r) => r.rule_id !== deleted.rule_id),
+        payroll_rules: prev.payroll_rules.map((r) =>
+          r.rule_id === withdrawn.rule_id ? { ...r, is_active: false } : r
+        ),
       } : prev);
     } catch (e) {
-      setRuleToggleError(extractError(e));
+      setRuleActionError(extractError(e));
     } finally {
       setRuleDeleting(false);
     }
@@ -2242,26 +2212,8 @@ export function WorkspaceConfig() {
           </Card>
 
           {/* Rule change banners — above tabs */}
-          {ruleToggleError && (
-            <AlertBanner variant="error" description={ruleToggleError} />
-          )}
-          {ruleChangeBanner && (
-            <AlertBanner
-              variant="info"
-              description={
-                <span>
-                  Rule changes take effect only after the rule set is re-published.{' '}
-                  <Link
-                    to={`/workspaces/${workspaceId}/setup`}
-                    className="font-medium underline hover:no-underline"
-                  >
-                    Go to Workspace Setup →
-                  </Link>
-                </span>
-              }
-              dismissible
-              onDismiss={() => setRuleChangeBanner(false)}
-            />
+          {ruleActionError && (
+            <AlertBanner variant="error" description={ruleActionError} />
           )}
 
           {/* Tab bar */}
@@ -2463,16 +2415,19 @@ export function WorkspaceConfig() {
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <StatusBadge status={r.is_active ? 'ACTIVE' : 'INACTIVE'} size="sm" />
+                              <StatusBadge status={r.is_active ? 'ACTIVE' : 'WITHDRAWN'} size="sm" />
                               <RowEditBtn label={r.name} onClick={() => setEditRule(r)} />
-                              <button
-                                type="button"
-                                onClick={() => setRuleToDelete(r)}
-                                className="text-gray-400 hover:text-red-500 transition-colors"
-                                aria-label={`Delete ${r.name}`}
-                              >
-                                <TrashIcon />
-                              </button>
+                              {r.is_active && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRuleToDelete(r)}
+                                  className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] text-gray-400 hover:text-red-500 transition-colors"
+                                  aria-label={`Withdraw ${r.name}`}
+                                  title={`Withdraw ${r.name}`}
+                                >
+                                  <TrashIcon />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -2510,7 +2465,7 @@ export function WorkspaceConfig() {
                         </th>
                         <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-2 pr-4 w-28">
                           Status
-                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Active rules apply to the current published rule set. Inactive rules are excluded from payroll runs.">ⓘ</span>
+                          <span className="ml-1 text-gray-400 font-normal normal-case" title="Rules are resolved by effective date, not by this status. A withdrawn rule is excluded from all future payroll runs; other versions remain on record and the correct one is chosen automatically for each period.">ⓘ</span>
                         </th>
                         <th className="w-auto" />
                       </tr>
@@ -2528,10 +2483,10 @@ export function WorkspaceConfig() {
                           <td className="py-2 pr-4 text-gray-500 text-sm font-mono">{rateDisplay}</td>
                           <td className="py-2 pr-4 text-gray-500 text-sm">{toDisplayDate(r.effective_from)}</td>
                           <td className="py-2 pr-4 w-28">
-                            <StatusBadge status={r.is_active ? 'ACTIVE' : 'INACTIVE'} size="sm" />
+                            <StatusBadge status={r.is_active ? 'ACTIVE' : 'WITHDRAWN'} size="sm" />
                           </td>
                           <td className="py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-3">
                               <Btn
                                 variant="secondary"
                                 size="sm"
@@ -2540,15 +2495,17 @@ export function WorkspaceConfig() {
                               >
                                 Update Rate
                               </Btn>
-                              <Btn
-                                variant="secondary"
-                                size="sm"
-                                className="min-w-[90px]"
-                                onClick={() => setRuleToToggle(r)}
-                                disabled={ruleToggling}
-                              >
-                                {r.is_active ? 'Deactivate' : 'Activate'}
-                              </Btn>
+                              {r.is_active && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRuleToDelete(r)}
+                                  className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] text-gray-400 hover:text-red-500 transition-colors"
+                                  aria-label={`Withdraw ${r.name}`}
+                                  title={`Withdraw ${r.name}`}
+                                >
+                                  <TrashIcon />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2917,36 +2874,20 @@ export function WorkspaceConfig() {
         loading={activating}
       />
 
-      {/* Payroll Rule Toggle Confirm Dialog */}
-      <ConfirmDialog
-        open={ruleToToggle !== null}
-        onClose={() => setRuleToToggle(null)}
-        onConfirm={handleRuleToggleConfirm}
-        title={ruleToToggle ? `${ruleToToggle.is_active ? 'Deactivate' : 'Activate'} Rule` : ''}
-        body={ruleToToggle ? (
-          <p className="text-sm text-gray-600">
-            {ruleToToggle.is_active
-              ? `"${ruleToToggle.name}" will be marked inactive and removed from the active rule set.`
-              : `"${ruleToToggle.name}" will be marked active and added to the active rule set.`}
-            {' '}The rule set is updated automatically. Historical payroll runs are not affected — they use the snapshot from when they were processed.
-          </p>
-        ) : ''}
-        confirmLabel={ruleToToggle?.is_active ? 'Deactivate Rule' : 'Activate Rule'}
-        loading={ruleToggling}
-      />
-
-      {/* Earning Component Delete Confirm Dialog */}
+      {/* Payroll Rule Withdraw Confirm Dialog — shared by the Payroll Rules tab and Custom Allowances card */}
       <ConfirmDialog
         open={ruleToDelete !== null}
         onClose={() => setRuleToDelete(null)}
         onConfirm={handleRuleDeleteConfirm}
-        title="Delete Earning Component"
+        title="Withdraw this rule?"
         body={ruleToDelete ? (
           <p className="text-sm text-gray-600">
-            <strong>"{ruleToDelete.name}"</strong> will be permanently removed. Historical payroll runs are not affected — rule snapshots are preserved separately. This cannot be undone.
+            <strong>"{ruleToDelete.name}"</strong> will be withdrawn and excluded from all future payroll calculations.
+            This can't be undone from here — the rule's history is preserved for audit, but a withdrawn rule can't be
+            reactivated. To use this rule again, create a new version instead.
           </p>
         ) : ''}
-        confirmLabel="Delete Component"
+        confirmLabel="Withdraw Rule"
         loading={ruleDeleting}
       />
     </div>

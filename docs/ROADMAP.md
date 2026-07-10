@@ -34,6 +34,7 @@
 | **Fix — Workspace Activation Coverage** | 3✅ (WS-ACTIVATE-1: Config page · WS-ACTIVATE-2: PayrollRuns READY state · WS-ACTIVATE-3: Setup ExistingConfigView) | — | — | — | — | — |
 | **Sprint PAY-TAX-1 — NG PAYE Bands NTA 2025** | — | — | — | — | — | 1✅ (statutory seed corrected to NTA 2025 schedule) |
 | **Sprint RULE-VER-1 — Payroll Rule Versioning** | 3✅ (RULE-VER-1/2/3: effective_from versioning, auto-publish, UI update) | — | — | — | — | — |
+| **Sprint A — Rule Versioning Integrity Fix** | 3✅ (date-aware rate display, legacy historical fallback, legacy current-period date cap) | — | — | — | — | — |
 | **Phase 2 — Agent Layer (Planned)** | Track P (auth) ⬜ | — | — | — | — | Tracks V/W/X/Y ⬜ |
 | **Phase 3 — Future** | 🔮 | — | — | 🔮 | — | 🔮 |
 
@@ -563,7 +564,7 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint PAY-TAX-1, 2026-06-20)
+## Known Test Failures (Pre-existing — Live State as of Sprint A, 2026-07-04)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
@@ -571,11 +572,11 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 |---|------|------|------------|------------|-------------|--------|
 | TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
 | TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
-| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ❌ RE-BROKEN Sprint PAY-TAX-1 |
-| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
-| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ✅ RESOLVED Sprint 18 |
-| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ✅ RESOLVED Sprint 18 |
-| TF-7 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | `body["status"] == "success"` fails (returns `"DRAFT"`); API now returns run object with run status, not a success envelope. Likely broken by background-task / bulk-insert performance sprints (Sprints 31–32). Not caused by PAYE band change. | Fix: update assertion to check `body["run_status"] == "CALCULATED"` or whatever the current response schema returns | Sprint after PAY-TAX-1 | ❌ OPEN |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ❌ RE-BROKEN — now superseded by TF-7 (same test, different failure point) |
+| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
+| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
+| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
+| TF-7 | `body["status"] == "success"` assertion (affects 4 files: `test_payroll_lock_and_approval.py`, `test_payroll_pipeline_e2e.py`, `test_payroll_partial_run_e2e.py`, `test_payroll_retry.py`) | see above | `POST /payroll/run` now returns the run object with `status: "DRAFT"` (execution backgrounded, Sprints 31–32) instead of a `"success"` envelope — all 4 tests assert the old shape | Update each assertion to check the actual current response shape (e.g. `body["status"] == "DRAFT"` + poll for `run_status`) | Sprint after PAY-TAX-1 | ❌ OPEN — confirmed still affects all 4 files as of Sprint A (2026-07-04), via `git stash` A/B comparison; not caused by Sprint A |
 
 ---
 
@@ -842,6 +843,49 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 **Files changed:** `migrations/versions/ef2a3b4c5d6e_add_effective_from_to_payroll_rule.py`, `backend/application/rule_set_service.py`, `backend/api/routes/workspace.py`, `backend/api/routes/payroll.py`, `backend/api/schemas/payroll_rule.py`, `backend/application/onboarding_service.py`, `backend/infra/db/models/payroll_rule.py`, `frontend/src/api/workspace.ts`, `frontend/src/pages/WorkspaceConfig.tsx`
 
 **Retro lessons:** service `db.flush()` vs `db.commit()` when chaining; UNIQUE constraint needs pre-dedup step; Pydantic v2 `extra='forbid'` for restriction schemas; feature removal requires copy audit.
+
+---
+
+## Sprint A — Rule Versioning Integrity Fix
+
+**Sprint date:** 2026-07-04
+**Sprint goal:** Fix the bug where the Payroll Inputs page showed a rate that only started applying in a later period (e.g. a Dec-2025 input showing the 2026 rate). Root cause: `payroll_rule` lookups across the codebase with no date awareness — some grab "whatever's currently active" with no regard for the period being displayed, others (a legacy calculation path) grab the latest active version with no ceiling check against the run's own period. This sprint is a deliberate scope split — see `handoff_note.md` — from a broader `is_active`/lock/audit mechanism redesign (Sprint B) that went through 4 rounds of `/architect` + `/arch-council` review this session and still needs further design work before implementation.
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| SPRINT-A-1 | New `POST /{workspace_id}/payroll/input-codes/by-date` endpoint — resolves the rate effective as of each requested reference date, batched over multiple dates in one query; frontend `PayrollInputs.tsx` rewired from a flat `inputDefs` list to a date-bucketed `inputDefsByDate` map across all 4 consumer sites (main table, edit form, bulk-row table, code dropdown) | ✅ |
+| SPRINT-A-2 | Legacy-workspace historical fallback added to the cross-period prefetch loop (`payroll.py:519-599`) — when no `rule_set` has ever been published, resolves directly against `payroll_rule` instead of silently falling back to the current rate | ✅ |
+| SPRINT-A-3 | Date cap (`effective_from <= period_end`) + `DISTINCT ON` added to the legacy current-period rule loader (`payroll.py:394-401`, `payroll_retry_service.py:312-320`) — the retry-service copy previously had neither, making its rule selection non-deterministic | ✅ |
+
+**Files changed:** `backend/api/routes/payroll_input.py`, `backend/api/routes/payroll.py`, `backend/application/payroll_retry_service.py`, `backend/application/rule_set_service.py` (new shared `resolve_effective_rules()` helper), `backend/domain/payroll/rule_evaluator.py` (trace-string polish), `frontend/src/pages/PayrollInputs.tsx`, `frontend/src/api/workspace.ts`. New test file: `tests/test_payroll_input_codes_route.py`.
+
+**No migration.** All three fixes are query-logic changes only.
+
+**Sprint B — PARKED (5th `/architect` pass, 2026-07-04):** re-verified against fresh code reads that the correctness problem motivating the lock/audit/hard-delete design (D1 — multiple `payroll_rule` rows can be `is_active=TRUE` at once) is already neutralised by Sprint A: every live resolution call site is now date-driven (`DISTINCT ON` + `effective_from <=` ordering), so ambiguous active rows can no longer produce a wrong calculation, regardless of how the data got that way. `source_rule_id` was confirmed to not exist anywhere in code (the v3 proposal was never implemented — nothing to backfill). A proper rule-lifecycle state machine (`DRAFT → CURRENT → SUPERSEDED → WITHDRAWN`, replacing the plain `is_active` boolean) was discussed as a UI-clarity improvement only — not a correctness fix — and parked at the user's decision. If revived, it is a UI/reporting feature, not a bug fix, and does not need the `locked_at`/audit-log apparatus. Full punch list and rationale in `handoff_note.md`.
+
+**Retro lessons:** original bug report was mis-diagnosed twice before the actual defective query (`payroll_input.py`'s `list_input_codes`, flat/no-date-filter) was found — worth checking the literal endpoint behind a UI bug report before designing a fix around adjacent, real-but-different defects found during investigation. Two independent architecture reviewers (architect + principal engineer) run in sequence across 4 design iterations caught issues each other's summaries alone would have missed.
+
+---
+
+## Sprint B-UI — Payroll Rule Versioning Copy Cleanup
+
+**Sprint date:** 2026-07-05
+**Sprint goal:** Fix stale UI copy and controls on the Payroll Rules tab left over from before rule resolution became date-driven (Sprint A) and before auto-publish replaced the manual Publish Rule Set flow (RULE-VER-3). Scoped via `/pm`, UX-checked via `/ux-designer`, reviewed via `/frontend-designer`. No backend or schema change.
+
+| Story | Summary | Status |
+|-------|---------|--------|
+| B-UI-1 | Removed the Activate/Deactivate toggle on payroll rules (misleadingly implied `is_active` means "currently in effect") | ✅ |
+| B-UI-2 | Replaced it with a standalone, one-way "Withdraw" trash-icon action — same pattern as the existing Custom Allowances card, now shared via one generalized `ConfirmDialog` ("Withdraw this rule?" / confirm label "Withdraw Rule") | ✅ |
+| B-UI-3 | Fixed `handleRuleDeleteConfirm` to update `is_active: false` in place instead of filtering the row out of the list — a withdrawn rule now stays visible with a new `WITHDRAWN` `StatusBadge` (added to `design-system/components/Status.tsx`), matching the backend's soft-delete/audit-preserved model | ✅ |
+| B-UI-4 | Removed the stale "rule changes take effect only after the rule set is re-published… Go to Workspace Setup →" banner — dead advice since RULE-VER-3 removed the manual publish flow | ✅ |
+| B-UI-5 | Rewrote the Status column tooltip to describe date-driven resolution instead of implying active/inactive means current/not-current | ✅ |
+| — | "Current version" label in the Update Rule modal — reviewed and confirmed NOT a defect (row-scoped, correct); dropped from scope | Not needed |
+
+**Files changed:** `frontend/src/pages/WorkspaceConfig.tsx`, `frontend/src/design-system/components/Status.tsx`.
+
+**`/frontend-designer` found and fixed:** the new and pre-existing icon-only Withdraw buttons had no padding (~14×14px tap target, below the house 44×44px minimum for icon-only buttons, per the Sprint 26 finding) — fixed with `min-w-[44px] min-h-[44px]` + flex centering on both instances.
+
+**Also confirmed correct (excluded from this commit):** an unrelated, unrequested uncommitted change was found in `frontend/src/pages/PayrollInputsBulkUpload.tsx` during this session — it reverts the native bulk-upload quantity calculation back to the "cell = quantity" assumption that Sprint 27 explicitly overturned (`docs/design/ui-decisions.md:179-184`, "Decided: Sprint 27 (overturned original 'cell = quantity' assumption)"). Left untouched in the working tree at the user's request — being handled separately, not part of Sprint B-UI.
 
 ---
 

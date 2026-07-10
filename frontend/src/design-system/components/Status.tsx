@@ -92,6 +92,9 @@ const BADGE_CONFIG: Record<string, BadgeConfig> = {
   CONTRACT_ENDED:      { dot: 'bg-gray-400',   bg: 'bg-gray-100',   text: 'text-gray-600',   label: 'Contract Ended' },
   DEACTIVATED:         { dot: 'bg-gray-300',   bg: 'bg-gray-50',    text: 'text-gray-500',   label: 'Deactivated' },
 
+  /* Payroll rule lifecycle — a withdrawn rule cannot be reactivated from the UI */
+  WITHDRAWN:           { dot: 'bg-gray-300',   bg: 'bg-gray-50',    text: 'text-gray-500',   label: 'Withdrawn' },
+
   /* Result */
   SUCCESS:              { dot: 'bg-green-500',   bg: 'bg-green-100',   text: 'text-green-800' },
 };
