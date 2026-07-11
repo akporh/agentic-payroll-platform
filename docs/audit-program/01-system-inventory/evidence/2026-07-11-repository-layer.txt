@@ -1,0 +1,102 @@
+=== infra/repositories/ ===
+total 256
+-rw-r--r--   1 michaelemedo  staff      0 11 Jun 07:01 __init__.py
+drwxr-xr-x@ 16 michaelemedo  staff    512  1 Jul 15:22 __pycache__
+drwxr-xr-x  17 michaelemedo  staff    544 21 Jun 02:58 .
+drwxr-xr-x@  8 michaelemedo  staff    256 11 Jun 07:01 ..
+-rw-r--r--   1 michaelemedo  staff  13629 11 Jun 07:01 attendance_config_repo.py
+-rw-r--r--   1 michaelemedo  staff   1893 11 Jun 07:01 audit_log_repo.py
+-rw-r--r--   1 michaelemedo  staff  17854 11 Jun 07:01 employee_repo.py
+-rw-r--r--   1 michaelemedo  staff    903 11 Jun 07:01 event_store_repo.py
+-rw-r--r--   1 michaelemedo  staff   4224 11 Jun 07:01 execution_trace_repo.py
+-rw-r--r--   1 michaelemedo  staff  13839 11 Jun 07:01 payroll_input_repo.py
+-rw-r--r--   1 michaelemedo  staff   6393 21 Jun 02:58 payroll_result_repo.py
+-rw-r--r--   1 michaelemedo  staff   4335 11 Jun 07:01 payroll_run_repo.py
+-rw-r--r--   1 michaelemedo  staff   6415 11 Jun 07:01 public_holiday_repo.py
+-rw-r--r--   1 michaelemedo  staff   5997 11 Jun 07:01 rate_code_repo.py
+-rw-r--r--   1 michaelemedo  staff   5447 11 Jun 07:01 reconciliation_repo.py
+-rw-r--r--   1 michaelemedo  staff  11001 11 Jun 07:01 timesheet_repo.py
+-rw-r--r--   1 michaelemedo  staff   5900 11 Jun 07:01 workspace_config_repo.py
+
+=== infra/db/repositories/ ===
+total 8
+-rw-r--r--  1 michaelemedo  staff     0 11 Jun 07:01 __init__.py
+drwxr-xr-x@ 4 michaelemedo  staff   128 11 Jun 07:01 __pycache__
+drwxr-xr-x  5 michaelemedo  staff   160 11 Jun 07:01 .
+drwxr-xr-x  8 michaelemedo  staff   256 10 Jul 20:29 ..
+-rw-r--r--  1 michaelemedo  staff  1190 11 Jun 07:01 workspace_repo.py
+
+=== workspace_repo.py head ===
+     1	from backend.infra.db.models import (
+     2	    Workspace,
+     3	    PayCycle,
+     4	    Grade,
+     5	    Designation,
+     6	    SalaryDefinition,
+     7	    PayrollRule,
+     8	    ComponentMetadata,
+     9	)
+    10	
+    11	
+    12	def get_workspace(db, workspace_id):
+    13	    return db.query(Workspace).get(workspace_id)
+    14	
+    15	
+    16	def has_pay_cycle(db, workspace_id):
+    17	    return db.query(PayCycle).filter_by(workspace_id=workspace_id).first() is not None
+    18	
+    19	
+    20	def has_grade(db, workspace_id):
+    21	    return db.query(Grade).filter_by(workspace_id=workspace_id).first() is not None
+    22	
+    23	
+    24	def has_designation(db, workspace_id):
+    25	    return db.query(Designation).filter_by(workspace_id=workspace_id).first() is not None
+    26	
+    27	
+    28	def has_salary_definition(db, workspace_id):
+    29	    return db.query(SalaryDefinition).filter_by(workspace_id=workspace_id).first() is not None
+    30	
+
+=== grep for workspace_repo imports ===
+backend/scripts/test_persist.py:3:from backend.infra.repositories.payroll_result_repo import save_payroll_result
+backend/scripts/test_persist.py:4:from backend.infra.repositories.audit_log_repo import save_audit_log
+backend/scripts/test_persist.py:5:from backend.infra.repositories.event_store_repo import save_event
+backend/api/routes/payroll_input.py:23:from backend.infra.repositories.payroll_input_repo import (
+backend/api/routes/onboarding.py:25:from backend.infra.repositories.workspace_config_repo import upsert_workspace_payroll_config
+backend/api/routes/onboarding.py:26:from backend.infra.repositories.employee_repo import insert_employee, insert_employee_contract
+backend/api/routes/employees.py:22:from backend.infra.repositories.employee_repo import (
+backend/api/routes/payroll.py:25:from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run
+backend/api/routes/payroll.py:30:from backend.infra.repositories.execution_trace_repo import get_trace_steps, get_legacy_executor_stats
+backend/api/routes/payroll.py:31:from backend.infra.repositories.payroll_input_repo import link_inputs_to_run, load_unclaimed_inputs_by_employee
+backend/api/routes/payroll.py:32:from backend.infra.repositories.workspace_config_repo import get_workspace_payroll_config
+backend/api/routes/payroll.py:33:from backend.infra.repositories.public_holiday_repo import get_effective_ph_list
+backend/api/routes/payroll.py:34:from backend.infra.repositories.rate_code_repo import list_rate_codes
+backend/api/routes/payroll.py:1641:from backend.infra.repositories import workspace_config_repo as _ws_cfg_repo
+backend/api/routes/payroll.py:1642:from backend.infra.repositories import timesheet_repo as _ts_repo
+backend/application/reconciliation_service.py:14:from backend.infra.repositories.reconciliation_repo import (
+backend/application/payroll_readiness_service.py:31:from backend.infra.repositories import workspace_config_repo, timesheet_repo
+backend/api/routes/workspace.py:26:from backend.infra.repositories.workspace_config_repo import (
+backend/api/routes/workspace.py:30:from backend.infra.repositories.rate_code_repo import (
+backend/api/routes/workspace.py:35:from backend.infra.repositories.public_holiday_repo import (
+backend/api/routes/workspace.py:441:    from backend.infra.repositories import employee_repo as _emp_repo
+backend/api/routes/workspace.py:529:    from backend.infra.repositories import employee_repo as _emp_repo
+backend/api/routes/workspace.py:1720:    from backend.infra.repositories import attendance_config_repo as _att_repo
+backend/api/routes/workspace.py:1858:from backend.infra.repositories import attendance_config_repo as _att_cfg_repo
+backend/application/timesheet_derivation_service.py:29:from backend.infra.repositories import (
+backend/application/timesheet_derivation_service.py:34:from backend.infra.repositories.public_holiday_repo import get_effective_ph_list
+backend/application/payroll_approval_service.py:40:from backend.infra.repositories.audit_log_repo import save_audit_log
+backend/application/payroll_approval_service.py:41:from backend.infra.repositories.event_store_repo import save_event
+backend/application/payroll_retry_service.py:75:from backend.infra.repositories.audit_log_repo import save_audit_log
+backend/application/payroll_retry_service.py:76:from backend.infra.repositories.event_store_repo import save_event
+backend/application/payroll_retry_service.py:77:from backend.infra.repositories.payroll_input_repo import load_inputs_for_run
+backend/application/payroll_retry_service.py:78:from backend.infra.repositories.payroll_result_repo import get_employee_context_from_result
+backend/application/payroll_retry_service.py:80:from backend.infra.repositories.rate_code_repo import list_rate_codes
+backend/application/execution_tracer.py:84:            from backend.infra.repositories.execution_trace_repo import save_trace_step
+backend/application/payroll_run_persister.py:16:from backend.infra.repositories.payroll_run_repo import finalise_payroll_run
+backend/application/payroll_run_persister.py:17:from backend.infra.repositories.payroll_result_repo import save_payroll_results_bulk
+backend/application/payroll_run_persister.py:18:from backend.infra.repositories.audit_log_repo import save_audit_log
+backend/application/payroll_run_persister.py:19:from backend.infra.repositories.event_store_repo import save_event
+backend/domain/onboarding/state_inference.py:3:from backend.infra.db.repositories.workspace_repo import get_workspace
+backend/domain/onboarding/hard_validator.py:3:from backend.infra.db.repositories.workspace_repo import (
+backend/domain/onboarding/onboarding_status.py:2:from backend.infra.db.repositories.workspace_repo import (

@@ -1,0 +1,90 @@
+=== engineering-playbook.md head ===
+# Engineering Playbook
+
+## Purpose
+This document defines how all system changes must be reasoned about.
+
+It is used by:
+- Engineers
+- Reviewers
+- AI agents (Casper)
+
+---
+
+## Core System Categories
+
+All changes must be evaluated across:
+
+1. **Guarantees**
+   - Determinism
+   - Idempotency
+   - Immutability
+   - Financial correctness
+
+2. **Engine**
+   - Execution flow
+   - Rule evaluation
+   - Ordering
+
+3. **Data Model**
+   - Schema design
+   - Source of truth
+
+=== Query-codebase.md head ===
+You are not allowed to assume system behavior.
+
+Only answer using:
+1. Actual code paths
+2. Actual database writes
+3. Explicit mappings
+
+For each field, answer:
+
+- Where is it written?
+- What code writes it?
+- What input feeds it?
+- If not found, explicitly say: "NOT POPULATED ANYWHERE"
+
+Trace end-to-end:
+UI → API → Service → DB
+
+Trace the full lifecycle of period inputs for a specific payroll run:
+
+Context:
+
+=== run-architecture-check.md.txt head ===
+Use the engineering playbook.
+
+/ head space
+We are analyzing the following issue:
+
+{{PROBLEM}}
+
+Apply SYSTEM ARCHITECTURE MODE with full instrumentation.
+
+Focus especially on:
+- Guarantees
+- Execution & Retry
+- Data Model
+
+Return full SYSTEM ANALYSIS.
+
+
+#©
+=== payroll-component-Integrity-and-period-input-alignment (no extension) - file type ===
+docs/wrapper-command/payroll-component-Integrity-and-period-input-alignment: Unicode text, UTF-8 text
+## SYSTEM GUARD: Payroll Component Integrity & Period Input Alignment
+
+You are operating inside a payroll engine with the following invariants. You MUST validate all reasoning against them before proposing any solution.
+
+---
+
+### 1. Canonical Principle: Engine Visibility
+
+A value only participates in payroll calculation if and only if it is:
+
+* Represented as a **component**
+* Known to the **engine component model**
+* Properly classified (e.g. earning, deduction)
+* Reachable through the **execution pipeline**
+

@@ -1,0 +1,38 @@
+=== backfill_rule_set_snapshots.py calls production service auto_publish(), not a reimplementation ===
+#!/usr/bin/env python3
+"""
+Backfill rule_set snapshots — one-time, idempotent, re-runnable.
+
+RULE-VER-1 introduced rule_set/rule_set_item as a frozen, point-in-time snapshot
+mechanism for payroll rate resolution, but snapshots are only ever created
+reactively (auto_publish() fires on rule create/version-save). Dates before
+RULE-VER-1 shipped never got a snapshot, so historical-dated payroll inputs for
+those periods silently fell back to the CURRENT rule set (see rule_evaluator.py
+_resolve_rule's current_fallback branch) instead of the rate genuinely in force
+at the time.
+
+This script creates the missing snapshots by calling rule_set_service.auto_publish()
+— NOT a reimplementation of its query — once per distinct (workspace_id,
+effective_from) pair found in payroll_rule. auto_publish() already filters
+is_active = TRUE, so a soft-deleted rule version is correctly excluded from every
+backfilled snapshot, matching the decision that deleted rules are treated as if
+they never existed for historical reconstruction, both here and in all future
+snapshots.
+
+Safe to re-run: auto_publish()'s own DELETE+re-INSERT step for an existing,
+unlocked rule_set makes re-running a no-op in effect. A rule_set already locked
+by a payroll_run (RuleSetLockedError) is skipped, not treated as a failure — a
+single locked date never aborts the rest of the backfill.
+
+Usage:
+    python backend/scripts/backfill_rule_set_snapshots.py
+    python backend/scripts/backfill_rule_set_snapshots.py --workspace-id <uuid>
+    python backend/scripts/backfill_rule_set_snapshots.py --dry-run
+"""
+7:reactively (auto_publish() fires on rule create/version-save). Dates before
+13:This script creates the missing snapshots by calling rule_set_service.auto_publish()
+15:effective_from) pair found in payroll_rule. auto_publish() already filters
+21:Safe to re-run: auto_publish()'s own DELETE+re-INSERT step for an existing,
+46:from backend.application.rule_set_service import auto_publish, RuleSetLockedError, SYSTEM_ACTOR  # noqa: E402
+83:                auto_publish(db, ws_id_str, effective_from, created_by_uuid=SYSTEM_ACTOR)
+84:                db.commit()

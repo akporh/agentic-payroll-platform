@@ -1,0 +1,57 @@
+=== ExecutionTracer.step() persists via _persist(); .info()/.warn() are console-only ===
+53:        console.log(f"[bold cyan]►[/bold cyan]  [bold]{name}[/bold]")
+59:            console.log(
+63:            self._persist(name, "success", duration_ms, None)
+67:            console.log(
+71:            self._persist(name, "error", duration_ms, str(exc))
+74:    def _persist(
+97:        console.log(f"  [dim]│[/dim]  {message}")
+101:        console.log(f"  [dim]│[/dim]  [bold yellow]⚠  WARN[/bold yellow]  {message}")
+103:    def warn_persist(self, step_name: str, context: str | None = None) -> None:
+109:        console.log(
+113:        self._persist(step_name, "warn", 0, context)
+133:    def warn_persist(self, step_name: str, context: str | None = None) -> None:  # noqa: ARG002
+
+=== All callers of ExecutionTracer / trace_step / tracer= in backend/ ===
+backend/infra/repositories/execution_trace_repo.py:11:def save_trace_step(
+backend/infra/repositories/execution_trace_repo.py:102:def get_trace_steps(run_id: str) -> list[dict]:
+backend/api/routes/payroll.py:30:from backend.infra.repositories.execution_trace_repo import get_trace_steps, get_legacy_executor_stats
+backend/api/routes/payroll.py:1312:    steps = get_trace_steps(run_id)
+backend/application/payroll_run_persister.py:20:from backend.application.execution_tracer import NULL_TRACER
+backend/application/payroll_run_persister.py:33:    tracer=None,
+backend/application/payroll_run_persister.py:60:    tracer = tracer or NULL_TRACER
+backend/application/payroll_run_service.py:16:from backend.application.execution_tracer import ExecutionTracer
+backend/application/payroll_run_service.py:71:    tracer = ExecutionTracer(payroll_run_id)
+backend/application/payroll_run_service.py:118:            tracer=tracer,
+backend/application/payroll_run_service.py:134:            tracer=tracer,
+backend/application/payroll_retry_service.py:68:from backend.application.execution_tracer import ExecutionTracer
+backend/application/payroll_retry_service.py:523:    tracer = ExecutionTracer(payroll_run_id)
+backend/domain/payroll/calculator.py:12:from backend.application.trace_decorators import trace_step
+backend/domain/payroll/calculator.py:15:@trace_step("Calculate net pay (PAYE)")
+backend/domain/payroll/calculator.py:16:def calculate_net_pay(gross_income: Decimal, tax_bands: list[dict], *, tracer=None) -> dict:
+backend/domain/payroll/calculator.py:23:        tracer: Optional ExecutionTracer for structured trace output.
+backend/domain/payroll/run_executor.py:19:from backend.application.execution_tracer import NULL_TRACER
+backend/domain/payroll/run_executor.py:36:    tracer=None,
+backend/domain/payroll/run_executor.py:61:    tracer = tracer or NULL_TRACER
+backend/domain/payroll/run_executor.py:95:            tracer=tracer,
+backend/domain/payroll/batch_processor.py:16:from backend.application.execution_tracer import NULL_TRACER
+backend/domain/payroll/batch_processor.py:31:    tracer=None,
+backend/domain/payroll/batch_processor.py:60:    tracer = tracer or NULL_TRACER
+backend/domain/payroll/batch_processor.py:139:                tracer=tracer,
+backend/domain/payroll/result_builder.py:16:from backend.application.trace_decorators import trace_step
+backend/domain/payroll/result_builder.py:19:@trace_step("Build payroll result")
+backend/domain/payroll/result_builder.py:24:    tracer=None,
+backend/domain/payroll/result_builder.py:39:        tracer: Optional ExecutionTracer for structured trace output.
+backend/domain/payroll/result_builder.py:53:    gross = calculate_gross(components, tracer=tracer)
+backend/domain/payroll/result_builder.py:54:    pay_result = calculate_net_pay(gross, tax_bands, tracer=tracer)
+backend/domain/payroll/salary.py:13:from backend.application.trace_decorators import trace_step
+backend/domain/payroll/salary.py:16:@trace_step("Calculate gross pay")
+backend/domain/payroll/salary.py:17:def calculate_gross(components: list[dict], *, tracer=None) -> Decimal:
+backend/domain/payroll/salary.py:24:        tracer: Optional ExecutionTracer for structured trace output.
+backend/domain/payroll/executor.py:68:    tracer=None,
+backend/domain/payroll/executor.py:99:        tracer: Optional ExecutionTracer for structured trace output.
+backend/domain/payroll/executor.py:114:            tracer=tracer,
+backend/domain/payroll/executor.py:131:        payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
+backend/domain/payroll/executor.py:159:    tracer=None,
+backend/domain/payroll/executor.py:162:    from backend.application.execution_tracer import NULL_TRACER
+backend/domain/payroll/executor.py:163:    _tracer = tracer or NULL_TRACER

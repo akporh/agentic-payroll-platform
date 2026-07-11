@@ -1,0 +1,52 @@
+=== backend/api/routes/*.py route counts ===
+backend/api/routes/__init__.py: 0 routes
+backend/api/routes/admin.py: 3 routes
+backend/api/routes/employees.py: 4 routes
+backend/api/routes/health.py: 1 routes
+backend/api/routes/onboarding_validation.py: 1 routes
+backend/api/routes/onboarding.py: 3 routes
+backend/api/routes/payroll_input.py: 8 routes
+backend/api/routes/payroll.py: 26 routes
+backend/api/routes/workspace.py: 42 routes
+
+=== workspace.py route prefixes (sample) ===
+51:@router.post("/workspace")
+98:@router.get("/workspaces")
+133:@router.get("/workspace/info")
+167:@router.post("/{workspace_id}/transition")
+185:@router.get("/{workspace_id}/onboarding-status")
+194:@router.get("/{workspace_id}/employees")
+280:@router.post("/{workspace_id}/employees")
+438:@router.post("/{workspace_id}/employees/{employee_id}/enroll")
+522:@router.post("/{workspace_id}/employees/bulk-enroll")
+592:@router.patch("/{workspace_id}/employees/contracts")
+668:@router.patch("/{workspace_id}/employees/{employee_id}/contract")
+773:@router.get("/{workspace_id}/salary-definitions")
+802:@router.get("/{workspace_id}/designations")
+821:@router.post("/{workspace_id}/salary-definitions")
+855:@router.post("/{workspace_id}/pay-cycle")
+887:@router.post("/{workspace_id}/grade")
+913:@router.post("/{workspace_id}/designation")
+939:@router.post("/{workspace_id}/salary-definition")
+992:@router.post("/{workspace_id}/payroll-rule")
+1045:@router.post("/{workspace_id}/component-metadata")
+1059:@router.get("/{workspace_id}/platform-components")
+1097:@router.get("/{workspace_id}/component-overrides")
+1124:@router.get("/{workspace_id}/configuration")
+1270:@router.patch("/{workspace_id}/component-overrides/{component_code}")
+1377:@router.patch("/{workspace_id}/pay-cycle")
+1457:@router.patch("/{workspace_id}/grade/{grade_code}")
+1482:@router.patch("/{workspace_id}/designation/{designation_code}")
+1507:@router.patch("/{workspace_id}/salary-definition/{salary_definition_id}")
+1603:@router.patch("/{workspace_id}/payroll-rule/{rule_id}")
+1643:@router.delete("/{workspace_id}/payroll-rule/{rule_id}")
+1696:@router.get("/workspaces/{workspace_id}/payroll-config")
+1713:@router.put("/workspaces/{workspace_id}/payroll-config")
+1744:@router.get("/workspaces/{workspace_id}/rate-codes")
+1762:@router.post("/workspaces/{workspace_id}/rate-codes", status_code=201)
+1778:@router.delete("/workspaces/{workspace_id}/rate-codes/{code}", status_code=200)
+1800:@router.get("/workspaces/{workspace_id}/public-holidays")
+1819:@router.post("/workspaces/{workspace_id}/public-holidays", status_code=201)
+1832:@router.delete("/workspaces/{workspace_id}/public-holidays/{holiday_id}", status_code=200)
+1870:@router.get("/workspaces/{workspace_id}/attendance-codes")
+1890:@router.post("/workspaces/{workspace_id}/attendance-codes", status_code=201)

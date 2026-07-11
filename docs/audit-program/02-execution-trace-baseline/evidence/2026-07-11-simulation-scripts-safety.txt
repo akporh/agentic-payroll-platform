@@ -1,0 +1,25 @@
+=== simulate_payroll_components.py / simulate_stepthrough.py: no write operations (grep for commit/INSERT/UPDATE/DELETE) ===
+NO MATCHES in either file — confirmed read-only
+
+=== backend/scripts/simulate_payroll.py: no write operations ===
+NO MATCHES — confirmed read-only
+
+=== backend/scripts/simulate_payroll.py and simulate_stepthrough.py both import and directly call run_sequential_payroll (the real production engine) ===
+backend/scripts/simulate_payroll.py:5:Runs the real run_sequential_payroll() engine for a single employee and
+backend/scripts/simulate_payroll.py:32:    run_sequential_payroll,
+backend/scripts/simulate_payroll.py:804:    output  = run_sequential_payroll(salary_components, engine_metadata, context)
+scripts/simulate_stepthrough.py:3:Step-through simulation — drives the REAL run_sequential_payroll() engine.
+scripts/simulate_stepthrough.py:27:from backend.domain.payroll.sequential_executor import run_sequential_payroll, build_runtime_component_registry
+scripts/simulate_stepthrough.py:132:    console.rule("[bold cyan]STEP-THROUGH  ·  run_sequential_payroll()[/bold cyan]", style="cyan")
+scripts/simulate_stepthrough.py:213:        "# Build salary_components: the dict run_sequential_payroll() expects\n"
+scripts/simulate_stepthrough.py:676:        "call run_sequential_payroll()",
+scripts/simulate_stepthrough.py:678:        "    run_sequential_payroll, build_runtime_component_registry\n"
+scripts/simulate_stepthrough.py:689:        "output = run_sequential_payroll(\n"
+scripts/simulate_stepthrough.py:700:    output = run_sequential_payroll(salary_components, runtime_metadata, context)
+scripts/simulate_stepthrough.py:781:    parser = argparse.ArgumentParser(description="Step-through payroll simulation using run_sequential_payroll()")
+
+=== simulate_payroll_components.py reimplements calculation by importing individual rule functions directly (nhf, paye, pension, rent_relief) rather than the sequential executor ===
+55:from backend.domain.rules.nhf import calculate_nhf  # noqa: E402
+56:from backend.domain.rules.paye import calculate_paye_for_period  # noqa: E402
+57:from backend.domain.rules.pension import calculate_pension  # noqa: E402
+58:from backend.domain.rules.rent_relief import calculate_rent_relief_for_period  # noqa: E402

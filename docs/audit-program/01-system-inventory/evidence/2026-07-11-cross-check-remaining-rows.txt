@@ -1,0 +1,38 @@
+=== frontend config/onboarding pages still present ===
+frontend/src/pages/AttendanceConfiguration.tsx
+frontend/src/pages/PublicHolidays.tsx
+frontend/src/pages/RateCodes.tsx
+frontend/src/pages/Reconciliation.tsx
+frontend/src/pages/WorkspaceConfig.tsx
+frontend/src/pages/WorkspaceSetup.tsx
+
+=== db models still present ===
+backend/infra/db/models/account.py
+backend/infra/db/models/attendance.py
+backend/infra/db/models/component_metadata.py
+backend/infra/db/models/designation.py
+backend/infra/db/models/grade.py
+backend/infra/db/models/national_public_holiday.py
+backend/infra/db/models/pay_cycle.py
+backend/infra/db/models/payroll_input.py
+backend/infra/db/models/payroll_reconciliation.py
+backend/infra/db/models/payroll_rule.py
+backend/infra/db/models/platform_templates.py
+backend/infra/db/models/rate_code_registry.py
+backend/infra/db/models/rule_set_item.py
+backend/infra/db/models/rule_set.py
+backend/infra/db/models/salary_definition.py
+backend/infra/db/models/statutory_rule.py
+backend/infra/db/models/timesheet.py
+backend/infra/db/models/workspace_payroll_config.py
+backend/infra/db/models/workspace_public_holiday.py
+backend/infra/db/models/workspace.py
+
+=== migrations count ===
+      99
+
+=== reconciliation_service still imports reconciliation_repo ===
+9:from decimal import Decimal
+11:from sqlalchemy import text
+13:from backend.infra.db.session import SessionLocal
+14:from backend.infra.repositories.reconciliation_repo import (

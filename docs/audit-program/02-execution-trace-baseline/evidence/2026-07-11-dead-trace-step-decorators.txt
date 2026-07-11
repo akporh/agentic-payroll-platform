@@ -1,0 +1,38 @@
+=== trace_step-decorated functions (salary.py, calculator.py, result_builder.py) callers ===
+backend/domain/payroll/calculator.py:32:        >>> result = calculate_net_pay(Decimal("800000"), tax_bands)
+backend/domain/payroll/result_builder.py:49:        >>> result = build_payroll_result(components, tax_bands)
+backend/domain/payroll/result_builder.py:53:    gross = calculate_gross(components, tracer=tracer)
+backend/domain/payroll/result_builder.py:54:    pay_result = calculate_net_pay(gross, tax_bands, tracer=tracer)
+backend/domain/payroll/executor.py:42:from backend.domain.payroll.result_builder import build_payroll_result
+backend/domain/payroll/executor.py:131:        payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
+backend/domain/payroll/salary.py:34:        >>> calculate_gross(components)
+
+=== executor.py: build_payroll_result only called from the ELSE (legacy) branch, line 106-133 ===
+    inputs = inputs or {}
+
+    if component_metadata:
+        payroll_result = _run_sequential(
+            components, component_metadata, context, tax_bands, inputs,
+            contract_start=contract_start,
+            contract_end=contract_end,
+            employee_context=employee_context,
+            tracer=tracer,
+        )
+    else:
+        # DEPRECATED: legacy hard-coded pipeline — no component_trace_jsonb produced.
+        # This path fires only when component_metadata is None (e.g. old CLI callers).
+        logger.warning(
+            "Legacy executor fallback invoked for employee %s in run %s — "
+            "component_trace_jsonb will be None. "
+            "Migrate callers to pass component_metadata to enable the sequential executor.",
+            employee_id,
+            payroll_run_id,
+        )
+        if tracer is not None:
+            tracer.warn_persist(
+                "legacy_executor_fallback",
+                f"employee_id={employee_id}",
+            )
+        payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
+        payroll_result["component_trace_jsonb"] = None
+

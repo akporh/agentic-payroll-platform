@@ -1,0 +1,503 @@
+=== executor.py full ===
+     1	"""
+     2	Single Employee Payroll Executor.
+     3	
+     4	Orchestrates a complete deterministic payroll calculation for one employee.
+     5	When component_metadata is supplied the sequential executor is used; otherwise
+     6	the legacy hard-coded pipeline (calculate_gross → calculate_net_pay) is used
+     7	as a fallback so that the retry service and any existing callers continue to
+     8	work without modification.
+     9	
+    10	No database writes — pure computation only.
+    11	
+    12	Input format
+    13	------------
+    14	Payroll inputs arrive from the repository as event lists:
+    15	    {input_code: [{quantity, category, reference_date}, ...]}
+    16	
+    17	The rule evaluator accepts this directly.  Each event carries its own
+    18	reference_date so the engine can apply the historically correct rate per event.
+    19	No flattening step is required.
+    20	
+    21	Temporal params
+    22	---------------
+    23	Cross-period inputs require historically correct rates.  The route (payroll.py)
+    24	populates the following keys in context before calling the executor:
+    25	    historical_rule_sets        — [{id, effective_from, items}] from snapshot
+    26	    historical_period_contexts  — {(year, month): {working_days, calendar_days}}
+    27	    current_rule_set_id         — UUID of the current rule set
+    28	    current_rule_set_effective_from — effective_from of the current rule set
+    29	"""
+    30	
+    31	import logging
+    32	from datetime import date
+    33	from decimal import Decimal, ROUND_HALF_UP
+    34	
+    35	logger = logging.getLogger(__name__)
+    36	
+    37	from backend.domain.payroll.period_context import (
+    38	    PeriodContext,
+    39	    build_period_context,
+    40	    compute_hire_termination_factor,
+    41	)
+    42	from backend.domain.payroll.result_builder import build_payroll_result
+    43	from backend.domain.payroll.rule_evaluator import apply_payroll_rules
+    44	from backend.domain.payroll.sequential_executor import (
+    45	    build_runtime_component_registry,
+    46	    run_sequential_payroll,
+    47	)
+    48	from backend.domain.rules.snapshot import build_rules_context_snapshot
+    49	
+    50	
+    51	def execute_single_employee_payroll(
+    52	    payroll_run_id: str,
+    53	    employee_id: str,
+    54	    components: list[dict],
+    55	    tax_bands: list[dict],
+    56	    statutory_rule_id: str,
+    57	    statutory_version: int,
+    58	    payroll_rule_ids: list[str],
+    59	    performed_by: str,
+    60	    *,
+    61	    inputs=None,
+    62	    component_metadata: list | None = None,
+    63	    context: dict | None = None,
+    64	    contract_start: str | None = None,
+    65	    contract_end:   str | None = None,
+    66	    rules_context_snapshot: dict | None = None,
+    67	    employee_context: dict | None = None,
+    68	    tracer=None,
+    69	) -> dict:
+    70	    """Execute a full payroll calculation for a single employee.
+    71	
+    72	    When component_metadata is provided the sequential executor drives the
+    73	    pipeline.  When it is absent the legacy calculate_gross → calculate_paye
+    74	    path is used so that callers that do not yet supply metadata (e.g. the
+    75	    retry service) are unaffected.
+    76	
+    77	    Args:
+    78	        payroll_run_id: Unique identifier of the payroll run.
+    79	        employee_id: Unique identifier of the employee.
+    80	        components: Salary component dicts with "code" and "amount" keys.
+    81	        tax_bands: Progressive tax brackets for PAYE calculation.
+    82	        statutory_rule_id: Identifier of the statutory rule applied.
+    83	        statutory_version: Version number of the statutory rule.
+    84	        payroll_rule_ids: List of workspace-specific payroll rule IDs applied.
+    85	        performed_by: Identifier of the user or system triggering the run.
+    86	        inputs: Raw employee inputs from the repository.
+    87	            Nested format: {input_code: {quantity, rate, amount, category, reference_date}}
+    88	            Also accepts legacy flat format: {input_code: scalar}.
+    89	        component_metadata: Optional list of component metadata dicts.  When
+    90	            supplied, the sequential executor is used.
+    91	        context: Optional runtime context (pension rates, tax_bands, payroll_rules,
+    92	            historical_rule_sets, historical_period_contexts, etc.).  Must be
+    93	            provided together with component_metadata.
+    94	        contract_start: ISO date string for contract start (proration).
+    95	        contract_end: ISO date string for contract end (proration).
+    96	        rules_context_snapshot: Pre-built v2 snapshot dict.  When provided it is
+    97	            used directly, bypassing the internal v1 snapshot builder.  The route
+    98	            should always supply this once temporal rule resolution is active.
+    99	        tracer: Optional ExecutionTracer for structured trace output.
+   100	
+   101	    Returns:
+   102	        Dict containing payroll_run_id, employee_id, rules_context_snapshot,
+   103	        and payroll_result (gross_components_jsonb, deductions_jsonb, net_pay,
+   104	        calculations_snapshot_json, component_trace_jsonb).
+   105	    """
+   106	    inputs = inputs or {}
+   107	
+   108	    if component_metadata:
+   109	        payroll_result = _run_sequential(
+   110	            components, component_metadata, context, tax_bands, inputs,
+   111	            contract_start=contract_start,
+   112	            contract_end=contract_end,
+   113	            employee_context=employee_context,
+   114	            tracer=tracer,
+   115	        )
+   116	    else:
+   117	        # DEPRECATED: legacy hard-coded pipeline — no component_trace_jsonb produced.
+   118	        # This path fires only when component_metadata is None (e.g. old CLI callers).
+   119	        logger.warning(
+   120	            "Legacy executor fallback invoked for employee %s in run %s — "
+   121	            "component_trace_jsonb will be None. "
+   122	            "Migrate callers to pass component_metadata to enable the sequential executor.",
+   123	            employee_id,
+   124	            payroll_run_id,
+   125	        )
+   126	        if tracer is not None:
+   127	            tracer.warn_persist(
+   128	                "legacy_executor_fallback",
+   129	                f"employee_id={employee_id}",
+   130	            )
+   131	        payroll_result = build_payroll_result(components, tax_bands, tracer=tracer)
+   132	        payroll_result["component_trace_jsonb"] = None
+   133	
+   134	    # Use pre-built snapshot when provided (v2, snapshot-driven retry);
+   135	    # fall back to v1 ID-only snapshot for legacy callers.
+   136	    if rules_context_snapshot is None:
+   137	        rules_context_snapshot = build_rules_context_snapshot(
+   138	            statutory_rule_id, statutory_version, payroll_rule_ids
+   139	        )
+   140	
+   141	    return {
+   142	        "payroll_run_id":         payroll_run_id,
+   143	        "employee_id":            employee_id,
+   144	        "rules_context_snapshot": rules_context_snapshot,
+   145	        "payroll_result":         payroll_result,
+   146	        "inputs_applied":         inputs,
+   147	    }
+   148	
+   149	
+   150	def _run_sequential(
+   151	    components: list[dict],
+   152	    component_metadata: list,
+   153	    context: dict | None,
+   154	    tax_bands: list[dict],
+   155	    inputs: dict | None = None,
+   156	    contract_start: str | None = None,
+   157	    contract_end:   str | None = None,
+   158	    employee_context: dict | None = None,
+   159	    tracer=None,
+   160	) -> dict:
+   161	    """Run the sequential executor and reshape output into the payroll_result shape."""
+   162	    from backend.application.execution_tracer import NULL_TRACER
+   163	    _tracer = tracer or NULL_TRACER
+   164	
+   165	    # Convert components list-of-dicts to code→Decimal dict
+   166	    salary_components = {
+   167	        c["code"]: Decimal(str(c["amount"]))
+   168	        for c in components
+   169	    }
+   170	
+   171	    # Merge tax_bands and per-employee inputs into context
+   172	    full_context = dict(context or {})
+   173	    full_context.setdefault("tax_bands", tax_bands)
+   174	
+   175	    # Pass inputs (event lists) directly — no flattening step needed.
+   176	    # Each event carries its own reference_date for per-event rate resolution.
+   177	    full_context["employee_inputs"] = inputs or {}
+   178	
+   179	    # Extract period context; fall back to v1-compatible MONTHLY defaults when absent.
+   180	    # Log the resolved period so the trace shows input → normalization result.
+   181	    _period_from_ctx = full_context.get("period")
+   182	    if _period_from_ctx:
+   183	        _period: PeriodContext = _period_from_ctx
+   184	        _tracer.info(
+   185	            f"  [dim]period[/dim]  {_period.period_start} → {_period.period_end}  "
+   186	            f"({_period.period_type.value})  "
+   187	            f"cal={_period.calendar_days}d  wd={_period.working_days}d  "
+   188	            f"ann=×{_period.annualization_factor}"
+   189	        )
+   190	    else:
+   191	        _period = build_period_context()
+   192	        _tracer.info(
+   193	            f"  [dim]period[/dim]  [yellow]no period in context — defaulted to MONTHLY "
+   194	            f"{_period.period_start} → {_period.period_end}[/yellow]"
+   195	        )
+   196	    full_context["period"] = _period
+   197	
+   198	    client_meta = full_context.get("client_meta") or {}
+   199	    payroll_rules = full_context.get("payroll_rules") or []
+   200	
+   201	    # Temporal context — populated by payroll.py route once rule sets are wired up
+   202	    historical_rule_sets = full_context.get("historical_rule_sets") or []
+   203	    historical_period_contexts = full_context.get("historical_period_contexts") or {}
+   204	    current_rule_set_id = full_context.get("current_rule_set_id")
+   205	    current_rule_set_effective_from = full_context.get("current_rule_set_effective_from")
+   206	    rule_floor_dates = full_context.get("rule_floor_dates")  # None for legacy callers/tests
+   207	
+   208	    # PH & OT context — populated by payroll.py route (C4 — PH-8)
+   209	    expected_hours = full_context.get("expected_hours")
+   210	    expected_days  = full_context.get("expected_days")
+   211	    rate_code_map  = full_context.get("rate_code_map") or {}
+   212	    shift_type     = full_context.get("shift_type")
+   213	
+   214	    _contract_start = date.fromisoformat(contract_start) if contract_start else None
+   215	    _contract_end   = date.fromisoformat(contract_end)   if contract_end   else None
+   216	
+   217	    # Capture original component codes before rules inject additional components.
+   218	    # Hire proration applies only to salary-definition components; rule-injected
+   219	    # components (OT, allowances) are handled separately after the rules block.
+   220	    original_component_codes = set(salary_components.keys())
+   221	
+   222	    # Apply workspace payroll rules (absences, overtime, etc.) before hire proration.
+   223	    # daily_rate_deduction inside apply_payroll_rules must receive the full-month
+   224	    # salary as its rate base — applying hire proration first would corrupt that base.
+   225	    if payroll_rules:
+   226	        _tracer.info(f"  [dim]rules[/dim]  applying {len(payroll_rules)} workspace payroll rules")
+   227	        salary_components, _rule_trace = apply_payroll_rules(
+   228	            salary_components=salary_components,
+   229	            payroll_rules=payroll_rules,
+   230	            employee_inputs=inputs or {},
+   231	            client_meta=client_meta,
+   232	            working_days=_period.working_days,
+   233	            calendar_days=_period.calendar_days,
+   234	            historical_rule_sets=historical_rule_sets,
+   235	            historical_period_contexts=historical_period_contexts,
+   236	            period_start=_period.period_start if hasattr(_period, "period_start") else None,
+   237	            period_end=_period.period_end if hasattr(_period, "period_end") else None,
+   238	            current_rule_set_id=current_rule_set_id,
+   239	            current_rule_set_effective_from=current_rule_set_effective_from,
+   240	            expected_hours=expected_hours,
+   241	            expected_days=expected_days,
+   242	            rate_code_map=rate_code_map,
+   243	            shift_type=shift_type,
+   244	            employee_context=employee_context,
+   245	            rule_floor_dates=rule_floor_dates,
+   246	        )
+   247	        # Merge ALL rule_evaluator trace entries (unit_multiplier, daily_rate_deduction,
+   248	        # fixed_amount, ot_multiplier, percentage_of_sum, and any not_applied/unrecognised
+   249	        # entries) into component_trace_jsonb via the sequential executor's supplemental
+   250	        # trace mechanism. Previously only percentage_of_sum entries survived here, which
+   251	        # discarded resolution_source/rate_used/warning for every other method — exactly
+   252	        # the signal that would have surfaced historical-rate substitution bugs earlier.
+   253	        if _rule_trace:
+   254	            full_context["_supplemental_traces"] = _rule_trace
+   255	
+   256	    # --- Mid-period hire / termination proration ---
+   257	    # Applied after apply_payroll_rules so daily_rate_deduction uses the correct
+   258	    # full-month base. Each component uses its own proration_strategy from client_meta.
+   259	    # Skipped for TIMESHEET employees — the derivation service is the sole proration
+   260	    # mechanism; executor proration would double-count the factor (AC-5).
+   261	    if full_context.get("timesheet_source"):
+   262	        full_context["_hire_proration_applied"] = False
+   263	    elif _contract_start or _contract_end:
+   264	        proration_entries: list[dict] = []
+   265	        hire_proration_applied = False
+   266	
+   267	        for code in list(salary_components.keys()):
+   268	            is_rule_injected = code not in original_component_codes
+   269	
+   270	            if is_rule_injected:
+   271	                # Rule-injected components (OT, allowances): only prorate if the
+   272	                # rule definition explicitly opts in via prorate_on_hire: true.
+   273	                rule_def = next(
+   274	                    (
+   275	                        r.get("rule_definition_json") or {}
+   276	                        for r in payroll_rules
+   277	                        if r.get("rule_name") == code or r.get("rule_definition_json", {}).get("output_code") == code
+   278	                    ),
+   279	                    {},
+   280	                )
+   281	                if not rule_def.get("prorate_on_hire", False):
+   282	                    continue
+   283	                strategy = "work_days"
+   284	            else:
+   285	                strategy = (
+   286	                    client_meta.get(code, {})
+   287	                    .get("calculations_behaviour", {})
+   288	                    .get("proration_strategy", "work_days")
+   289	                )
+   290	
+   291	            factor = compute_hire_termination_factor(
+   292	                _period, _contract_start, _contract_end, strategy
+   293	            )
+   294	
+   295	            proration_entries.append({
+   296	                "component":     code,
+   297	                "strategy":      strategy,
+   298	                "active_from":   str(_contract_start or _period.period_start),
+   299	                "active_to":     str(_contract_end   or _period.period_end),
+   300	                "factor":        str(factor),
+   301	                "rule_injected": is_rule_injected,
+   302	            })
+   303	
+   304	            if factor < Decimal("1"):
+   305	                salary_components[code] = (salary_components[code] * factor).quantize(
+   306	                    Decimal("0.01"), rounding=ROUND_HALF_UP
+   307	                )
+   308	                hire_proration_applied = True
+   309	
+   310	        if proration_entries:
+   311	            prorated = [e for e in proration_entries if Decimal(e["factor"]) < Decimal("1")]
+   312	            if prorated:
+   313	                _tracer.info(
+   314	                    f"  [dim]hire proration[/dim]  contract {contract_start} → {contract_end}  "
+   315	                    + "  ".join(
+   316	                        f"{e['component']}={e['factor']}({e['strategy']})" for e in prorated
+   317	                    )
+   318	                )
+   319	            supplemental = full_context.get("_supplemental_traces") or []
+   320	            supplemental.extend(proration_entries)
+   321	            full_context["_supplemental_traces"] = supplemental
+   322	            full_context["_hire_proration_applied"] = hire_proration_applied
+   323	
+   324	    # Build unified component registry: platform metadata + rule-injected components.
+   325	    # Rule-injected components (unit_multiplier / fixed_amount) get execution_priority=50
+   326	    # so they enter results{} before _handle_sum_earnings aggregates them at priority 100.
+   327	    unified_meta = build_runtime_component_registry(
+   328	        platform_metadata=component_metadata,
+   329	        payroll_rules=payroll_rules,
+   330	        employee_inputs=inputs or {},
+   331	    )
+   332	
+   333	    sequential = run_sequential_payroll(salary_components, unified_meta, full_context)
+   334	
+   335	    results = sequential["results"]
+   336	    trace   = sequential["trace"]
+   337	
+   338	    # Build a lookup for component_class — uses unified_meta so rule-injected
+   339	    # components (REGULAR_OVERTIME, WEEKEND_ALLOWANCE, etc.) appear in gross_components_jsonb.
+   340	    class_map = {m["component_code"]: m.get("component_class") for m in unified_meta}
+   341	
+   342	    # gross_components_jsonb: all earning-class components
+   343	    gross_components = {
+   344	        code: {"amount": value}
+   345	        for code, value in results.items()
+   346	        if class_map.get(code) == "earning"
+   347	    }
+   348	
+   349	    # deductions_jsonb: all statutory_deduction components (class-driven)
+   350	    deductions = {
+   351	        code: value
+   352	        for code, value in results.items()
+   353	        if class_map.get(code) == "statutory_deduction"
+   354	    }
+   355	
+   356	    gross  = results.get("GROSS_PAY", Decimal("0"))
+   357	    paye   = results.get("PAYE", Decimal("0"))
+   358	    net    = results.get("NET_PAY", Decimal("0"))
+   359	
+   360	    return {
+   361	        "gross_components_jsonb":    gross_components,
+   362	        "deductions_jsonb":          deductions,
+   363	        "net_pay":                   net,
+   364	        "calculations_snapshot_json": {
+   365	            "gross": gross,
+   366	            "paye":  paye,
+   367	            "net":   net,
+   368	        },
+   369	        "component_trace_jsonb": trace,
+   370	    }
+   371	
+   372	
+=== callers of execute_single_employee_payroll ===
+backend/application/payroll_retry_service.py:70:from backend.domain.payroll.executor import execute_single_employee_payroll
+backend/application/payroll_retry_service.py:93:        "context"            — full context dict for execute_single_employee_payroll
+backend/application/payroll_retry_service.py:669:                calc_result = execute_single_employee_payroll(
+backend/domain/payroll/executor.py:51:def execute_single_employee_payroll(
+backend/domain/payroll/batch_processor.py:15:from backend.domain.payroll.executor import execute_single_employee_payroll
+backend/domain/payroll/batch_processor.py:124:            result = execute_single_employee_payroll(
+=== callers passing component_metadata ===
+backend/infra/db/repositories/workspace_repo.py:39:def has_component_metadata(db, workspace_id):
+backend/infra/db/models/component_metadata.py:8:    __tablename__ = "component_metadata"
+backend/infra/db/models/component_metadata.py:10:    component_metadata_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+backend/infra/db/models/component_metadata.py:23:    __tablename__ = "client_component_metadata"
+backend/infra/db/models/component_metadata.py:25:    client_component_metadata_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+backend/infra/db/models/__init__.py:8:from .component_metadata import ComponentMetadata, ClientComponentMetadata
+backend/scripts/simulate_payroll.py:179:def _load_component_metadata(db, country_code):
+backend/scripts/simulate_payroll.py:183:        FROM   component_metadata
+backend/scripts/simulate_payroll.py:193:        FROM   client_component_metadata
+backend/scripts/simulate_payroll.py:338:            source = "client_component_metadata  →  is_active: false"
+backend/scripts/simulate_payroll.py:340:            source = "client_component_metadata  (overrides component_metadata)"
+backend/scripts/simulate_payroll.py:344:            source = "component_metadata"
+backend/scripts/simulate_payroll.py:357:            console.print(f"{I}  [red]status        : SUPPRESSED — workspace override (client_component_metadata)[/red]")
+backend/scripts/simulate_payroll.py:523:        console.print(f"{I}  Annual Rent Relief      : n/a  [dim](RENT_RELIEF inactive — is_active=false on component_metadata)[/dim]")
+backend/scripts/simulate_payroll.py:597:            lines.append(f"     {label:<34} {'[suppressed]':>18}  [dim](client_component_metadata)[/dim]")
+backend/scripts/simulate_payroll.py:617:        er_lines.append(f"     {'Life Insurance':<36} {'[suppressed]':>18}  [dim](client_component_metadata)[/dim]")
+backend/scripts/simulate_payroll.py:648:        all_platform_meta = _load_component_metadata(db, country_code)
+backend/scripts/simulate_payroll.py:678:    # Apply flat-amount client_component_metadata overrides (mirrors production payroll.py)
+backend/scripts/simulate_payroll.py:684:    # Build client_meta: global component_metadata.metadata_json as base layer,
+backend/api/routes/onboarding.py:376:        # calculations_behaviour flags) into client_component_metadata.
+backend/api/routes/onboarding.py:389:                    INSERT INTO client_component_metadata (
+backend/api/routes/payroll.py:411:    component_metadata_rows = db.execute(text("""
+backend/api/routes/payroll.py:414:        FROM component_metadata
+backend/api/routes/payroll.py:420:    component_metadata = [
+backend/api/routes/payroll.py:429:        for r in component_metadata_rows
+backend/api/routes/payroll.py:438:        FROM client_component_metadata
+backend/api/routes/payroll.py:450:        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+backend/api/routes/payroll.py:462:    # even when client_component_metadata has no rows for this workspace.
+backend/api/routes/payroll.py:465:        for m in component_metadata
+backend/api/routes/payroll.py:482:    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+backend/api/routes/payroll.py:866:        component_metadata        = component_metadata or None,
+backend/api/routes/payroll.py:913:    component_metadata,
+backend/api/routes/payroll.py:933:                component_metadata_rows=component_metadata or [],
+backend/api/routes/payroll.py:955:            component_metadata          = component_metadata,
+backend/api/routes/payroll.py:1321:    (when component_metadata is absent). Useful for monitoring migration
+backend/application/payroll_run_service.py:34:    component_metadata: list | None = None,
+backend/application/payroll_run_service.py:115:            component_metadata=component_metadata,
+backend/application/payroll_retry_service.py:90:    component_metadata, client_meta, payroll_rules (from rule_set_id if present),
+backend/application/payroll_retry_service.py:94:        "component_metadata" — list of component dicts for the sequential executor
+backend/application/payroll_retry_service.py:212:            FROM   component_metadata_snapshot
+backend/application/payroll_retry_service.py:219:    component_metadata = [
+backend/application/payroll_retry_service.py:235:            FROM   client_component_metadata_snapshot
+backend/application/payroll_retry_service.py:250:        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+backend/application/payroll_retry_service.py:258:    client_meta = {m["component_code"]: dict(m.get("metadata_json") or {}) for m in component_metadata}
+backend/application/payroll_retry_service.py:273:    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+backend/application/payroll_retry_service.py:385:        "component_metadata":     component_metadata,
+backend/application/payroll_retry_service.py:594:        #          component_metadata, client_meta, payroll_rules) using the
+backend/application/payroll_retry_service.py:678:                    component_metadata      = shared_ctx["component_metadata"],
+backend/api/routes/workspace.py:22:from backend.api.schemas.component_metadata import ComponentMetadataCreateSchema
+backend/api/routes/workspace.py:1046:def create_component_metadata_endpoint(workspace_id: str, payload: ComponentMetadataCreateSchema):
+backend/api/routes/workspace.py:1049:        return onboarding_service.create_component_metadata(
+backend/api/routes/workspace.py:1077:                FROM component_metadata
+backend/api/routes/workspace.py:1105:                FROM client_component_metadata
+backend/api/routes/workspace.py:1198:                FROM client_component_metadata WHERE workspace_id = :wid
+backend/api/routes/workspace.py:1304:                SELECT 1 FROM component_metadata
+backend/api/routes/workspace.py:1324:                INSERT INTO client_component_metadata
+backend/api/routes/workspace.py:1333:                                              ELSE client_component_metadata.overrides_json END,
+backend/api/routes/workspace.py:1334:                    is_active          = COALESCE(EXCLUDED.is_active, client_component_metadata.is_active),
+backend/api/routes/workspace.py:1335:                    proration_strategy = COALESCE(EXCLUDED.proration_strategy, client_component_metadata.proration_strategy),
+backend/application/onboarding_service.py:124:def create_component_metadata(
+backend/application/onboarding_service.py:139:            INSERT INTO client_component_metadata
+backend/application/onboarding_service.py:140:                (client_component_metadata_id, workspace_id, component_code, overrides_json, is_active)
+backend/application/onboarding_service.py:145:            RETURNING client_component_metadata_id, workspace_id, component_code, overrides_json
+backend/application/onboarding_service.py:158:        "client_component_metadata_id": str(result[0]),
+backend/application/snapshot_service.py:38:    component_metadata_rows: list[dict],
+backend/application/snapshot_service.py:57:        # 1. component_metadata_snapshot
+backend/application/snapshot_service.py:58:        if component_metadata_rows:
+backend/application/snapshot_service.py:69:                for row in component_metadata_rows
+backend/application/snapshot_service.py:74:                INSERT INTO component_metadata_snapshot
+backend/application/snapshot_service.py:83:        # 2. client_component_metadata_snapshot
+backend/application/snapshot_service.py:99:                INSERT INTO client_component_metadata_snapshot
+backend/application/snapshot_service.py:149:    Checks employee_contract_snapshot and component_metadata_snapshot only.
+backend/application/snapshot_service.py:150:    client_component_metadata_snapshot is intentionally excluded: a workspace
+backend/application/snapshot_service.py:163:                SELECT 'comp' AS src FROM component_metadata_snapshot WHERE payroll_run_id = :run_id
+backend/domain/payroll/executor.py:5:When component_metadata is supplied the sequential executor is used; otherwise
+backend/domain/payroll/executor.py:62:    component_metadata: list | None = None,
+backend/domain/payroll/executor.py:72:    When component_metadata is provided the sequential executor drives the
+backend/domain/payroll/executor.py:89:        component_metadata: Optional list of component metadata dicts.  When
+backend/domain/payroll/executor.py:93:            provided together with component_metadata.
+backend/domain/payroll/executor.py:108:    if component_metadata:
+backend/domain/payroll/executor.py:110:            components, component_metadata, context, tax_bands, inputs,
+backend/domain/payroll/executor.py:118:        # This path fires only when component_metadata is None (e.g. old CLI callers).
+backend/domain/payroll/executor.py:122:            "Migrate callers to pass component_metadata to enable the sequential executor.",
+backend/domain/payroll/executor.py:152:    component_metadata: list,
+backend/domain/payroll/executor.py:328:        platform_metadata=component_metadata,
+backend/domain/onboarding/hard_validator.py:9:    has_component_metadata,
+backend/domain/onboarding/hard_validator.py:161:        ensure_component_metadata_exists(db, workspace_id)
+backend/domain/onboarding/hard_validator.py:194:def ensure_component_metadata_exists(db, workspace_id: str):
+backend/domain/onboarding/hard_validator.py:195:    if not has_component_metadata(db, workspace_id):
+backend/domain/onboarding/onboarding_status.py:9:    has_component_metadata,
+backend/domain/onboarding/onboarding_status.py:61:        if not component_metadata_exists(db, workspace_id):
+backend/domain/onboarding/onboarding_status.py:62:            missing.append("component_metadata")
+backend/domain/onboarding/onboarding_status.py:102:def component_metadata_exists(db, workspace_id):
+backend/domain/onboarding/onboarding_status.py:103:    return has_component_metadata(db, workspace_id)
+backend/domain/payroll/batch_processor.py:29:    component_metadata: list | None = None,
+backend/domain/payroll/batch_processor.py:134:                component_metadata=component_metadata,
+backend/domain/payroll/rule_evaluator.py:128:            component_code → metadata_json from client_component_metadata.
+backend/domain/payroll/run_executor.py:33:    component_metadata: list | None = None,
+backend/domain/payroll/run_executor.py:93:            component_metadata=component_metadata,
+backend/domain/payroll/sequential_executor.py:5:component_metadata.  Each component's calculation_method is dispatched
+backend/domain/payroll/sequential_executor.py:34:  3.  Insert a row in component_metadata with calculation_method="nsitf_rule".
+backend/domain/payroll/sequential_executor.py:58:#   primary_code      — component_code being executed (from component_metadata row)
+backend/domain/payroll/sequential_executor.py:59:#   meta_json         — component_metadata.metadata_json for this component
+backend/domain/payroll/sequential_executor.py:87:        method_name: Value of component_metadata.calculation_method that this
+backend/domain/payroll/sequential_executor.py:211:        component_metadata rows: BASIC, HOUSING, GROSS_PAY, PAYE, NET_PAY, …
+backend/domain/payroll/sequential_executor.py:235:        platform_metadata: component_metadata rows from the DB.
+backend/domain/payroll/sequential_executor.py:240:        Merged list ready to pass as component_metadata to run_sequential_payroll.
+backend/domain/payroll/sequential_executor.py:303:      Set component_metadata.metadata_json = {
+backend/domain/payroll/sequential_executor.py:361:      component_metadata.metadata_json = {
+backend/domain/payroll/sequential_executor.py:407:      component_metadata.metadata_json = {"base_component": "BASIC_SALARY"}
+backend/domain/payroll/sequential_executor.py:448:      client_component_metadata.overrides_json = {"flat_amount": 2000}
+backend/domain/payroll/sequential_executor.py:462:        "set flat_amount in client_component_metadata overrides_json to migrate",
+backend/domain/payroll/sequential_executor.py:478:    Rate read from component_metadata.metadata_json, not hardcoded.
+backend/domain/payroll/sequential_executor.py:479:    Workspace opt-in via client_component_metadata.is_active.
+backend/domain/payroll/sequential_executor.py:507:    Rate read from component_metadata.metadata_json, not hardcoded.
+backend/domain/payroll/sequential_executor.py:617:    component_metadata: list,
+backend/domain/payroll/sequential_executor.py:627:        component_metadata:
+backend/domain/payroll/sequential_executor.py:628:            List of component metadata dicts from the component_metadata table.
+backend/domain/payroll/sequential_executor.py:658:    active_meta = [m for m in component_metadata if m.get("is_active")]
+backend/domain/payroll/sequential_executor.py:668:    # client_component_metadata.overrides_json may carry a 'component_class' key
+backend/domain/payroll/sequential_executor.py:752:                f"check component_metadata.calculation_method in the DB."
+backend/domain/onboarding/state_inference.py:21:    elif "component_metadata" not in missing:
