@@ -6,28 +6,64 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 09 closed 2026-07-12. Open **Stage 10 — Execution-trace
-remediation design** (not started). Headline Stage 09 result: **`09-000`
-confirmed S0 — no authentication mechanism exists anywhere in the
-application**, and resolved at close as an **unrecognized S0 production
-blocker** (not intentional network-only architecture) — application-level
-authentication and authorization are mandatory before any live/production
-use. Intended tenancy/role model also resolved at close: one bureau
-account manages multiple client workspaces via explicit membership, with
-five minimum roles (platform administrator, bureau administrator, payroll
-operator, payroll approver, read-only auditor/viewer); direct client
-self-service users deferred but the model must remain extensible to them.
-`09-000`, `09-001`, and `09-002` are recorded as S0 production blockers for
-Stage 13. `09-004`, `09-005`, `09-006`, `09-007`, and `07-001` carry to
-Stage 13; `09-005` additionally carries into Stage 10's trace-route design;
-`09-008` carries to Stages 11/13; `06-007` (finalized: insecure/
-tenant-bypass risk) carries to Stages 12/13. `03-004` remains open,
-unchanged. Stage 13 must sequence security remediation as a 9-step
-programme (auth/membership → RBAC → mandatory ownership checks → route
-cleanup → admin/diagnostic restriction → exception sanitization → audit
-events → CSV-injection fix → regression scenarios) — see findings.md for
-the full sequence; individual tenant predicates on some routes do not by
-themselves authorize production/live-data use.
+**Next action:** Stage 10 opened 2026-07-12, in-progress, awaiting human
+review. This is a design-only stage (no code/migration/test/data changes).
+Headline Stage 10 design: **retry gets a minimal, correlated event model**
+(invocation/preflight → per-employee outcome → final transition, per the
+binding `07-005` decision) via a proposed `execution_trace` migration
+adding `workspace_id`, `event_code`, `operation_type`, `invocation_id`,
+`employee_id`, `actor_id`, `metadata_jsonb`, `error_class`. **`04-002`**
+gets an implementation-ready design: `payroll_result.statutory_rule_id`/
+`statutory_version` (nullable, no backfill of legacy rows, sourced from
+the run's own frozen `rules_context_snapshot`). **`08-003`** gets a design
+extending `component_trace_jsonb` with an `outcome` discriminator
+(`executed`/`skipped_eligibility`/`excluded_by_configuration`) plus one
+run-level `COMPONENT_EXCLUDED_BY_CONFIGURATION` trace row per excluded
+component — policy-neutral regardless of `03-004`'s eventual resolution.
+**`09-005`** gets a target secure-query design (mandatory `workspace_id`
+predicate directly on `execution_trace`, `404`-on-mismatch concealment
+policy) but this design is **explicitly stated as not implementable until
+Stage 09's authentication/RBAC work lands** — the schema/write-side/API
+portions can ship independently as a lower-risk increment; only the actual
+authorization check is hard-blocked on Stage 09. Full migration/rollout
+sequence, 12 acceptance criteria, and 12 Stage 11 regression scenarios are
+specified. No human decision required to close as currently specified.
+
+## Stage 10 handoff summary (in-progress, awaiting review)
+
+- **Retry event model (§2).** 4 invocation/preflight events + 1 terminal
+  event per retried employee + 3 final-outcome events, all sharing one
+  `invocation_id` per retry API call. Matches the binding `07-005` decision
+  (minimal subset, not full parity, not zero).
+- **`execution_trace` migration (§3, §14).** Additive columns:
+  `workspace_id` (NOT NULL, backfilled from `payroll_run.workspace_id`),
+  `event_code`, `operation_type` (`ORIGINAL_RUN`/`RETRY`), `invocation_id`,
+  `employee_id`, `actor_id`, `metadata_jsonb`, `error_class`. Guarded per
+  `CLAUDE.md`'s ADD COLUMN convention, matching downgrade, no destructive
+  step.
+- **`04-002` per-result statutory identity (§7).** `payroll_result` gains
+  nullable `statutory_rule_id`/`statutory_version`, populated going forward
+  from the run's own frozen `rules_context_snapshot`; legacy rows stay NULL
+  — no backfill from mutable live tables, per the CONTEXT.md constraint.
+- **`08-003` excluded-component visibility (§8).** `component_trace_jsonb`
+  gains an `outcome` discriminator
+  (`executed`/`skipped_eligibility`/`excluded_by_configuration`); one
+  run-level `COMPONENT_EXCLUDED_BY_CONFIGURATION` trace row per distinct
+  excluded component per run. Policy-neutral — works whether Stage 13
+  re-enables `D-ARCH-2` or formalizes controlled disablement.
+- **`09-005` secure timeline design (§10).** Target query scopes by both
+  `run_id` and the new `execution_trace.workspace_id` column directly (not
+  via join-through-`payroll_run` alone). `404`-for-both resource-concealment
+  policy chosen over `403`. **Explicitly not implementable until Stage 09's
+  authentication/membership/RBAC work exists** — stated as a hard
+  dependency, not assumed away.
+- **Migration/rollout sequence (§14), 12 acceptance criteria (§15), 12
+  Stage 11 regression scenarios (§16), and rejected alternatives (§17)**
+  all specified in full — see findings.md.
+- **No human decision required** to close Stage 10 as currently specified;
+  every design choice resolves against a prior binding decision or this
+  stage's own finding rules.
+- **Stage 10 is NOT closed.** Awaiting Michael's review before closure.
 
 ## Stage 09 handoff summary (complete)
 
@@ -298,7 +334,7 @@ themselves authorize production/live-data use.
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
-| 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
+| 10 | Execution-trace remediation (findings + design only — no code changes) | in-progress | 2026-07-12 | — | awaiting human review |
 | 11 | Scenario testing | not-created | — | — | — |
 | 12 | Code simplification | not-created | — | — | — |
 | 13 | Consolidated backlog | not-created | — | — | — |
