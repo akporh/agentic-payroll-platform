@@ -129,3 +129,26 @@ def finalise_payroll_run(
         db.commit()
     finally:
         db.close()
+
+
+def mark_payroll_run_failed(payroll_run_id: str, error_message: str) -> None:
+    """Transition a DRAFT payroll_run to FAILED with an operator-visible reason.
+
+    Used when a calculation precondition (e.g. snapshot creation, per audit
+    finding 05-001) fails before calculation begins — the run never reaches
+    CALCULATING, so it must not be left looking like an ordinary pending
+    DRAFT run with no visible cause.
+    """
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("""
+                UPDATE payroll_run
+                SET status = 'FAILED', error_message = :error
+                WHERE payroll_run_id = :run_id
+            """),
+            {"error": error_message, "run_id": payroll_run_id},
+        )
+        db.commit()
+    finally:
+        db.close()

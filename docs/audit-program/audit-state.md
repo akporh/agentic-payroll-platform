@@ -6,17 +6,45 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 05 closed 2026-07-12. **The immediate remediation
-sprint is now unblocked and must occur before Stage 06 or any live payroll
-processing/production release.** Remediation scope: **`04-001` + `05-001`**
-(snapshot-first retry fix, plus making silent snapshot-creation failure
-fail visibly). `05-004` (broad cross-snapshot immutability hardening) is
-**deferred to Stage 13** — no current mutation path threatens the
-unprotected tables, and the specific snapshot `04-001` depends on
-(`payroll_run.rules_context_snapshot`) already has DB-level immutability.
-**`04-001` remains a confirmed S0 release blocker**, unchanged throughout
-Stage 05. Stage 06 is not started — it opens only after the remediation
-sprint completes.
+**Next action:** The immediate remediation sprint (`04-001` + `05-001`) has
+been **implemented and verified** — see
+`docs/audit-program/remediation/04-001-05-001/summary.md` and
+`verification.md` — but is **in-progress, awaiting human review**, per this
+audit programme's standing pattern of never self-closing work. All 9
+acceptance criteria from the remediation prompt are met: retry no longer
+queries live statutory tables, a controlled reproduction of `04-001`'s
+divergence now returns `REJECTED` instead of `REPRODUCED`, snapshot-creation
+failure now fails visibly (new `FAILED` run status), and the full test
+suite passes (291 passed, 1 unrelated pre-existing skip). **Stage 06
+remains blocked until this review confirms the acceptance criteria — it
+has not been started.** A blocking implementation gap was found and fixed
+during the sprint: v2 statutory-snapshot emission was incorrectly coupled
+to `rule_set_id` presence, which would have broken retry for the 67% of
+workspaces (47/70 in the local dev DB) with no published rule_set — see
+summary.md for the fix (decoupled the two concerns in
+`build_rules_context_snapshot`).
+
+## Immediate remediation sprint — 04-001 + 05-001
+
+- **Status:** implemented, verified, awaiting review (not yet marked complete)
+- **Primary records:** `docs/audit-program/remediation/04-001-05-001/summary.md`,
+  `docs/audit-program/remediation/04-001-05-001/verification.md`
+- **04-001:** fixed — retry reads `rules_context_snapshot["statutory_rule"]`
+  exclusively; live `statutory_rule`/`tax_band` queries removed from the
+  retry path; legacy/incomplete snapshots hard-fail with no live fallback.
+- **05-001:** fixed — snapshot-creation failure now marks the run `FAILED`
+  (new terminal status, migration `b8c9d0e1f2a3`) with an operator-visible
+  `error_message`, and aborts before any calculation or persistence.
+- **05-004:** correctly NOT touched, per the Stage 05 close decision —
+  remains a Stage 13 backlog item.
+- **04-002:** correctly NOT touched — remains a separate follow-up.
+- **Tests:** 5 new regression tests
+  (`tests/test_payroll_retry_snapshot_first.py`) plus 4 pre-existing tests
+  updated for a shape change caused by the blocking-gap fix (not a
+  behaviour change to what they verify) — see verification.md.
+- **Schema impact:** one migration (`b8c9d0e1f2a3`) for 05-001's
+  `error_message` column and `FAILED` status; none required for 04-001
+  itself, confirming Stage 05 §8's sufficiency analysis.
 
 ## Stage 05 handoff summary
 

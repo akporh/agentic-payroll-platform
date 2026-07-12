@@ -172,7 +172,12 @@ def test_run_snapshot_is_immutable():
         assert snapshot is not None, "rules_context_snapshot must not be NULL"
         assert snapshot["statutory_rule"]["id"] == str(statutory_rule_id)
         assert snapshot["statutory_rule"]["version"] == 9995
-        assert isinstance(snapshot["payroll_rules"], list)
+        # 04-001 remediation: v2 statutory content is always frozen now, even for a
+        # workspace whose PENSION rule has no effective_from (no rule_set published).
+        # See docs/audit-program/05-snapshot-integrity/findings.md §9.
+        assert snapshot.get("snapshot_version") == 2
+        assert snapshot["rule_set"] is None
+        assert isinstance(snapshot["statutory_rule"]["tax_bands"], list)
 
         original_snapshot = snapshot
 

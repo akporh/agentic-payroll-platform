@@ -22,7 +22,11 @@ from backend.domain.rules.snapshot import build_rules_context_snapshot
 from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
 from backend.application.snapshot_service import create_payroll_snapshot
-from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run
+from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run, mark_payroll_run_failed
+from backend.domain.payroll.status import PayrollRunStatus
+from backend.domain.payroll.audit_events import build_transition_audit, build_transition_event
+from backend.infra.repositories.audit_log_repo import save_audit_log
+from backend.infra.repositories.event_store_repo import save_event
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.rule_set_service import resolve_effective_rules
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
@@ -609,23 +613,24 @@ def run_payroll(
             hist_db.close()
 
     # ── Build rules context snapshot ──────────────────────────────────────────
-    # v2 (full content) when a rule set is resolved; v1 (ID-only) for legacy.
-    if rule_set_id:
-        rules_ctx_snapshot = build_rules_context_snapshot(
-            statutory_rule_id         = statutory_rule_id,
-            statutory_version         = statutory_version,
-            statutory_effective_from  = stat_effective_from,
-            statutory_rules_jsonb     = rules_jsonb,
-            statutory_tax_bands       = tax_bands,
-            rule_set_id               = rule_set_id,
-            rule_set_effective_from   = rule_set_effective_from,
-            rule_set_items            = rule_set_items_for_snapshot,
-            historical_rule_sets      = historical_rule_sets_list,
-        )
-    else:
-        rules_ctx_snapshot = build_rules_context_snapshot(
-            statutory_rule_id, statutory_version, payroll_rule_ids
-        )
+    # v2 (full statutory content) is always requested — retry depends on it
+    # (audit finding 04-001). rule_set_id/rule_set_effective_from/
+    # rule_set_items_for_snapshot are None/None/[] when this workspace has no
+    # published rule set (already set that way above); build_rules_context_
+    # snapshot emits "rule_set": None in that case rather than omitting
+    # statutory content, since statutory obligations are independent of
+    # whether a workspace has any custom payroll rules.
+    rules_ctx_snapshot = build_rules_context_snapshot(
+        statutory_rule_id         = statutory_rule_id,
+        statutory_version         = statutory_version,
+        statutory_effective_from  = stat_effective_from,
+        statutory_rules_jsonb     = rules_jsonb,
+        statutory_tax_bands       = tax_bands,
+        rule_set_id               = rule_set_id,
+        rule_set_effective_from   = rule_set_effective_from,
+        rule_set_items            = rule_set_items_for_snapshot,
+        historical_rule_sets      = historical_rule_sets_list,
+    )
 
     # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
     workspace_payroll_config = get_workspace_payroll_config(workspace_id)
@@ -926,6 +931,14 @@ def _calculate_and_persist(
     try:
         # Create snapshot here (not in the sync route) so the HTTP response returns
         # immediately after DRAFT creation.
+        #
+        # 05-001 remediation: snapshot creation is a calculation precondition, not an
+        # optional side effect. Previously this exception was logged and swallowed,
+        # after which execute_and_persist ran anyway — a run whose snapshot silently
+        # failed to persist would still calculate and complete normally, only
+        # surfacing the problem much later (and only as an opaque retry-time
+        # hard-fail) the first time an operator tried to retry a FAILED employee on
+        # it. It must instead abort here and leave an operator-visible FAILED run.
         try:
             create_payroll_snapshot(
                 payroll_run_id=payroll_run_id,
@@ -936,6 +949,20 @@ def _calculate_and_persist(
             )
         except Exception as exc:
             logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+            error_message = "Failed to create the run's configuration snapshot — no calculation was performed."
+            mark_payroll_run_failed(payroll_run_id, error_message)
+            save_audit_log(workspace_id, build_transition_audit(
+                payroll_run_id=payroll_run_id,
+                old_status=PayrollRunStatus.DRAFT,
+                new_status=PayrollRunStatus.FAILED,
+                performed_by="system",
+            ))
+            save_event(build_transition_event(
+                payroll_run_id=payroll_run_id,
+                old_status=PayrollRunStatus.DRAFT,
+                new_status=PayrollRunStatus.FAILED,
+            ))
+            return
 
         execute_and_persist(
             payroll_run_id              = payroll_run_id,
@@ -1015,7 +1042,7 @@ def get_payroll_run(workspace_id: str, run_id: str):
             text("""
                 SELECT payroll_run_id, workspace_id, status,
                        period_start, period_end, pay_date, created_at,
-                       statutory_effective_date
+                       statutory_effective_date, error_message
                 FROM payroll_run
                 WHERE payroll_run_id = :rid AND workspace_id = :wid
             """),
@@ -1034,6 +1061,7 @@ def get_payroll_run(workspace_id: str, run_id: str):
             "pay_date":                  str(row[5]) if row[5] else None,
             "created_at":                str(row[6]) if row[6] else None,
             "statutory_effective_date":  str(row[7]) if row[7] else None,
+            "error_message":             row[8],
         }
     finally:
         db.close()

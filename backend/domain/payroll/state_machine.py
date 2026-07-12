@@ -13,7 +13,8 @@ Reference: ARCHITECTURE_LOCK.md — State Transitions (Locked).
 from backend.domain.payroll.status import PayrollRunStatus
 
 ALLOWED_TRANSITIONS: dict[PayrollRunStatus, list[PayrollRunStatus]] = {
-    PayrollRunStatus.DRAFT: [PayrollRunStatus.CALCULATING],
+    PayrollRunStatus.DRAFT: [PayrollRunStatus.CALCULATING, PayrollRunStatus.FAILED],
+    PayrollRunStatus.FAILED: [],
     PayrollRunStatus.CALCULATING: [PayrollRunStatus.CALCULATED, PayrollRunStatus.PARTIAL],
     PayrollRunStatus.PARTIAL: [PayrollRunStatus.CALCULATED],
     PayrollRunStatus.CALCULATED: [PayrollRunStatus.APPROVED],

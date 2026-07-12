@@ -85,10 +85,15 @@ from backend.application.rule_set_service import resolve_effective_rules
 def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     """Build the same execution context that the original /payroll/run route builds.
 
-    Loads period dates from the payroll_run row, resolves statutory rule via
-    country_code and statutory_effective_date (temporal selection), loads
-    component_metadata, client_meta, payroll_rules (from rule_set_id if present),
-    and all statutory rate parameters.  Returns a dict with keys:
+    Loads period dates from the payroll_run row. Statutory rule content
+    (id/version/rules_jsonb/tax_bands) is read exclusively from the frozen
+    rules_context_snapshot["statutory_rule"] the original run wrote — never
+    re-resolved from live statutory_rule/tax_band tables (04-001 remediation;
+    see docs/audit-program/05-snapshot-integrity/findings.md §9 for the
+    canonical contract this implements). A run without a complete v2
+    statutory snapshot hard-fails rather than falling back to a live query.
+    Also loads component_metadata, client_meta, and payroll_rules (from
+    rule_set_id if present).  Returns a dict with keys:
 
         "context"            — full context dict for execute_single_employee_payroll
         "component_metadata" — list of component dicts for the sequential executor
@@ -98,14 +103,16 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "payroll_rule_ids"   — list[str]  (legacy v1 snapshot only; empty for v2)
         "rules_context_snapshot" — original run snapshot (for snapshot-driven retry)
     """
-    # ── Load workspace country_code, run period dates, and new temporal columns ─
+    # ── Load run period dates and temporal columns ────────────────────────────
+    # No JOIN to workspace/country_code here: statutory content now comes
+    # exclusively from the frozen rules_context_snapshot below (04-001
+    # remediation), so the live-table join key is no longer needed.
     row = db.execute(
         text("""
-            SELECT w.country_code, pr.period_start, pr.period_end,
+            SELECT pr.period_start, pr.period_end,
                    pr.rule_set_id, pr.statutory_effective_date,
                    pr.rules_context_snapshot, pr.public_holidays_snapshot
             FROM   payroll_run pr
-            JOIN   workspace   w  ON pr.workspace_id = w.workspace_id
             WHERE  pr.payroll_run_id = :run_id
         """),
         {"run_id": payroll_run_id},
@@ -114,13 +121,12 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     if row is None:
         raise ValueError(f"Payroll run not found: {payroll_run_id}")
 
-    country_code              = row[0]
-    period_start              = row[1]
-    period_end                = row[2]
-    rule_set_id               = str(row[3]) if row[3] else None
-    statutory_effective_date  = row[4]
-    original_snapshot         = row[5] or {}
-    ph_snapshot               = row[6]
+    period_start              = row[0]
+    period_end                = row[1]
+    rule_set_id               = str(row[2]) if row[2] else None
+    statutory_effective_date  = row[3]
+    original_snapshot         = row[4] or {}
+    ph_snapshot               = row[5]
 
     if period_start is None or period_end is None:
         raise ValueError(
@@ -142,33 +148,39 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         public_holiday_dates=public_holiday_dates,
     )
 
-    # ── Statutory rule — temporal selection ──────────────────────────────────
-    # Use statutory_effective_date from the original run so that retry picks the
-    # same statutory rule as the run that created the snapshot.  Fall back to
-    # latest-version query for legacy runs without the column.
-    if statutory_effective_date:
-        stat_row = db.execute(
-            text("""
-                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
-                FROM   statutory_rule sr
-                WHERE  sr.country_code    = :cc
-                  AND  sr.effective_from <= :as_of_date
-                ORDER  BY sr.effective_from DESC, sr.version DESC
-                LIMIT  1
-            """),
-            {"cc": country_code, "as_of_date": statutory_effective_date},
-        ).fetchone()
-    else:
+    # ── Statutory rule — snapshot-first (audit finding 04-001 remediation) ────
+    # Retry must consume the exact statutory content the original run resolved
+    # and froze into rules_context_snapshot["statutory_rule"] (v2 snapshots) —
+    # never re-resolve statutory_rule/tax_band from live tables keyed by a
+    # frozen date. A live re-query can select a *different* statutory_rule row
+    # than the original run used if a new row was inserted with an
+    # effective_from between the original resolution and this retry (see
+    # docs/audit-program/04-original-run-retry-parity/findings.md, 04-001,
+    # reproduced by controlled test). statutory_effective_date remains useful
+    # only as a legacy-tier signal below — it is never used to query
+    # statutory_rule/tax_band live.
+    if not statutory_effective_date:
         raise ValueError(
             f"Run {payroll_run_id} predates snapshot engine — open a correction run."
         )
 
-    if stat_row is None:
-        raise ValueError(f"No statutory rule found for country_code '{country_code}'")
+    snapshot_version = original_snapshot.get("snapshot_version")
+    statutory_snap = original_snapshot.get("statutory_rule") or {}
+    _statutory_snap_complete = (
+        snapshot_version == 2
+        and statutory_snap.get("id") is not None
+        and statutory_snap.get("version") is not None
+        and statutory_snap.get("rules_jsonb") is not None
+        and statutory_snap.get("tax_bands") is not None
+    )
+    if not _statutory_snap_complete:
+        raise ValueError(
+            f"Run {payroll_run_id} predates the v2 statutory snapshot — open a correction run."
+        )
 
-    statutory_rule_id = str(stat_row[0])
-    statutory_version = stat_row[1]
-    rules_jsonb       = stat_row[2] or {}
+    statutory_rule_id = str(statutory_snap["id"])
+    statutory_version = statutory_snap["version"]
+    rules_jsonb        = statutory_snap["rules_jsonb"] or {}
 
     pension_config = rules_jsonb.get("pension")
     if not pension_config or "employee_rate" not in pension_config or "employer_rate" not in pension_config:
@@ -184,24 +196,15 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
     life_ins_rate         = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
-    # ── Tax bands ─────────────────────────────────────────────────────────────
-    tax_rows = db.execute(
-        text("""
-            SELECT lower_limit, upper_limit, rate
-            FROM   tax_band
-            WHERE  statutory_rule_id = :sr_id
-            ORDER  BY lower_limit
-        """),
-        {"sr_id": statutory_rule_id},
-    ).fetchall()
-
+    # ── Tax bands — from the frozen snapshot, same ordering/values as the
+    # original run's live-resolved tax_band rows at the time it ran ────────────
     tax_bands = [
         {
-            "lower_limit": Decimal(str(r[0])) if r[0] is not None else None,
-            "upper_limit": Decimal(str(r[1])) if r[1] is not None else None,
-            "rate":        Decimal(str(r[2])) if r[2] is not None else None,
+            "lower_limit": Decimal(str(b["lower_limit"])) if b.get("lower_limit") is not None else None,
+            "upper_limit": Decimal(str(b["upper_limit"])) if b.get("upper_limit") is not None else None,
+            "rate":        Decimal(str(b["rate"])) if b.get("rate") is not None else None,
         }
-        for r in tax_rows
+        for b in statutory_snap["tax_bands"]
     ]
 
     # ── Component metadata — read from snapshot (not live table) ─────────────

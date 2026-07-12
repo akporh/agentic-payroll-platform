@@ -189,6 +189,13 @@ def test_payroll_retry_e2e():
                         "rate":            0.08,
                         "base_components": ["BASIC", "HOUSING", "TRANSPORT"],
                     },
+                    # 04-001 remediation: onboarding only publishes a v2 rule_set
+                    # (and, via the same payroll.py resolution path, only a v2
+                    # rules_context_snapshot) for rules carrying effective_from —
+                    # without it this fixture exercised the legacy pre-rule-set
+                    # path, which the 04-001 fix correctly hard-fails on retry.
+                    # Real current onboarding always supplies this field.
+                    "effective_from": "2025-01-01",
                 }
             ],
             "employees": [
@@ -289,13 +296,26 @@ def test_payroll_retry_e2e():
             f"Payroll HTTP {payroll_resp.status_code}: {payroll_resp.text}"
         )
         payroll_body = payroll_resp.json()
-        assert payroll_body["status"] == "success", payroll_body
+        # Async contract: run trigger returns DRAFT immediately; calculation
+        # runs in a BackgroundTask that TestClient completes before returning.
+        assert payroll_body["status"] == "DRAFT", payroll_body
 
         payroll_run_id = payroll_body["payroll_run_id"]
 
-        summary = payroll_body["summary"]
-        assert summary["success_count"] == 1, f"Expected 1 success: {summary}"
-        assert summary["failure_count"] == 1, f"Expected 1 failure: {summary}"
+        # Per-run summary is no longer in the HTTP response — verify counts
+        # from persisted results instead.
+        counts = db.execute(
+            text("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'SUCCESS'),
+                    COUNT(*) FILTER (WHERE status <> 'SUCCESS')
+                FROM payroll_result
+                WHERE payroll_run_id = :rid
+            """),
+            {"rid": payroll_run_id},
+        ).fetchone()
+        assert counts[0] == 1, f"Expected 1 success result: {counts}"
+        assert counts[1] == 1, f"Expected 1 failed result: {counts}"
 
         # payroll_run.status must be PARTIAL
         run_status = db.execute(
