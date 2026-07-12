@@ -37,12 +37,11 @@ memory `feedback_terse_audit_reporting`.
 | Stage 03 in-progress report | old (full recap) | 5,382 | ~1,346 | Baseline — measured retroactively from the actual message text |
 | Stage 03 close-out (Casper prompt execution) | new (terse) | 240 | ~60 | First report under the new format — status/file/commit/next-stage only, no findings recap |
 | Stage 04 in-progress report (reproduced S0 finding 04-001) | new (terse) | 562 | ~141 | Includes two decision-required lines (S0 escalation) — longer than the Stage 03 close-out but still no findings/tables recap |
-| Stage 04 close | — | — | — | To be filled in on close |
+| Stage 04 close | new (terse) | 428 | ~107 | Decision line + next-stage only, no findings recap despite closing an S0 release-blocker stage |
 
 **Old-style baseline (2 measured reports):** ~1,157 tokens per report.
-**New-style (2 measured reports):** ~60, ~141 — avg ~101 tokens.
-**Per-report saving so far:** ~1,056 tokens average (~91% reduction), n=2 —
-still a small sample, but consistent with the Stage 03 measurement.
+**New-style (3 measured reports):** ~60, ~141, ~107 — avg ~103 tokens.
+**Per-report saving so far:** ~1,054 tokens average (~91% reduction), n=3.
 
 ## Running totals
 
