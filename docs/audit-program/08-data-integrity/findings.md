@@ -1,6 +1,6 @@
 # Stage 08 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md). Status values
 restricted to this stage's five-value set.
 
@@ -241,3 +241,86 @@ not a second independent source), no drift risk found.
 None new from this stage. `03-004`'s pending human decision (should
 statutory-deduction components be disableable) remains open and is now
 additionally informed by 08-003's engine-behaviour evidence.
+
+---
+
+## Final review and closure summary (stage close, 2026-07-13)
+
+**Review conclusion, accepted as recorded:** no new human decision was
+required to close Stage 08.
+
+- `04-004` is **rejected** — retry is only available for `PARTIAL` runs;
+  reconciliation is only available for `LOCKED` runs reached through
+  `CALCULATED → APPROVED → LOCKED`. The two operations cannot overlap for
+  the same run, so retry cannot leave an existing reconciliation stale.
+  Closed with no remediation required.
+- `08-001` confirmed S2 — `employee.employee_number` remains nullable
+  because migration `c9d0e1f2a3b4` swallows any `SET NOT NULL` failure
+  with `EXCEPTION WHEN others THEN NULL`. The local development rows
+  (11/4,673) demonstrate the schema-permitted state, not a production
+  prevalence claim.
+- `08-002` confirmed S2 — `payroll_run` totals/period fields lack
+  DB-level immutability until `PAID`; no active application mutation path
+  was found for `APPROVED` or `LOCKED`, so this is a defence-in-depth gap,
+  not an active exploit.
+- `08-003` confirmed S2 — disabled statutory components are removed
+  before execution with no class-aware guard and no trace/audit signal
+  that a mandatory component was omitted. Correct mechanical engine
+  behaviour is distinguished from the missing compliance/observability
+  guard — the engine does exactly what its configuration tells it to; the
+  gap is the absence of a guard and a signal, not a calculation error.
+  `03-004`'s underlying policy question (should statutory components be
+  disableable at all) remains an **open human decision**, not resolved by
+  Stage 08.
+- No financial miscalculation, stale aggregate, reconciliation corruption,
+  contract-overlap gap, or new historical-reproducibility defect was
+  found. Positive controls remain on record: contract-overlap exclusion
+  constraint, active-contract uniqueness, `payroll_result` uniqueness/
+  three-layer immutability, reconciliation CHECK constraints, and
+  payroll-input constraints.
+
+**Review requirements verified before closing:**
+
+1. `04-004`'s rejection cites the complete lifecycle chain (state machine,
+   `approve_payroll_run`'s transition check, `reconcile_payroll_run`'s
+   `LOCKED`-only guard, `insert_reconciliation`'s duplicate-row guard) —
+   four independent, redundant confirmations, not a single point of
+   failure.
+2. `08-001` explicitly separates the confirmed schema defect (the
+   migration's guard, and the empirical fact that the column is nullable
+   today) from the local-development row count, which is cited only as
+   proof the schema-permitted state exists, not as a production claim.
+3. `08-002` makes no claim of an active exploit or application mutation
+   path — the finding explicitly states none was found and frames the gap
+   as defence-in-depth, consistent with `05-004`'s established severity
+   reasoning.
+4. `08-003` explicitly separates "the engine correctly and mechanically
+   skips disabled components" (not a defect) from "no compliance guard or
+   trace signal exists for that omission" (the confirmed gap).
+5. All five positive controls remain recorded in the findings above,
+   unchanged.
+6. `03-004` remains open, carried forward for Stage 13's policy/backlog
+   resolution — not resolved here.
+7. `04-001` and `05-001` are not referenced by any Stage 08 finding's
+   evidence or defect statement, and remain remediated.
+8. All Stage 08 completion criteria (per `CONTEXT.md`) are satisfied; all
+   4 findings use exactly one of the five valid statuses (3 `confirmed`,
+   1 `rejected`).
+
+**Handoff carry-forward (finalized):**
+
+- `04-004` closed/rejected — no remediation required, no further carry-
+  forward beyond this closure record.
+- `08-001`, `08-002` → Stages 11 (regression test candidates) and 13
+  (backlog).
+- `08-003` → Stages 09, 10, 13 — and the open `03-004` policy decision is
+  preserved unchanged, not resolved by this stage.
+- `07-002` → Stage 13 as an audit-*consistency* issue specifically — not
+  reinterpreted as reconciliation data corruption; the underlying
+  reconciliation data itself is confirmed correct and complete in this
+  stage's investigation.
+- `04-002` and the resolved minimal-retry-trace design remain Stage 10's
+  input, unchanged.
+- `05-004` remains deferred to Stage 13, unchanged.
+- Stages 01–07 and the `04-001`/`05-001` remediation record are preserved
+  unchanged.

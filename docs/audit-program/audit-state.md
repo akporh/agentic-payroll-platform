@@ -6,25 +6,54 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 08 (data integrity) has produced `findings.md`
-(08-001–08-004) but is **not yet marked complete** — awaiting explicit
-review. Headline result: **`04-004` is REJECTED** — strong structural
-evidence (state machine + service guards, multiply redundant) proves
-retry and reconciliation can never temporally overlap for the same run;
-Stage 04's original concern cannot occur. New findings: 08-001 (confirmed,
-S2) — `employee.employee_number` is nullable in the live schema despite a
-migration explicitly named to enforce `NOT NULL`, because its `ALTER` is
-wrapped in a swallow-all `EXCEPTION WHEN others`; 11/4,673 dev rows
-currently NULL. 08-002 (confirmed, S2) — `payroll_run`'s own totals/period
-fields are DB-protected only at `PAID`, one stage later than
-`payroll_result`'s protection (`CALCULATED` onward); no live exploitation
-path found. 08-003 (confirmed, S2) — extends 03-004: disabled statutory
-components are silently filtered with no compliance guard or trace signal.
-Strong positive controls confirmed: contract-overlap exclusion constraint,
-active-contract uniqueness, `payroll_result`'s three-layer immutability,
-and reconciliation's MATCHED/MISMATCH CHECK constraints (the strongest
-DB-level invariant enforcement found anywhere in this audit). `04-001`/
-`05-001` remain remediated (not reopened); `05-004` deferred to Stage 13.
+**Next action:** Stage 08 closed 2026-07-13. Open **Stage 09 — Security
+and tenant isolation** (not started). Headline Stage 08 result: **`04-004`
+rejected** — closed with no remediation required; retry and reconciliation
+cannot overlap for the same run by lifecycle construction. Three confirmed
+S2 findings carried forward: 08-001 (nullable `employee_number` despite a
+migration named to enforce `NOT NULL` — its `ALTER` is guarded by a
+swallow-all `EXCEPTION WHEN others`), 08-002 (`payroll_run` totals/period
+fields DB-protected only at `PAID`, no active mutation path found),
+08-003 (disabled statutory components filtered with no compliance guard
+or trace signal — `03-004`'s policy question remains open, not resolved).
+No financial miscalculation or data corruption found. `04-001`/`05-001`
+remain remediated (not reopened); `05-004` deferred to Stage 13.
+
+## Stage 08 handoff summary
+
+- **`04-004` — closed, rejected, no remediation required.** Retry
+  (`PARTIAL`-only) and reconciliation (`LOCKED`-only, reachable only via
+  `CALCULATED→APPROVED→LOCKED`) cannot overlap for the same run — proven
+  via four independent, redundant guards (state machine, approval
+  transition check, reconciliation status guard, duplicate-reconciliation
+  guard).
+- **`08-001` (confirmed, S2) → Stages 11, 13.** `employee.employee_number`
+  nullable despite migration `c9d0e1f2a3b4`'s stated intent — its `ALTER
+  COLUMN ... SET NOT NULL` is wrapped in `EXCEPTION WHEN others THEN
+  NULL`. Cheapest of this stage's findings to fix (corrective migration +
+  properly-guarded re-application); the underlying swallow-all pattern is
+  worth a broader migration grep before Stage 13 finalizes scope (one
+  other, lower-risk occurrence already found and ruled out this stage).
+- **`08-002` (confirmed, S2) → Stages 11, 13.** `payroll_run`'s own
+  totals/period fields lack DB-level immutability until `PAID` (one stage
+  later than `payroll_result`'s protection). No active application
+  mutation path found — defence-in-depth gap, not an active exploit.
+- **`08-003` (confirmed, S2) → Stages 09, 10, 13.** Disabled statutory
+  components are filtered from engine input with no class-aware guard and
+  no trace/audit signal of omission. Correct mechanical engine behaviour,
+  distinguished from the missing guard/signal. `03-004`'s policy question
+  (should statutory components be disableable at all) remains **open**,
+  preserved unchanged for Stage 13.
+- **`07-002` → Stage 13, as an audit-consistency issue specifically** —
+  Stage 08 confirms the underlying reconciliation data itself is correct
+  and complete; the gap is the absence of a unified `audit_log`/
+  `event_store` entry, not data corruption.
+- **Positive controls confirmed**, not carried forward as action items:
+  contract-overlap GIST exclusion constraint, active-contract partial-
+  unique index, `payroll_result`'s three-layer immutability trigger set,
+  reconciliation's MATCHED/MISMATCH CHECK constraints (the strongest
+  DB-level invariant enforcement found anywhere in this audit programme),
+  and payroll-input validation constraints.
 
 ## Stage 07 handoff summary
 
@@ -166,6 +195,9 @@ DB-level invariant enforcement found anywhere in this audit). `04-001`/
   and Stage 10.
 - **`04-004` (unconfirmed):** reconciliation-refresh behaviour on retry
   completion was not investigated this stage — passes to Stage 08.
+  **Update (Stage 08, 2026-07-13): rejected** — retry and reconciliation
+  cannot overlap for the same run by lifecycle construction; see Stage 08
+  handoff summary above.
 - The controlled reproduction script
   (`04-original-run-retry-parity/evidence/statutory_divergence_controlled_test.py`)
   passes to Stage 11 as the basis for a formal regression scenario once the
@@ -201,7 +233,7 @@ DB-level invariant enforcement found anywhere in this audit). `04-001`/
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
-| 08 | Data integrity | in-progress | 2026-07-12 | — | — |
+| 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
 | 11 | Scenario testing | not-created | — | — | — |
