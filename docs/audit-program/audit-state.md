@@ -6,14 +6,39 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 04 (original-run and retry parity) has produced its
-comparison matrices and `findings.md` (04-001–04-004) but is **not yet
-marked complete** — awaiting explicit review. Headline result: 04-001
-**reproduces** 03-002 by controlled non-production test — confirmed S0,
-escalated in `_core/human-decisions.md` — retry can silently calculate PAYE
-under a different statutory-rule version than the original run, within the
-same `payroll_run`. 04-002 (no persisted field records which statutory rule
-was actually used) compounds it. Nine human decisions now pending.
+**Next action:** Stage 04 closed 2026-07-12. Open Stage 05 (snapshot
+integrity). **`04-001` is a confirmed S0 release blocker** — retry can
+silently calculate PAYE under a different statutory-rule version than the
+original run within the same `payroll_run` (reproduced by controlled
+non-production test). Stage 05 must validate the snapshot contract and
+define the canonical fix; remediation for `04-001` then proceeds
+immediately after Stage 05's design work — **before any live payroll
+processing or production release** — as an explicit exception to the
+"wait for Stage 13" rule below. See Stage 04 handoff summary.
+
+## Stage 04 handoff summary
+
+- **`04-001` (S0, confirmed, release blocker):** retry re-resolves the
+  statutory rule/tax bands live instead of reading the frozen
+  `rules_context_snapshot.statutory_rule`; reproduced with a controlled,
+  self-cleaning non-production test (zero residue confirmed). Canonical fix
+  direction already decided: retry must consume the frozen snapshot content;
+  legacy runs lacking v2 statutory snapshot content must hard-fail, never
+  silently fall back to a live re-query. Stage 05 validates and specifies
+  this fix (read-only — no code changes in Stage 05); the actual remediation
+  sprint follows immediately after, ahead of Stage 13, before any live
+  payroll processing or production release.
+- **`04-002` (S1, confirmed):** no persisted field records which
+  statutory-rule version a `payroll_result` row was actually calculated
+  under — compounds `04-001` by preventing retroactive detection. Passes to
+  Stage 05 (should statutory identity be persisted per result?), Stage 07,
+  and Stage 10.
+- **`04-004` (unconfirmed):** reconciliation-refresh behaviour on retry
+  completion was not investigated this stage — passes to Stage 08.
+- The controlled reproduction script
+  (`04-original-run-retry-parity/evidence/statutory_divergence_controlled_test.py`)
+  passes to Stage 11 as the basis for a formal regression scenario once the
+  fix lands.
 
 ## Stage 03 handoff summary
 
@@ -41,7 +66,7 @@ was actually used) compounds it. Nine human decisions now pending.
 | 01 | System inventory | complete | 2026-07-11 | 2026-07-11 | — |
 | 02 | Execution trace & diagnostic-script baseline | complete | 2026-07-11 | 2026-07-12 | — |
 | 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
-| 04 | Original-run and retry parity | in-progress | 2026-07-12 | — | — |
+| 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
 | 05 | Snapshot integrity | not-created | — | — | — |
 | 06 | UI/API/backend wiring | not-created | — | — | — |
 | 07 | Silent failures and observability | not-created | — | — | — |
@@ -54,19 +79,24 @@ was actually used) compounds it. Nine human decisions now pending.
 
 ## Open human decisions
 
-Nine pending — see [`_core/human-decisions.md`](_core/human-decisions.md):
+Eight pending, one resolved this session — see [`_core/human-decisions.md`](_core/human-decisions.md):
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative
 - Should per-employee retry produce the same `execution_trace` step-level footprint as an original run? (finding 02-002)
 - Should `export_payroll_register_csv` and siblings be fixed or retired? (finding 02-009)
-- Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002)
+- Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — superseded by 04-001's resolution below, effectively decided: yes
 - Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003)
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
-- **S0 — how urgently should 04-001 (confirmed, reproduced statutory-rule divergence between original run and retry) be fixed — ahead of Stage 13, or standard priority?** (finding 04-001)
+- ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; Stage 05 validates and specifies the fix; remediation follows immediately after, ahead of Stage 13, before any live payroll processing or production release. Full decision text in `_core/human-decisions.md`.
 
 ## Notes
 
 - Updated at the end of each working session on this audit, never mid-stage.
 - Production-code remediation for any finding does not begin until Stage 13
-  produces an approved backlog (see `README.md`, `WORKFLOW.md`).
+  produces an approved backlog (see `README.md`, `WORKFLOW.md`) — **except
+  `04-001`**, which is an explicitly decided exception: it moves into an
+  immediate remediation sprint as soon as Stage 05 produces a validated
+  snapshot-first fix specification, ahead of Stage 13 and before any live
+  payroll processing or production release. No other finding carries this
+  exception.

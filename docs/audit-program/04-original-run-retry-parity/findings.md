@@ -1,6 +1,6 @@
 # Stage 04 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md). Status values are
 restricted to this stage's five-value set: confirmed / plausible /
 unconfirmed / rejected / human decision required.
@@ -326,3 +326,58 @@ on top of 04-001 itself — see finding 04-002.
   highest-severity finding in the programme so far and should be the top
   entry once the backlog is assembled, per the severity model's
   status-then-severity prioritization rule.
+
+---
+
+## Final decision and handoff (stage close, 2026-07-12)
+
+**Decisions recorded** (see `_core/human-decisions.md` for the full entries):
+
+1. `04-001` is a **confirmed S0 release blocker** — not held for Stage 13.
+2. The platform is not currently live, so this stage does not trigger an
+   emergency production patch mid-audit — the audit continues in sequence.
+3. Remediation planning does **not** wait for Stage 13. Stage 05 must first
+   validate the snapshot contract and define the canonical fix; `04-001`
+   then moves into an immediate remediation sprint after Stage 05's design
+   work, and **before any live payroll processing or production release**.
+4. The canonical fix direction: retry must consume the frozen statutory-rule
+   content already present at `payroll_run.rules_context_snapshot["statutory_rule"]`,
+   not re-resolve mutable live `statutory_rule`/`tax_band` tables.
+5. The fix must preserve legacy-run compatibility explicitly: a run lacking
+   the required frozen v2 statutory content must **hard-fail** with a clear
+   correction-run instruction — mirroring `validate_snapshot_complete()`'s
+   existing hard-fail pattern for missing component/employee snapshots — not
+   silently fall back to a live re-query (which is the exact mechanism
+   04-001 exploits today).
+6. `04-002` remains a distinct S1 observability finding, not folded into
+   04-001. Stage 05's remediation design should record which statutory
+   rule/version was actually used per calculation, or make that identity
+   directly derivable from immutable persisted data.
+
+**Stage 05 — Snapshot Integrity must:**
+
+- Validate the completeness and stability of
+  `rules_context_snapshot.statutory_rule` — confirm it contains every
+  statutory value and tax-band field retry needs (pension employee/employer
+  rates, NHF rate, health insurance amount, development levy amount,
+  life-insurance rate, and the full tax-band list) before it can be
+  certified as retry's sole source.
+- Define the exact snapshot-first retry contract for statutory content
+  (mirroring how `rule_set_item` and `public_holidays_snapshot` already
+  work correctly, per this stage's §3).
+- Define behaviour for legacy runs lacking v2 statutory snapshot content —
+  per decision 5, this must be a hard-fail, not a silent live fallback.
+- Assess whether statutory identity (rule ID/version) should also be
+  persisted per `payroll_result` row, to address 04-002.
+- Produce a **bounded remediation specification** for 04-001 — Stage 05
+  remains read-only against production code; no fix is implemented until
+  the specification is approved and an ordinary remediation sprint begins
+  under `CLAUDE.md`'s normal workflow.
+
+**Carried forward:**
+
+- `04-004` (reconciliation-refresh parity, unverified) → Stage 08.
+- `04-002` (no persisted statutory-identity field) → Stages 07 and 10.
+- `evidence/statutory_divergence_controlled_test.py` (the controlled
+  reproduction script) → Stage 11, as the basis for a formal regression
+  scenario once the fix lands.
