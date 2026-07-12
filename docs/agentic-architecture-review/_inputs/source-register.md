@@ -54,6 +54,10 @@ This gives the review a single place to check provenance — what was consulted,
 - **Snapshot basis**: live read, 2026-07-12
 - **Notes**: Confirmed these are stub/placeholder documents ("Acceptance criteria: TBD — to be scoped after Phase 1 closure", Status: FUTURE, "Sprint(s): Not yet started") — they add no design detail beyond what S-04 already states, and are not cited as evidence for any finding beyond confirming FEAT-020/021 are unscoped.
 
+## Stage 03 note
+
+Stage 03 (Agent Portfolio) introduced no new sources — its evidence base is entirely S-01 (codebase, re-cited via Stage 01's confirmed findings), S-02/S-03 (already-reconciled memory/CLAUDE.md context), and S-04 (the architecture document, already registered). No new code exploration was performed; Stage 03 is a design/synthesis stage building on already-gathered evidence.
+
 ## Next action
 
-**Complete Stage 02 product-thesis assessment.**
+**Complete Stage 03 agent portfolio review.**
