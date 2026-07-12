@@ -51,4 +51,18 @@ Append-only HITL decision log, per `WORKFLOW.md`. One entry per human decision, 
     sprint to touch both backend/api/routes/ AND a file under
     frontend/src/. This sprint touches neither.
   reference: Pilot sprint scoping, this session, 2026-07-12.
+
+- id: DEC-aud-q1-trace-source-05
+  date: 2026-07-12
+  decision_owner: Michael Emedo
+  stage: implementation
+  decision_type: activate
+  reason: >
+    Plan mode entered for the Q1/AUD-1 fix (component_source in
+    fixed_amount trace entries); plan approved via ExitPlanMode. This
+    decision records the plan-approval gate clearing, not
+    implementation completion — no product code has been written yet
+    (Changeset 4 explicitly excludes it).
+  reference: docs/sprints/aud-q1-trace-source/plan.md; ExitPlanMode
+    approval, this session, 2026-07-12.
 ```

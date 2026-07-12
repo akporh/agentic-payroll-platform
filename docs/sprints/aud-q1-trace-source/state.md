@@ -39,17 +39,17 @@ stages:
   implementation:
     status: eligible
     depends_on: [pm, arch-council]
+    plan_ref: plan.md
+    decision_ref: DEC-aud-q1-trace-source-05
     note: >
-      Both dependencies are terminal (pm: complete, arch-council:
-      not-applicable), so per WORKFLOW.md's eligibility rule this stage
-      is mechanically eligible now. "Eligible" here means the graph
-      dependency conditions are satisfied — plan-mode approval
-      (ExitPlanMode) is a separate, non-stage precondition that must
-      still occur before code is written. Changeset 2 explicitly
-      excludes running plan mode or implementing the product change, so
-      this stage is intentionally left eligible-but-not-activated; the
-      next permitted action for this sprint is entering plan mode for
-      the Q1 fix, in a future session/changeset.
+      Both graph dependencies are terminal (pm: complete, arch-council:
+      not-applicable). Plan mode has now also run for the Q1 fix and
+      was approved via ExitPlanMode (2026-07-12); the approved plan is
+      persisted at plan.md (Changeset 4). Status remains `eligible`,
+      not `active` — no product code has been written yet. Changeset 4
+      explicitly excludes implementing the product change; the next
+      permitted action is writing the code described in plan.md, in a
+      future session/changeset.
 
   verification:
     status: not-applicable
