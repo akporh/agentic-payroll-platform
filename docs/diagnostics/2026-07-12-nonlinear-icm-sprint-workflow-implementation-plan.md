@@ -1,182 +1,296 @@
 # Non-Linear ICM Sprint Workflow — Implementation Plan
 
-**Date:** 2026-07-12
-**Status:** PROPOSAL — no implementation has occurred. Nothing below has been created, and no existing file has been changed, as a result of this document.
-**Scope:** Introduces `docs/sprints/` as repository-based state for the sprint workflow, per the non-linear target model approved in `docs/diagnostics/2026-07-11-sprint-workflow-icm-diagnostic.md` (Sections 7–8, revised 2026-07-11 per `docs/diagnostics/2026-07-11-prompt-revise-sprint-workflow-icm-target-model.md`).
-**Inputs read:** the two diagnostic documents above; `~/.claude/CLAUDE.md`, `.../2.OnAiR/CLAUDE.md`, `.../Sandy/CLAUDE.md`, this repo's `CLAUDE.md`; `~/.claude/skills/{roadmap,pm,architect,arch-council,security,auditor,tester,retro}/SKILL.md`; `~/.claude/settings.json` hooks; `~/.claude/agents/{senior-architect,principal-reviewer}.md`; `docs/audit-program/{WORKFLOW.md,audit-state.md}` and `docs/agentic-architecture-review/{WORKFLOW.md,review-state.md}` as the working precedent; the project auto-memory index and the stale committed `.claude/memory/` folder.
+**Date:** 2026-07-12 (decisions approved 2026-07-12)
+**Status:** IMPLEMENTATION-READY, AWAITING RUN APPROVAL — design decisions D1–D9 are approved (§3). No changeset has been executed. No file listed in §4/§5 has been created, moved, archived, or modified as a result of this plan.
+**Scope:** Introduces `docs/sprints/` as repository-based state for the sprint workflow, per the non-linear target model approved in `docs/diagnostics/2026-07-11-sprint-workflow-icm-diagnostic.md` (Sections 7–8, revised 2026-07-11 per `docs/diagnostics/2026-07-11-prompt-revise-sprint-workflow-icm-target-model.md`), with decisions finalized per `docs/diagnostics/2026-07-12-prompt-approve-nonlinear-icm-implementation-decisions.md`.
+**Inputs read:** the three documents above; `~/.claude/CLAUDE.md`, `.../2.OnAiR/CLAUDE.md`, `.../Sandy/CLAUDE.md`, this repo's `CLAUDE.md`; `~/.claude/skills/{roadmap,pm,architect,arch-council,security,auditor,tester,retro}/SKILL.md`; `~/.claude/settings.json` hooks; `~/.claude/agents/{senior-architect,principal-reviewer}.md`; `docs/audit-program/{WORKFLOW.md,audit-state.md}` and `docs/agentic-architecture-review/{WORKFLOW.md,review-state.md}` as the working precedent; the project auto-memory index and the stale committed `.claude/memory/` folder.
 
 ---
 
 ## 1. Executive summary
 
-This plan introduces four static files (`docs/sprints/CURRENT.md`, `WORKFLOW.md`, `STAGE-REGISTRY.md`, and a shared linting convention) plus a per-sprint workspace, piloted on exactly one upcoming sprint rather than backfilled across sprint history. It does **not** touch the reusable skill files, the hooks, or CLAUDE.md's substantive rules — those stay exactly where they are; the new files formalize *when* those rules apply and *what happened* each time they were checked, which is the gap the diagnostic identified (G1–G3, G9).
+This plan introduces a small set of static files (`docs/sprints/CURRENT.md`, `WORKFLOW.md`, `STAGE-REGISTRY.md`, `README.md`) plus a per-sprint workspace, piloted on exactly one deliberately small sprint rather than backfilled across sprint history. It does **not** redesign the reusable skill files, the hooks, or CLAUDE.md's substantive rules — those stay exactly where they are; the new files formalize *when* those rules apply and *what happened* each time they were checked, which is the gap the original diagnostic identified (G1–G3, G9).
 
-The plan is deliberately front-loaded on the parts that are cheap to get wrong and expensive to unwind: the stage-registry vocabulary (what counts as a stage, what its legal statuses are) and the decision-recording convention (how a skip/rework/parallel call becomes a durable, lintable fact) are fixed in Changesets 1–2, before a single real sprint runs through them. Everything after that is additive — a sprint that doesn't need `architecture.md` never gets one, and no historical sprint is retrofitted.
+All nine open design decisions from the prior draft are now resolved (§3) — this document blocks on exactly one remaining input, which is not a design decision but a scheduling one: **which sprint is the pilot.** Per the approval, that sprint is deliberately not selected here, and Changeset 2 (the only changeset that needs it) does not start until it is.
 
-The riskiest open question is not technical, it's behavioral: whether `state.md` and `decisions.md` actually get written *during* a live sprint, under time pressure, rather than reconstructed afterward from memory (the same failure mode that produced G1–G3 in the first place). Changeset 7 (mechanical linting) exists specifically to make that failure visible immediately rather than discovered three sprints later — this is treated as the load-bearing changeset, not a nice-to-have.
+The riskiest open question is not technical, it's behavioral: whether `state.md` and `decisions.md` actually get written *during* a live sprint, under time pressure, rather than reconstructed afterward from memory (the same failure mode that produced G1–G3 in the first place). Changeset 7 (mechanical linting, script-first per D8) exists specifically to make that failure visible immediately rather than discovered three sprints later — it is the load-bearing changeset, not a nice-to-have.
+
+A second, structural point carried through every changeset below: roughly half of this plan's file changes are **repository changes** (committed, visible on GitHub, portable to any machine or session) and roughly half are **user-home changes** (`~/.claude/skills/`, `~/.claude/settings.json`) that Casper can apply locally in the active environment but that do **not** appear in this git history and do **not** propagate anywhere else automatically. §6 makes this split explicit changeset by changeset, because it's the direct, practical consequence of D3 (personas stay user-home) and a fact this plan must not obscure.
 
 ---
 
 ## 2. Assumptions
 
 - The existing SKILL.md files, hooks, and CLAUDE.md hierarchy are correct and are **not** being redesigned here — this plan only adds the missing state layer around them.
-- Exactly one sprint pilots the new structure. No historical sprint (1 through the current in-flight work) is backfilted into `docs/sprints/`.
+- Exactly one sprint pilots the new structure. No historical sprint (1 through the current in-flight work) is backfilled into `docs/sprints/`.
 - "Fresh-session resumability" means: a new Casper session, given only repository access (no chat history, no auto-memory), can answer every question in the diagnostic's §5 reconstruction test for the pilot sprint.
-- `docs/audit-program/` and `docs/agentic-architecture-review/` remain independent workspaces with their own `WORKFLOW.md` — this plan does not merge them with `docs/sprints/`, only reuses their proven conventions (named stage status, `_core/human-decisions.md`-style append-only decision log, evidence-cites-findings discipline).
-- No CI system currently runs in this repository (not confirmed — flagged as Decision D8). Linting is planned as a local script + hook first; CI is out of scope unless D8 resolves that way.
-- The two prior diagnostic documents (`2026-07-11-sprint-workflow-icm-diagnostic.md` and its revision prompt) are treated as already-approved direction for the *target model*. This plan does not re-litigate that model — it plans the build only.
+- `docs/audit-program/` and `docs/agentic-architecture-review/` remain independent workspaces with their own `WORKFLOW.md` — this plan does not merge them with `docs/sprints/`, only reuses their proven conventions (named stage status, append-only decision log, evidence-cites-findings discipline).
+- No CI system currently runs in this repository. Per D8, linting starts as a standalone script; a hook or CI is a post-pilot decision (§3.1), not part of this implementation pass.
+- The two prior diagnostic documents are treated as already-approved direction for the *target model*. This plan does not re-litigate that model — it plans and now authorizes the build sequence only, pending run approval and pilot selection.
 
 ---
 
-## 3. Decisions requiring human approval
+## 3. Decisions — APPROVED (2026-07-12)
 
-| Decision ID | Decision required | Options | Recommendation | Consequence of deferral |
-|---|---|---|---|---|
-| D1 | Pilot sprint ID and scope | (a) the next scoped product sprint on the ROADMAP, whatever it turns out to be; (b) a deliberately small, low-risk sprint chosen specifically to exercise the new mechanics (e.g. a single-file bugfix) | **(b)** — a deliberately small pilot isolates workflow-mechanics failures from feature-scope failures; if the pilot sprint is itself large or contested, a stall in `docs/sprints/` gets blamed on the feature, not the mechanism | Without a chosen pilot, Changesets 2 and 8 cannot start; the static changesets (1, 3, 6, 7) can still land, but nothing exercises them |
-| D2 | Authoritative source for stage applicability rules | (a) `STAGE-REGISTRY.md` becomes authoritative and CLAUDE.md's auto-invoke table is trimmed to a pointer; (b) CLAUDE.md's auto-invoke table stays authoritative in prose and the registry restates it in structured form (duplication) | **(a)** — matches the diagnostic's G5 finding (duplication between global and project CLAUDE.md already caused drift); one authoritative source per rule | If deferred, the registry is built as a restatement (option b) and silently drifts from CLAUDE.md on the next unrelated edit — same failure mode as G5, one level down |
-| D3 | Whether `senior-architect.md` / `principal-reviewer.md` personas must be copied into the repo | (a) copy into `docs/sprints/_personas/` so verdicts are reproducible by another operator or a future session without `~/.claude` access; (b) leave in `~/.claude/agents/`, accept that arch-council is operator-machine-specific | **(b)** for this pilot — copying now is scope creep against "keep the solution minimal"; revisit only if a second operator or a cloud/remote agent needs to run `/arch-council` | If left in `~/.claude/agents/`, a cloud-executed sprint (e.g. via a scheduled routine) cannot run `/arch-council` at all — acceptable for now since no such routine exists yet, but must be re-decided before one is created |
-| D4 | Whether global or project `CLAUDE.md` files are changed | (a) no changes — `docs/sprints/` is additive only; (b) trim the project CLAUDE.md's restated 17-step sequence to a pointer at the global one (closes G5) | **(b), but as its own tiny changeset (10), not bundled** — it's a real fix but touches a file every session loads, so it deserves isolated review | If deferred, G5's duplication risk remains unaddressed; no functional blocker to the pilot |
-| D5 | Whether user-home plan files (`~/.claude/plans/*.md`) are copied or moved into `docs/sprints/<id>/plan.md` | (a) copied (original stays in `~/.claude/plans/` as harness state, repo gets a durable copy at ExitPlanMode); (b) moved (original deleted after copy) | **(a) copy, never move** — the harness's own plan-mode UI may still reference the original path; copying is strictly additive and reversible | If deferred, plans keep living only in `~/.claude/plans/`, and G2 (the diagnostic's highest-severity gap) stays open |
-| D6 | Whether the stale committed `.claude/memory/` folder is deleted or archived | (a) delete outright (1 file, frozen at Sprint 13, superseded); (b) rename to `.claude/memory-archived-2026-07/` and keep for history | **(b)** — costs nothing, removes the name-collision risk (G4) immediately, and preserves the one historical file in case Sprint 13's arch decisions are referenced later | If deferred, the collision risk (a tool or session that globs `.claude/memory/` gets a Sprint-13 snapshot presented as current) persists indefinitely |
-| D7 | Which commands must write mandatory artefacts (vs. best-effort) | (a) mandatory: `/arch-council` writes `decisions.md` + `architecture.md`; `/tester` writes `state.md` evidence entries (already does via `docs/test-reports/`, now also updates `state.md`); all others best-effort initially; (b) mandatory for all nine commands from day one | **(a)** — matches the diagnostic's own finding that `/tester` is already the most disciplined stage; extend mandatory-writing outward from the one place it already works, rather than mandating it everywhere at once | If deferred to (b) without a pilot, the least-mature commands (e.g. `/pm`, which currently has no dedicated output file at all) are the most likely to silently fail the mandate |
-| D8 | Whether workflow-state linting runs as a hook, script, or CI check | (a) a `~/.claude/settings.json` PostToolUse hook, matching the existing migration-ID-duplicate check pattern; (b) a standalone script run manually before `/retro`; (c) CI (not currently configured in this repo) | **(b) for the pilot, promote to (a) once the check is proven** — a hook that misfires during the pilot is harder to debug and disable than a script; graduate to a hook only after the script has run clean on at least one full sprint | If deferred entirely (no lint), `decision_ref` orphans (a reason with no matching decision entry) are only caught by manual review, undermining Changeset 7's purpose |
-| D9 | Whether more than one active sprint is supported in the first implementation | (a) single active sprint only — `CURRENT.md`'s `active_sprints` list has exactly one entry, enforced informally; (b) multiple concurrent sprints from day one | **(a)** — this repository's actual delivery pattern (per `docs/ROADMAP.md`) is one sprint at a time; building for concurrency now is speculative generality against "keep the solution minimal" | If (b) is chosen anyway, `evidence/` isolation and `state.md` schema need an extra `sprint_id` disambiguation field from the start — cheap now, expensive to retrofit, so this decision should be made explicitly even though (a) is recommended |
+All nine decisions are approved per `docs/diagnostics/2026-07-12-prompt-approve-nonlinear-icm-implementation-decisions.md`. No open design decision remains blocking implementation.
+
+| ID | Decision | Approved option | Approved 2026-07-12 as recorded |
+|---|---|---|---|
+| **D1** | Pilot sprint ID and scope | **(b)** | A deliberately small, low-risk sprint chosen specifically to exercise workflow mechanics independently of feature complexity. **Not yet selected** — this is a precondition on Changeset 2 (§5.2), not a reopened design question. |
+| **D2** | Authoritative source for stage applicability rules | **(a)** | `docs/sprints/STAGE-REGISTRY.md` is authoritative for formal stage applicability and entry conditions. CLAUDE.md's auto-invoke table is trimmed to a pointer (Changeset 10); no duplicate applicability rules are maintained in prose elsewhere. |
+| **D3** | Architecture personas location | **(b)**, for the pilot | `senior-architect.md` / `principal-reviewer.md` stay in `~/.claude/agents/`. Recorded as a known portability limitation — revisit before a second operator or a remote/cloud agent must run `/arch-council` (tracked in §3.1, Post-pilot decisions). |
+| **D4** | CLAUDE.md changes | **(b)**, isolated | Project `CLAUDE.md`'s restated 17-step sequence is trimmed to reference the global sequence + `STAGE-REGISTRY.md`. Runs as its own changeset (10) after the core pilot structure is established — not bundled into Changesets 1–8. |
+| **D5** | Plan-mode persistence | **(a)** | Approved plan-mode output is copied into `docs/sprints/<id>/plan.md`. The harness-owned original in `~/.claude/plans/` is never moved or deleted. |
+| **D6** | Stale committed `.claude/memory/` folder | **(b)** | Archived under a clearly dated name (`.claude/memory-archived-2026-07/`), not deleted. |
+| **D7** | Mandatory artefact writers | **(a)** | For the pilot, durable sprint-workspace writing is mandatory only for `/arch-council` (writes `architecture.md` + `decisions.md`) and `/tester` (updates `state.md` in addition to its existing `docs/test-reports/` habit). `/roadmap`, `/pm`, `/architect`, `/verify`, `/security`, `/auditor`, `/retro` gain best-effort integration per §5, introduced incrementally rather than mandated on day one. |
+| **D8** | Workflow-state linting mechanism | **(b)**, for the pilot | Implemented as a standalone script (`scripts/lint_sprint_state.py`) run manually before `/retro`. No `~/.claude/settings.json` hook is added until the script has run clean on at least one complete pilot sprint (tracked in §3.1, Post-pilot decisions). |
+| **D9** | Active sprint count | **(a)** | One active sprint initially. `CURRENT.md`'s `active_sprints` field is preserved as a **list shape** (`active_sprints: [sprint-id]`) even though exactly one entry is supported and enforced for this implementation — this means multi-sprint support later is a validation-rule change, not a schema migration. Multiple **stages** within that one sprint may still be active/parallel simultaneously (§7.3–7.4 of the diagnostic) — D9 constrains sprint count, not stage concurrency. |
+
+### 3.1 Post-pilot decisions (deliberately deferred — not implementation blockers)
+
+These are real, tracked follow-ups, not open questions this plan needs answered before Changeset 1 can start:
+
+| ID | Deferred item | Reactivation trigger |
+|---|---|---|
+| PP-1 | Promote the lint script (Changeset 7) from standalone script to a `~/.claude/settings.json` PostToolUse hook | Script has run clean (no false positives) across one complete pilot sprint, per D8 |
+| PP-2 | Copy `senior-architect.md` / `principal-reviewer.md` into the repository | A second human operator, or a scheduled/remote cloud agent, needs to run `/arch-council` without access to this machine's `~/.claude/agents/` |
+| PP-3 | Support more than one concurrently active sprint | The team's actual delivery pattern changes from one-sprint-at-a-time (per D9); `active_sprints`' list shape already accommodates this without a schema change |
+| PP-4 | Extend mandatory artefact-writing beyond `/arch-council` and `/tester` to the remaining seven commands | The pilot demonstrates the best-effort integrations (§5, Changesets 3/5) are being followed reliably without a hard mandate |
 
 ---
 
 ## 4. Exact target file inventory
 
-### 4.1 New files — static, cross-sprint (created once, in Changeset 1)
+### 4.1 New files — static, cross-sprint, repository (created once, in Changeset 1)
 
-| Path | Purpose |
-|---|---|
-| `docs/sprints/CURRENT.md` | Names the active sprint workspace(s) — nothing else. Per D9, exactly one entry under `active_sprints` for this implementation. |
-| `docs/sprints/WORKFLOW.md` | Static transition/parallel/skip/rework rules — modeled on `docs/audit-program/WORKFLOW.md`'s stage-lifecycle section. |
-| `docs/sprints/STAGE-REGISTRY.md` | One row per stage (`roadmap`, `pm`, `architecture`, `arch-council`, `implementation`, `verification`, `security`, `audit`, `test`, `retro`) — purpose, mandatory status, entry conditions, inputs, outputs, dependencies, parallel compatibility, skip conditions, completion criteria, human gate. Per D2, this becomes the authoritative source; CLAUDE.md's auto-invoke table is trimmed to point here (Changeset 10). |
-| `docs/sprints/README.md` | One paragraph: what this folder is, links to the two diagnostic documents as design rationale, and to `docs/audit-program/` / `docs/agentic-architecture-review/` as the precedent this reuses. Prevents a fresh session from needing to rediscover the "why" from chat history. |
+| Path | Purpose | Location |
+|---|---|---|
+| `docs/sprints/CURRENT.md` | Names the active sprint workspace(s) via `active_sprints: [...]` — nothing else. Per D9, exactly one entry enforced for now. | Repository |
+| `docs/sprints/WORKFLOW.md` | Static transition/parallel/skip/rework rules — modeled on `docs/audit-program/WORKFLOW.md`'s stage-lifecycle section. | Repository |
+| `docs/sprints/STAGE-REGISTRY.md` | One row per stage (`roadmap`, `pm`, `architecture`, `arch-council`, `implementation`, `verification`, `security`, `audit`, `test`, `retro`) — purpose, mandatory status, entry conditions, inputs, outputs, dependencies, parallel compatibility, skip conditions, completion criteria, human gate. Per D2 (approved), this is the authoritative source; CLAUDE.md's auto-invoke table is trimmed to point here (Changeset 10). | Repository |
+| `docs/sprints/README.md` | One paragraph: what this folder is, links to the diagnostic documents as design rationale, and to `docs/audit-program/` / `docs/agentic-architecture-review/` as the precedent this reuses. | Repository |
 
-### 4.2 New files — per-sprint (created in Changeset 2, for the pilot sprint only)
+### 4.2 New files — per-sprint, repository (created in Changeset 2, **only once the pilot sprint is selected** — not created by this plan)
 
 | Path | Purpose | Mandatory or conditional? |
 |---|---|---|
 | `docs/sprints/<pilot-sprint-id>/CONTEXT.md` | Goal, in-scope stories, out-of-scope, acceptance criteria | Mandatory — created the moment `/pm` produces stories for the pilot |
-| `docs/sprints/<pilot-sprint-id>/state.md` | Authoritative per-stage status (§7.2 of the diagnostic) | Mandatory |
+| `docs/sprints/<pilot-sprint-id>/state.md` | Authoritative per-stage status (diagnostic §7.2) | Mandatory |
 | `docs/sprints/<pilot-sprint-id>/decisions.md` | Append-only HITL decision log | Mandatory |
 | `docs/sprints/<pilot-sprint-id>/evidence/` | Raw artefacts, one subfolder per stage | Mandatory folder, contents conditional |
-| `docs/sprints/<pilot-sprint-id>/plan.md` | Copy of the approved plan from `~/.claude/plans/` | Conditional — only if plan mode ran (per D5, always if it did) |
-| `docs/sprints/<pilot-sprint-id>/architecture.md` | Arch-council Council Summary verdict | Conditional — only if `/architect` or `/arch-council` ran |
+| `docs/sprints/<pilot-sprint-id>/plan.md` | Copy of the approved plan from `~/.claude/plans/`, per D5 | Conditional — only if plan mode ran |
+| `docs/sprints/<pilot-sprint-id>/architecture.md` | Arch-council Council Summary verdict | Conditional — only if `/architect` or `/arch-council` ran; mandatory once it does, per D7 |
 | `docs/sprints/<pilot-sprint-id>/verification.md` | `/verify` findings | Conditional |
 | `docs/sprints/<pilot-sprint-id>/audit.md` | `/auditor` findings (in addition to, not instead of, `docs/audit/`) | Conditional |
-| `docs/sprints/<pilot-sprint-id>/retrospective.md` | Pointer to the sprint's entry in `docs/retro-reports/` — not a duplicate | Mandatory (thin — see Changeset 8) |
+| `docs/sprints/<pilot-sprint-id>/retrospective.md` | Pointer to the sprint's entry in `docs/retro-reports/` — not a duplicate | Mandatory (thin — Changeset 8) |
 
-### 4.3 Existing files/sources that must change
+### 4.3 New files — repository, not sprint-scoped
 
-| Path | Change | Changeset |
+| Path | Purpose | Changeset |
 |---|---|---|
-| `~/.claude/skills/roadmap/SKILL.md` | Add one step: after presenting the roadmap, read `docs/sprints/CURRENT.md` and report the active sprint/stage-set alongside the backlog view | 3 |
-| `~/.claude/skills/pm/SKILL.md` | Add: on story approval for the pilot sprint, create `docs/sprints/<id>/CONTEXT.md` from the agreed stories/AC | 3 |
-| `~/.claude/skills/architect/SKILL.md` | No content change — the 15 retro addenda stay; only a pointer added: "if a sprint workspace exists under `docs/sprints/`, log decisions there per `STAGE-REGISTRY.md`" | 3 |
-| `~/.claude/skills/arch-council/SKILL.md` | Step 4 ("Synthesise and Present") gains a mandatory final step: write the Council Summary to `docs/sprints/<id>/architecture.md` and append a `decisions.md` entry with the verdict | 4 |
-| `~/.claude/skills/security/SKILL.md`, `auditor/SKILL.md`, `tester/SKILL.md` | Each gains one line: "if `docs/sprints/<id>/` exists, also update `state.md` for this stage and write findings to the corresponding `<stage>.md`" — existing `docs/security/`, `docs/audit/`, `docs/test-reports/` outputs are unchanged, this is additive | 5 |
-| `~/.claude/skills/retro/SKILL.md` | Add: check every `state.md` entry for stages not yet `complete`/`skipped`/`not-applicable`; flag before allowing sprint close | 8 |
-| `~/.claude/settings.json` | New PostToolUse hook (Edit/Write on `docs/sprints/*/state.md` or `decisions.md`) running the lint script from Changeset 7 — **only added after D8 resolves in favor of a hook**; until then, no settings.json change | 7 (conditional on D8) |
-| `.../agentic-payroll-platform/CLAUDE.md` | Trim "Automated Delivery Workflow" section to reference the global sequence + point to `docs/sprints/STAGE-REGISTRY.md` for entry conditions, per D2/D4 | 10 |
-| `.claude/memory/` (stale committed folder) | Rename or delete per D6 | 10 |
+| `scripts/lint_sprint_state.py` | Mechanical validator (§5.7) | 7 |
+| `scripts/lint_sprint_state.fixtures/{bad-decision-ref,illegal-parallel,clean}.md` | Three synthetic test fixtures the script must be proven against before pilot use | 7 |
 
-### 4.4 Explicitly not created
+### 4.4 Existing files/sources that must change
 
-- No per-stage `CONTEXT.md` files inside `docs/sprints/<id>/` beyond the single sprint-level `CONTEXT.md` — the target model's stage-level detail lives in `STAGE-REGISTRY.md` (shared) plus `state.md` (per-sprint instance), not in per-stage folders. This repo's sprint workflow is not being restructured into 13 numbered stage folders like `docs/audit-program/` — that pattern fits a single long-running investigation; the sprint workflow runs many short sprints, so per-sprint (not per-stage) folders are the right grain.
-- No workflow engine, no CI pipeline (unless D8 resolves to CI), no new slash commands.
+| Path | Change | Location | Changeset |
+|---|---|---|---|
+| `~/.claude/skills/roadmap/SKILL.md` | Add one step: after presenting the roadmap, read `docs/sprints/CURRENT.md` and report the active sprint/stage-set alongside the backlog view | **User-home** | 3 |
+| `~/.claude/skills/pm/SKILL.md` | Add: on story approval for the pilot sprint, create `docs/sprints/<id>/CONTEXT.md` from the agreed stories/AC | **User-home** | 3 |
+| `~/.claude/skills/architect/SKILL.md` | No content change to the 15 retro addenda — only a pointer added: "if a sprint workspace exists under `docs/sprints/`, log decisions there per `STAGE-REGISTRY.md`" | **User-home** | 3 |
+| `~/.claude/skills/arch-council/SKILL.md` | Step 4 ("Synthesise and Present") gains a mandatory final step: write the Council Summary to `docs/sprints/<id>/architecture.md` and append a `decisions.md` entry with the verdict | **User-home** | 4 |
+| `~/.claude/skills/security/SKILL.md`, `auditor/SKILL.md`, `tester/SKILL.md` | Each gains one line: "if `docs/sprints/<id>/` exists, also update `state.md` for this stage and write findings to the corresponding `<stage>.md`" — existing `docs/security/`, `docs/audit/`, `docs/test-reports/` outputs are unchanged, this is additive | **User-home** | 5 |
+| `~/.claude/skills/retro/SKILL.md` | Add: check every `state.md` entry for stages not yet `complete`/`skipped`/`not-applicable`; flag before allowing sprint close | **User-home** | 8 |
+| `~/.claude/settings.json` | **Deferred to PP-1** — no change in this implementation pass | **User-home** (not actioned) | — |
+| `.../agentic-payroll-platform/CLAUDE.md` | Trim "Automated Delivery Workflow" section to reference the global sequence + point to `docs/sprints/STAGE-REGISTRY.md` for entry conditions, per D2/D4 | **Repository** | 10 |
+| `.claude/memory/` (stale committed folder) | Renamed to `.claude/memory-archived-2026-07/`, per D6 | **Repository** | 10 |
+
+### 4.5 Explicitly not created
+
+- No per-stage `CONTEXT.md` files inside `docs/sprints/<id>/` beyond the single sprint-level `CONTEXT.md` — stage-level detail lives in `STAGE-REGISTRY.md` (shared) plus `state.md` (per-sprint instance), not in per-stage folders. The sprint workflow runs many short sprints, so per-sprint (not per-stage) folders are the right grain — unlike `docs/audit-program/`'s 13 numbered stage folders, which fit its single long-running investigation.
+- No workflow engine, no CI pipeline, no new slash commands, no `~/.claude/settings.json` hook (deferred to PP-1), no copied persona files (deferred to PP-2).
 
 ---
 
 ## 5. Ordered changesets
 
-| # | Changeset | Purpose | Files created | Files updated | Behaviour introduced | Dependencies | Validation | Rollback | Risk |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | **Shared static workflow definitions** | Establish the shared vocabulary before any sprint uses it | `docs/sprints/CURRENT.md`, `WORKFLOW.md`, `STAGE-REGISTRY.md`, `README.md` | — | None yet — these are reference documents, no command reads them until Changeset 3 | D2 (registry vs. CLAUDE.md authority) | Manual read-through by the user; confirm `STAGE-REGISTRY.md`'s 10 stages match `CLAUDE.md`'s auto-invoke table with no contradictions | Delete the four files — nothing else references them yet | Low |
-| 2 | **Pilot sprint workspace creation** | Stand up one sprint's folder to prove the shape | `docs/sprints/<pilot-id>/CONTEXT.md`, `state.md` (all stages `not-started`), `decisions.md` (empty), `evidence/` | `docs/sprints/CURRENT.md` (add the pilot to `active_sprints`) | A sprint now has a physical home before any stage runs | 1, D1 (pilot chosen) | Confirm `state.md` validates against the schema in §7.2 of the diagnostic (manual check for the pilot; automated from Changeset 7 onward) | Remove the sprint folder, revert `CURRENT.md`'s `active_sprints` entry | Low |
-| 3 | **Command and skill integration — roadmap/pm/architect** | Wire the first three stages to read/write the new structure | — | `roadmap/SKILL.md`, `pm/SKILL.md`, `architect/SKILL.md` (pointer only) | `/roadmap` now also reports active sprint/stage-set; `/pm` creates `CONTEXT.md` on story approval | 1, 2 | Run `/roadmap` and `/pm` live against the pilot sprint; confirm `CONTEXT.md` is created with the agreed AC and `/roadmap`'s output includes the pilot | Revert the three SKILL.md files to their pre-changeset version (git revert of this changeset's commit) | Low — additive instructions, no removed behaviour |
-| 4 | **Plan and architecture verdict persistence** | Close G2 and G3 — the two highest-severity gaps from the original diagnostic | — | `arch-council/SKILL.md`; ExitPlanMode handling (documented convention, not a harness change — Claude copies the plan manually per the new instruction) | Approved plans and arch-council verdicts become durable, repo-visible files instead of chat-only or `~/.claude/plans/`-only | 1, 2, D3, D5 | Run a real `/arch-council` pass on the pilot; confirm `architecture.md` and a `decisions.md` entry are both written before the skill reports its verdict to chat | Revert `arch-council/SKILL.md`; delete any `architecture.md`/`plan.md` written during the pilot if the sprint is abandoned | Medium — this changeset modifies a mandatory gate's behaviour; a bug here could block `/arch-council` from completing |
-| 5 | **Verification, audit and evidence persistence** | Extend the same discipline to `/verify`, `/security`, `/auditor`, `/tester` | — | `security/SKILL.md`, `auditor/SKILL.md`, `tester/SKILL.md` | Each writes to both its existing output location (`docs/security/`, `docs/audit/`, `docs/test-reports/`) and updates the pilot's `state.md` + writes to the corresponding conditional file | 1, 2, D7 | Run each skill live against the pilot; confirm existing outputs are unaffected (regression check) and the new `state.md` entries appear correctly | Revert the three SKILL.md files individually — each is independent, so partial rollback is safe | Low — purely additive to skills with an already-strong output habit (tester) or moderate habit (security, auditor) |
-| 6 | **HITL decision recording** | Make `decisions.md` the single place every skip/not-applicable/rework/parallel-allow decision is logged | — | `retro/SKILL.md` (adds a decisions.md completeness check); no other skill changes beyond what Changesets 3–5 already added | Every human decision made during the pilot has an `id`, `date`, `decision_owner`, `stage`, `decision_type`, `reason`, `reference` — see diagnostic §7.7 schema | 2, 4, 5 | Manually audit the pilot's `decisions.md` at sprint close: does every `decision_ref` cited in `state.md` resolve to an entry here? (This becomes automatic in Changeset 7.) | No file removal needed — this changeset is process discipline, not new files | Low |
-| 7 | **Mechanical validation / linting** | The load-bearing changeset — makes broken state visible immediately instead of discovered late | `scripts/lint_sprint_state.py` (or `.sh`) | `~/.claude/settings.json` **only if D8 resolves to (a) hook** | A script that: (a) parses every `state.md` under `docs/sprints/`, (b) confirms every `decision_ref` resolves to a `decisions.md` entry, (c) confirms every `depends_on`/`may_run_with` pairing is legal per `STAGE-REGISTRY.md`, (d) flags orphaned `skipped`/`not-applicable` entries missing a reason | 1, 2, 6, D8 | Run the script against the pilot's deliberately-seeded test scenarios (§9 below — one bad `decision_ref`, one illegal parallel pairing) and confirm it catches both | Delete the script; remove the hook entry from `settings.json` if added | Medium — a false-positive lint that blocks legitimate work is worse than no lint; must be validated against real bad input before being trusted, hence script-first (D8) rather than hook-first |
-| 8 | **Pilot execution and retrospective** | Run one real sprint end-to-end through the new structure and close the loop | `docs/sprints/<pilot-id>/retrospective.md` (thin pointer) | `retro/SKILL.md` (state-completeness gate) | The pilot sprint closes; `/retro` explicitly checks `docs/sprints/<pilot-id>/state.md` for any stage not in a terminal status (`complete`/`skipped`/`not-applicable`) before allowing sprint close | 1–7 | The full §9 acceptance-criteria pass, executed against the real pilot, not a synthetic example | If the pilot fails badly enough to abandon: the sprint folder can be deleted and `CURRENT.md` reverted; the static files (Changeset 1) and skill changes (3–6) are kept regardless, since they're now proven independent of any one sprint's outcome | Medium — first real-world exercise of everything above; risk is schedule/process, not code |
-| 9 | *(reserved — not used; retained to keep numbering stable if a changeset is later split)* | — | — | — | — | — | — | — |
-| 10 | **CLAUDE.md consolidation and memory cleanup** (optional, per D4/D6) | Close G4 and G5 from the original diagnostic | — | `.../agentic-payroll-platform/CLAUDE.md`; `.claude/memory/` renamed or deleted | Project CLAUDE.md's "Automated Delivery Workflow" section becomes a pointer to the global sequence + `STAGE-REGISTRY.md`; the stale memory folder no longer collides with the real store | None — independent of the pilot, can run before, during, or after it | Diff CLAUDE.md before/after to confirm no substantive rule was dropped, only de-duplicated | `git revert` this changeset's commit | Low — mechanical text consolidation, but touches a file every session loads, so review carefully before merging |
+Each changeset states exact files, preconditions, implementation actions, validation, rollback, expected commit boundary, and whether it needs further human approval before it may start.
 
-**Recommended execution order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8, with Changeset 10 run independently whenever convenient (it has no dependency on the pilot's outcome). This groups "define the vocabulary" (1) before "create an instance of it" (2) before "teach the commands to use it" (3–6) before "make it self-checking" (7) before "prove it on a real sprint" (8) — each changeset's validation step depends only on changesets already merged, so the sequence can pause after any step without leaving the repo in a half-wired state.
+### 5.1 Changeset 1 — Shared static workflow definitions
+
+- **Files created:** `docs/sprints/CURRENT.md`, `docs/sprints/WORKFLOW.md`, `docs/sprints/STAGE-REGISTRY.md`, `docs/sprints/README.md` (all repository)
+- **Files updated / moved / archived:** none
+- **Preconditions:** D2 approved (✅, this document)
+- **Implementation actions:** (1) draft `STAGE-REGISTRY.md`'s 10 rows directly from CLAUDE.md's existing auto-invoke table and the SKILL.md descriptions, with no new rules invented; (2) draft `WORKFLOW.md`'s transition/parallel/skip/rework rules per diagnostic §7.3–7.6; (3) `CURRENT.md` created with `active_sprints: []` (empty — no pilot selected yet); (4) `README.md` linking the three diagnostic documents
+- **Validation:** manual read-through confirming `STAGE-REGISTRY.md`'s 10 stages contradict nothing in CLAUDE.md's auto-invoke table (a contradiction here would itself be a G5-style duplication bug, caught before it ships)
+- **Rollback:** delete the four files — nothing else references them yet, so this is a clean revert with zero blast radius
+- **Expected commit boundary:** one commit, four new files, no other file touched
+- **Further approval needed before starting:** **No** — D2 is resolved; this changeset can start immediately upon run approval
+
+### 5.2 Changeset 2 — Pilot sprint workspace creation
+
+- **Files created:** `docs/sprints/<pilot-id>/CONTEXT.md`, `state.md` (all stages `not-started`), `decisions.md` (empty), `evidence/` — **not created by this plan; blocked on pilot selection**
+- **Files updated:** `docs/sprints/CURRENT.md` (`active_sprints` gains the pilot's ID)
+- **Preconditions:** Changeset 1 merged; **pilot sprint explicitly selected** (per D1(b) and the drop-file's explicit instruction not to select or create the workspace prematurely)
+- **Implementation actions:** once a pilot is named, scope it via `/pm` as normal, then materialize `CONTEXT.md` from the agreed AC, an empty `state.md` listing all 10 stages as `not-started`, an empty `decisions.md`, and an empty `evidence/` folder
+- **Validation:** `state.md` validates against the schema in diagnostic §7.2 (manual for this changeset; automated from Changeset 7 onward)
+- **Rollback:** remove the sprint folder; revert `CURRENT.md`'s `active_sprints` entry
+- **Expected commit boundary:** one commit per pilot-workspace creation, separate from Changeset 1's commit
+- **Further approval needed before starting:** **Yes — pilot sprint ID and scope.** This is the one open item this plan does not resolve; it is a scheduling input, not a re-opened design decision (D1's *option* is already approved).
+
+### 5.3 Changeset 3 — Command/skill integration: roadmap, pm, architect
+
+- **Files created:** none
+- **Files updated:** `~/.claude/skills/roadmap/SKILL.md`, `~/.claude/skills/pm/SKILL.md`, `~/.claude/skills/architect/SKILL.md` (all **user-home**)
+- **Preconditions:** Changesets 1–2 merged (needs a live pilot workspace to validate against)
+- **Implementation actions:** append the additive steps described in §4.4; no existing checklist content in `architect/SKILL.md` is altered
+- **Validation:** run `/roadmap` and `/pm` live against the pilot; confirm `CONTEXT.md` is created with the agreed AC and `/roadmap`'s output includes the pilot's active-stage set — a STATIC read of the SKILL.md diff does not count as validation, per this project's own LIVE/STATIC/CODE-REVIEW taxonomy
+- **Rollback:** revert the three SKILL.md files to their pre-changeset content (these are **not** tracked in this git repository — reverting means restoring the local file content, since `~/.claude/` changes leave no commit history here)
+- **Expected commit boundary:** none in this repository (user-home only); if `CONTEXT.md` is created for the pilot in the same work session, that is Changeset 2's commit, not this one
+- **Further approval needed before starting:** No — D7 already scopes this as best-effort, non-mandatory integration
+
+### 5.4 Changeset 4 — Plan and architecture-verdict persistence
+
+- **Files created:** `docs/sprints/<pilot-id>/plan.md` (repository, copied from `~/.claude/plans/`), `docs/sprints/<pilot-id>/architecture.md` (repository)
+- **Files updated:** `~/.claude/skills/arch-council/SKILL.md` (**user-home**); `docs/sprints/<pilot-id>/state.md` and `decisions.md` (repository, mandatory per D7)
+- **Preconditions:** Changesets 1–2 merged; D3 and D5 approved (✅)
+- **Implementation actions:** add the mandatory final step to `arch-council/SKILL.md`'s "Synthesise and Present" stage; establish the ExitPlanMode convention (documented here, not a harness change) that Casper copies the approved plan into `docs/sprints/<id>/plan.md` immediately upon approval
+- **Validation:** run a real `/arch-council` pass on the pilot; confirm `architecture.md` and a `decisions.md` entry both exist **before** the skill reports its verdict to chat — this is the changeset that most directly closes G2/G3, so its validation must be a live run, not a read-through
+- **Rollback:** revert `arch-council/SKILL.md` (user-home, no repo commit to revert); any `architecture.md`/`plan.md` already written during the pilot are left in place as historical record unless the pilot itself is abandoned
+- **Expected commit boundary:** one repository commit per artefact write (`plan.md` at plan approval, `architecture.md` at council verdict) — these occur naturally during the pilot, not as a single upfront commit
+- **Further approval needed before starting:** No — D3/D5 resolved; gated only on Changeset 2 (pilot exists)
+
+### 5.5 Changeset 5 — Verification, audit, and test persistence
+
+- **Files created:** `docs/sprints/<pilot-id>/verification.md`, `audit.md` (repository, conditional on `/verify` / `/auditor` actually running)
+- **Files updated:** `~/.claude/skills/security/SKILL.md`, `auditor/SKILL.md`, `tester/SKILL.md` (**user-home**); `docs/sprints/<pilot-id>/state.md` (repository)
+- **Preconditions:** Changesets 1–2 merged; D7 approved (✅ — mandatory for `/tester` only; `/security`/`/auditor` best-effort)
+- **Implementation actions:** append the one-line integration described in §4.4 to each of the three SKILL.md files; existing `docs/security/`, `docs/audit/`, `docs/test-reports/` writing habits are untouched
+- **Validation:** run each skill live against the pilot; confirm existing outputs are unaffected (regression check) and the new `state.md` entries appear correctly
+- **Rollback:** revert the three SKILL.md files individually (user-home) — each is independent, partial rollback is safe
+- **Expected commit boundary:** repository commits only for the conditional `verification.md`/`audit.md` files and `state.md` updates, as they're produced during the pilot
+- **Further approval needed before starting:** No
+
+### 5.6 Changeset 6 — HITL decision recording
+
+- **Files created:** none beyond what Changesets 2/4/5 already create
+- **Files updated:** `~/.claude/skills/retro/SKILL.md` (**user-home**) — adds a `decisions.md` completeness check (partial; the full retro gate lands in Changeset 8)
+- **Preconditions:** Changesets 2, 4, 5 merged (there must be decisions to check)
+- **Implementation actions:** formalize the `decisions.md` schema from diagnostic §7.7 as the target every skip/not-applicable/rework/parallel-allow decision writes to
+- **Validation:** manually audit the pilot's `decisions.md` at this point — does every `decision_ref` cited anywhere in `state.md` resolve to an entry here? (Becomes automatic in Changeset 7.)
+- **Rollback:** no file removal needed — this changeset is process discipline layered onto existing files, not new files of its own
+- **Expected commit boundary:** none new in this repository beyond ongoing `decisions.md` entries already covered by Changesets 4/5's commit boundaries
+- **Further approval needed before starting:** No
+
+### 5.7 Changeset 7 — Mechanical validation / linting (load-bearing)
+
+- **Files created:** `scripts/lint_sprint_state.py`, three fixture files under `scripts/lint_sprint_state.fixtures/` (all repository)
+- **Files updated:** none in this changeset — **`~/.claude/settings.json` is explicitly not touched here**, per D8; hook promotion is PP-1, not part of this changeset
+- **Preconditions:** Changesets 1, 2, 6 merged
+- **Implementation actions:** write a script that (a) parses every `state.md` under `docs/sprints/`, (b) confirms every `decision_ref` resolves to a `decisions.md` entry, (c) confirms every `depends_on`/`may_run_with` pairing is legal per `STAGE-REGISTRY.md`, (d) flags orphaned `skipped`/`not-applicable` entries missing a reason
+- **Validation:** run the script against the three synthetic fixtures created in this same changeset — (i) a `state.md` with a nonexistent `decision_ref` must fail, (ii) a `state.md` with an illegal `may_run_with` pairing must fail, (iii) a clean, consistent `state.md` must pass — **before** the script is ever run against the real pilot's live `state.md`
+- **Rollback:** delete the script and fixtures; no hook exists yet to remove
+- **Expected commit boundary:** one commit — script + fixtures together, since the fixtures are the script's own proof of correctness and should never be separated from it in history
+- **Further approval needed before starting:** No — D8 resolved to script-first; this changeset *is* "script-first"
+
+### 5.8 Changeset 8 — Pilot execution and retrospective
+
+- **Files created:** `docs/sprints/<pilot-id>/retrospective.md` (thin pointer, repository)
+- **Files updated:** `~/.claude/skills/retro/SKILL.md` (**user-home**, completes the state-completeness gate started in Changeset 6)
+- **Preconditions:** Changesets 1–7 merged; pilot sprint has run its actual stages
+- **Implementation actions:** `/retro` explicitly checks `docs/sprints/<pilot-id>/state.md` for any stage not in a terminal status (`complete`/`skipped`/`not-applicable`) before allowing sprint close; the pilot's six required test scenarios (diagnostic §9 / this plan's §9 below) are exercised during real execution, not simulated afterward
+- **Validation:** the full §9 acceptance-criteria pass, executed against the real pilot
+- **Rollback:** if the pilot is abandoned for reasons unrelated to workflow mechanics, delete the sprint folder and revert `CURRENT.md`'s `active_sprints` entry — Changesets 1, 3–7 remain merged and are exercised again by the next pilot attempt
+- **Expected commit boundary:** final commit closing the pilot sprint's `docs/sprints/<pilot-id>/` workspace
+- **Further approval needed before starting:** **Yes, implicitly** — this changeset cannot start until Changeset 2's pilot-selection gate is cleared; no separate approval beyond that
+
+### 5.9 Changeset 10 — CLAUDE.md consolidation and memory archival
+
+- **Files created:** `.claude/memory-archived-2026-07/` (rename target, repository)
+- **Files updated:** `.../agentic-payroll-platform/CLAUDE.md` (repository); `.claude/memory/` renamed, not deleted, per D6
+- **Preconditions:** none beyond D4/D6 approval (✅) — independent of the pilot's outcome, may run before, during, or after it
+- **Implementation actions:** trim the project CLAUDE.md's "Automated Delivery Workflow" section to a pointer at the global sequence + `docs/sprints/STAGE-REGISTRY.md`; `git mv .claude/memory .claude/memory-archived-2026-07`
+- **Validation:** diff CLAUDE.md before/after to confirm no substantive rule was dropped, only de-duplicated; confirm the archived folder still contains its one file, untouched
+- **Rollback:** `git revert` this changeset's commit (both the CLAUDE.md trim and the rename are trivially reversible)
+- **Expected commit boundary:** one commit, isolated from the pilot's own commits, so it can be reviewed and merged independently
+- **Further approval needed before starting:** No — but recommended to run this in its own reviewed PR/commit given CLAUDE.md is loaded by every session (per the original plan's own risk note)
+
+**Note on numbering:** Changeset 9 is intentionally unused, preserved from the prior draft to keep changeset IDs stable across this revision.
+
+**Recommended execution order:** 1 → [pilot selection] → 2 → 3 → 4 → 5 → 6 → 7 → 8, with Changeset 10 run independently whenever convenient. Changeset 1 is the only changeset with zero remaining preconditions and can start immediately.
 
 ---
 
-## 6. Command / skill integration matrix
+## 6. Repository vs. user-home changes — what Casper can commit vs. what must be applied locally
 
-| Command | Reads from `docs/sprints/` | Writes to `docs/sprints/` | Existing output unaffected? | Changeset |
-|---|---|---|---|---|
-| `/roadmap` | `CURRENT.md` (to report active sprint/stage-set) | — | Yes — `docs/ROADMAP.md` behaviour unchanged | 3 |
-| `/pm` | `STAGE-REGISTRY.md` (entry conditions for downstream stages, to inform scoping) | `<id>/CONTEXT.md` on story approval | Yes — `docs/stories/` file convention unchanged | 3 |
-| `/architect` | `STAGE-REGISTRY.md`, `<id>/state.md` | `<id>/decisions.md` (if a design decision is made outside a formal arch-council run) | Yes — checklist content unchanged | 3 |
-| `/arch-council` | `<id>/state.md`, `docs/architecture/extraction-signals.md` (unchanged) | `<id>/architecture.md` (mandatory), `<id>/decisions.md` (mandatory) | Yes | 4 |
-| Plan mode (`EnterPlanMode`/`ExitPlanMode`) | — | `<id>/plan.md` (copied from `~/.claude/plans/` at approval, per D5) | Yes — `~/.claude/plans/` still the harness's own record | 4 |
-| Implementation | `<id>/state.md` (to check `implementation` is `eligible`, i.e. plan approved) | `<id>/state.md` (mark `active`, later `complete`) | Yes — git history remains the code-level record | 4 |
-| `/verify` | `<id>/state.md` | `<id>/verification.md`, `<id>/state.md` | Yes | 5 |
-| `/security` | `<id>/state.md` (to check entry condition: routes changed) | `<id>/decisions.md` (if marked `not-applicable`), `<id>/state.md` | Yes — `docs/security/` convention unchanged | 5 |
-| `/auditor` | `<id>/state.md` | `<id>/audit.md`, `<id>/state.md` | Yes — `docs/audit/` convention unchanged | 5 |
-| `/tester` | `<id>/state.md` | `<id>/state.md` (existing `docs/test-reports/` file also still written) | Yes | 5 |
-| `/retro` | Every stage's status in `<id>/state.md`; every entry in `<id>/decisions.md` | `<id>/retrospective.md` (pointer), gate check before allowing close | Yes — `docs/retro-reports/` convention unchanged | 6, 8 |
+This split matters operationally, not just organizationally: **only the repository column below is visible in this git history, portable to another machine, or reviewable via `git diff`.** The user-home column is Claude Code configuration specific to this operator's machine — Casper can and will apply it directly in the active environment when a changeset calls for it, but it leaves no commit, no PR, and no trace for a second operator or a fresh clone of this repository to inspect.
+
+| Changeset | Repository changes (committed, in `git log`) | User-home changes (`~/.claude/`, applied locally, not in git history) |
+|---|---|---|
+| 1 | `docs/sprints/{CURRENT,WORKFLOW,STAGE-REGISTRY,README}.md` | — |
+| 2 | `docs/sprints/<pilot-id>/{CONTEXT,state,decisions}.md`, `evidence/` | — |
+| 3 | — | `skills/{roadmap,pm,architect}/SKILL.md` |
+| 4 | `docs/sprints/<pilot-id>/{plan,architecture}.md` | `skills/arch-council/SKILL.md` |
+| 5 | `docs/sprints/<pilot-id>/{verification,audit}.md` | `skills/{security,auditor,tester}/SKILL.md` |
+| 6 | (ongoing `decisions.md` entries, already tracked above) | `skills/retro/SKILL.md` (partial) |
+| 7 | `scripts/lint_sprint_state.py` + fixtures | — |
+| 8 | `docs/sprints/<pilot-id>/retrospective.md` | `skills/retro/SKILL.md` (completes gate) |
+| 10 | `CLAUDE.md` (trimmed), `.claude/memory-archived-2026-07/` | — |
+| PP-1 (deferred) | — | `settings.json` (new hook) |
+| PP-2 (deferred) | possibly `docs/sprints/_personas/` if reactivated | `agents/{senior-architect,principal-reviewer}.md` (unchanged unless PP-2 fires) |
+
+This is precisely the reproducibility gap the original diagnostic named in D3/G-findings: **a fresh clone of this repository, on a different machine or by a different operator, gets the repository column in full but none of the user-home column.** `/roadmap`, `/pm`, `/architect`'s pointer, `/arch-council`'s mandatory write, `/security`/`/auditor`/`/tester`'s integration, and `/retro`'s gate would all need to be re-applied locally on that machine before the workflow behaves as designed there — the `docs/sprints/` artefacts themselves would still be fully readable and correct, but the *behavior that produces new ones* would not yet exist on the new machine. This is accepted for the pilot (per D3's approval) and tracked for reactivation under PP-2 if a second operator or remote agent becomes a real requirement.
 
 ---
 
 ## 7. Validation plan
 
-- **Per-changeset validation** is specified in the table in §5 and must pass before the next changeset merges — changesets are not batched into one review.
-- **Schema validation**: the lint script from Changeset 7 is the mechanical backbone; it must be run against three synthetic fixtures *before* being trusted against the real pilot: (a) a `state.md` with a `decision_ref` that doesn't exist in `decisions.md` (must fail), (b) a `state.md` with a `may_run_with` pairing not present in `STAGE-REGISTRY.md`'s parallel-compatibility column (must fail), (c) a clean, fully-consistent `state.md` (must pass). These three fixtures are written as part of Changeset 7, not invented ad hoc during the pilot.
-- **Live-run validation**: every skill change (Changesets 3–6) is validated by actually invoking the command against the pilot sprint and inspecting the resulting file — not by reading the SKILL.md diff and assuming it works, per this project's own `/tester` "LIVE vs. STATIC vs. CODE REVIEW" taxonomy. A SKILL.md edit that hasn't been exercised live is a STATIC check, not a PASS.
-- **Regression validation**: every existing output convention (`docs/stories/`, `docs/security/`, `docs/audit/`, `docs/test-reports/`, `docs/retro-reports/`) must be confirmed unchanged after each relevant changeset — this plan is additive by design, and a regression here would mean a changeset accidentally replaced rather than extended an existing habit.
+- **Per-changeset validation** is specified in each subsection of §5 and must pass before the next changeset merges — changesets are not batched into one review.
+- **Schema validation**: the lint script from Changeset 7 must be run against its own three synthetic fixtures *before* being trusted against the real pilot — see §5.7.
+- **Live-run validation**: every skill change (Changesets 3–6) is validated by actually invoking the command against the pilot sprint and inspecting the resulting file — not by reading the SKILL.md diff and assuming it works, per this project's own `/tester` LIVE/STATIC/CODE-REVIEW taxonomy. A SKILL.md edit that hasn't been exercised live is a STATIC check, not a PASS.
+- **Regression validation**: every existing output convention (`docs/stories/`, `docs/security/`, `docs/audit/`, `docs/test-reports/`, `docs/retro-reports/`) must be confirmed unchanged after each relevant changeset.
 
 ---
 
 ## 8. Rollback plan
 
-- **Changesets 1, 2, 10**: pure file addition/rename — `git revert` of the changeset's commit is sufficient and safe at any point.
-- **Changesets 3, 5, 6**: SKILL.md edits are additive instructions (new steps appended, nothing existing removed) — reverting the commit restores prior behaviour with no data loss, since the sprint-folder writes these changesets introduce are themselves new files, not modifications to existing ones.
-- **Changeset 4** (arch-council): higher risk because it modifies a *mandatory* gate. Rollback plan: revert `arch-council/SKILL.md` to its pre-changeset version; any `architecture.md`/`plan.md` already written during the pilot are left in place as historical record (they cause no harm sitting unused) rather than deleted, unless the pilot itself is abandoned.
-- **Changeset 7** (linting): if the script produces false positives that block real work, the immediate mitigation is to stop invoking it (it is a script, not a hook, until D8 says otherwise) — no repository state needs to change to "turn it off." If it was promoted to a hook, remove the hook entry from `~/.claude/settings.json` and keep the script available for manual, non-blocking use.
-- **Changeset 8** (pilot execution): if the pilot sprint itself is abandoned for reasons unrelated to the workflow mechanics (e.g. the underlying feature is deprioritized), the sprint folder is deleted and `CURRENT.md`'s `active_sprints` entry is removed — the static changesets (1, 3–7) remain merged and are exercised again by the next pilot attempt, so a failed pilot does not require re-doing the foundational work.
-- **General principle**: no changeset in this plan performs a destructive operation on an existing file except Changeset 10's optional deletion of the stale `.claude/memory/` folder — and D6 recommends rename over delete specifically so that step is reversible too.
+- **Changesets 1, 2, 10**: pure file addition/rename in the repository — `git revert` of the changeset's commit is sufficient and safe at any point.
+- **Changesets 3, 5, 6, part of 8**: user-home SKILL.md edits are additive instructions (new steps appended, nothing existing removed) — restoring the pre-changeset file content locally reverses them; there is no repository commit to revert for these, per §6.
+- **Changeset 4** (arch-council): higher risk because it modifies a *mandatory* gate. Rollback: restore `arch-council/SKILL.md`'s pre-changeset content locally; any `architecture.md`/`plan.md` already committed during the pilot are left in place as historical record rather than deleted, unless the pilot itself is abandoned.
+- **Changeset 7** (linting): if the script produces false positives, the immediate mitigation is to stop invoking it — it is a script, not a hook, so no repository or user-home state needs to change to "turn it off."
+- **Changeset 8** (pilot execution): if the pilot sprint itself is abandoned for reasons unrelated to workflow mechanics, delete the sprint folder and revert `CURRENT.md`'s `active_sprints` entry — Changesets 1, 3–7 remain merged (repository) or applied (user-home) regardless, and are exercised again by the next pilot attempt.
+- **General principle**: no changeset performs a destructive operation on an existing file except Changeset 10's rename of `.claude/memory/` — and D6 specifies rename, not delete, so even that step is reversible.
 
 ---
 
 ## 9. Pilot acceptance criteria
 
-A fresh Casper session, given repository access only (no chat history, no auto-memory loaded), must be able to answer each of the following from `docs/sprints/<pilot-id>/` and the static files alone:
+A fresh Casper session, given repository access only (no chat history, no auto-memory loaded), must be able to answer each of the following from `docs/sprints/<pilot-id>/` and the static files alone — with the explicit caveat from §6 that the *behavior* producing new artefacts depends on user-home skill changes not present in that fresh clone, while the *artefacts already produced* remain fully readable:
 
 | Question | Answered by |
 |---|---|
 | Which sprint is active? | `docs/sprints/CURRENT.md` |
 | Which stages are active, blocked, complete, skipped, or not-applicable? | `<pilot-id>/state.md` |
-| What has been approved? | `<pilot-id>/plan.md` (plan approval), `<pilot-id>/architecture.md` (arch-council verdict), `<pilot-id>/decisions.md` (every other HITL call) |
+| What has been approved? | `<pilot-id>/plan.md`, `<pilot-id>/architecture.md`, `<pilot-id>/decisions.md` |
 | What evidence exists? | `<pilot-id>/evidence/<stage>/` |
 | What decisions were made and by whom? | `<pilot-id>/decisions.md` — every entry has `decision_owner` |
 | What work may proceed in parallel? | `<pilot-id>/state.md`'s `may_run_with` fields, cross-checked against `STAGE-REGISTRY.md` |
 | What is currently blocked? | `<pilot-id>/state.md` entries with `status: blocked` and their `waiting_for` field |
-| What are the next permitted actions? | Any stage in `<pilot-id>/state.md` with `status: eligible`, per the dependency rule in the diagnostic's §7.3 |
+| What are the next permitted actions? | Any stage in `<pilot-id>/state.md` with `status: eligible` |
 
 ### Required test scenarios (seeded deliberately, not left to chance)
-
-The pilot sprint's scope must be chosen (per D1) or supplemented with a deliberate small exercise so that all six of the following actually occur and are observed, not merely described:
 
 1. **One skipped stage** — e.g. `/ux-designer` skipped because the pilot is backend-only; `decisions.md` entry present with reason and owner.
 2. **One not-applicable stage** — e.g. `/security` marked `not-applicable` if the pilot touches no API route; distinguished in `state.md` from the skipped stage above.
 3. **Two parallel stages** — e.g. `/verify` and `/security` both `active` at once, evidence written to separate `evidence/<stage>/` subfolders without collision.
-4. **One rework loop** — a `complete` stage (e.g. `implementation`) deliberately reopened to `needs-rework` via a recorded decision, and confirmation that its dependents (e.g. `verification`) automatically revert to `blocked`.
-5. **One unresolved dependency** — a stage left `blocked` on purpose at some point during the pilot, with `waiting_for` correctly naming the unmet stage, later resolving to `eligible` once that stage completes.
-6. **One invalid `decision_ref` caught mechanically** — a deliberately broken fixture (not real pilot data) run through the Changeset 7 lint script to confirm it fails loudly, per the §7 validation plan.
+4. **One rework loop** — a `complete` stage deliberately reopened to `needs-rework` via a recorded decision, confirming its dependents automatically revert to `blocked`.
+5. **One unresolved dependency** — a stage left `blocked` on purpose, `waiting_for` correctly naming the unmet stage, later resolving to `eligible`.
+6. **One invalid `decision_ref` caught mechanically** — a deliberately broken fixture (not real pilot data) run through the Changeset 7 lint script to confirm it fails loudly.
 
-The pilot is not considered complete until all six scenarios have been exercised and every question in the table above can be answered correctly by a reviewer reading only the repository files for `<pilot-id>`.
+The pilot is not considered complete until all six scenarios have been exercised and every question above can be answered correctly by a reviewer reading only the repository files for `<pilot-id>`.
 
 ---
 
 ## 10. Statement of no implementation
 
-No file listed in this plan has been created. No skill file, hook, or CLAUDE.md file has been modified as a result of this plan. `docs/sprints/` does not exist in this repository as of 2026-07-12. This document is a plan only, requiring the decisions in §3 and overall approval before Changeset 1 may begin.
+No file listed in §4/§5 has been created, moved, archived, or modified as a result of this plan. `docs/sprints/` does not exist in this repository as of 2026-07-12. No `~/.claude/skills/*`, `~/.claude/settings.json`, or `~/.claude/agents/*` file has been changed in the active environment. Decisions D1–D9 are approved (§3); the plan is implementation-ready; **execution has not begun and requires separate run approval**, plus selection of the pilot sprint before Changeset 2 can start.
