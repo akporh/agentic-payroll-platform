@@ -22,8 +22,14 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 
 ## Decisions log
 
-_No entries yet — review has not started._
+### HD-GATE-01: Stage 01 (Current Operating Model) gate approved
+- **Date**: 2026-07-12
+- **Stage**: 01 — Current Operating Model
+- **Decision**: Approved closing Stage 01's gate. 46 confirmed findings (0 draft, 0 parked) are now citable by Stage 02 onward.
+- **Made by**: Michael Emedo, via direct response to an explicit gate-approval question
+- **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes; this was obtained directly rather than inferred from the user directing work toward Stage 02.
+- **Affects**: Stage 01 status (`review-state.md`), Stage 02 eligibility to begin
 
 ## Next action
 
-**Await approval to begin Stage 01.**
+**Stage 02 (Product Thesis) is open.**

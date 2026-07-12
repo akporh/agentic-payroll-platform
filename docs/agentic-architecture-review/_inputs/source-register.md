@@ -40,6 +40,20 @@ This gives the review a single place to check provenance — what was consulted,
 - **Snapshot basis**: memory files as of 2026-07-11
 - **Notes**: Per `_core/EVIDENCE-STANDARD.md`'s re-verification rule, every claim drawn from these memory files was independently re-checked against current code/migrations before being recorded in `findings.md`. Findings F-01-08, F-01-15, F-01-27, F-01-30, F-01-33, F-01-36, F-01-38, F-01-17 each note where a memory claim was confirmed, clarified, or found to need updating against current evidence.
 
+### S-04: Agent Layer Architecture document
+- **Type**: documentation
+- **Location**: `docs/architecture/agent-layer-architecture.html` (also mirrored at `frontend/public/architecture/agent-layer-architecture.html`)
+- **First consulted**: 2026-07-12, Stage 02
+- **Snapshot basis**: live read, 2026-07-12; document's own header states "Arch-council reviewed 2026-06-11", status pill "NEEDS REVISION"
+- **Notes**: This is the current proposed Phase 2 product/technical thesis — treated as stated intent only, per `_core/EVIDENCE-STANDARD.md` and the Stage 02 prompt's explicit instruction not to treat architecture documents as proof of implementation. Nothing in Tracks P/V/W/X/Y is built; the document's own phase-timeline marks Track P as "current" and all others as not yet started. Its "As-Is Architecture" tab (self-assessed GAP-1 through GAP-6) was cross-checked against Stage 01's independently-derived findings rather than accepted at face value — see `findings.md` F-02-08.
+
+### S-05: EP-004 Phase 2 product stub docs
+- **Type**: documentation
+- **Location**: `Clients/Sandy/_PRODUCT/EP-004_phase2-agentic/_epic.md`, `FEAT-020_ai-payroll-engine_FUTURE.md`, `FEAT-021_saas-multi-tenant_FUTURE.md`
+- **First consulted**: 2026-07-12, Stage 02
+- **Snapshot basis**: live read, 2026-07-12
+- **Notes**: Confirmed these are stub/placeholder documents ("Acceptance criteria: TBD — to be scoped after Phase 1 closure", Status: FUTURE, "Sprint(s): Not yet started") — they add no design detail beyond what S-04 already states, and are not cited as evidence for any finding beyond confirming FEAT-020/021 are unscoped.
+
 ## Next action
 
-**Complete Stage 01 current operating model review.**
+**Complete Stage 02 product-thesis assessment.**

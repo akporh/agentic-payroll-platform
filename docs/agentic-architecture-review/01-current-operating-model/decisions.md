@@ -5,7 +5,7 @@ Stage-local log of human decisions made during this stage. Master log: `_core/HU
 ## Gate
 
 - **Gate opened**: 2026-07-11, by human reviewer (Michael Emedo) — instruction to "Perform Stage 01" using CONTEXT.md
-- **Gate closed**: not yet — investigation complete, 46 confirmed findings recorded in `findings.md` and synthesized in `outputs/current-operating-model-summary.md`. Awaiting explicit human review/approval to close the gate and permit Stage 02 to begin, per `WORKFLOW.md` gating rules.
+- **Gate closed**: 2026-07-12, by human reviewer (Michael Emedo), via explicit approval ("Approve — close Stage 01, begin Stage 02") in response to a direct gate-approval question. Stage 01's 46 confirmed findings are now citable by later stages.
 
 ## Decisions log
 
@@ -25,4 +25,4 @@ Stage-local log of human decisions made during this stage. Master log: `_core/HU
 
 ## Next action
 
-**Human review of Stage 01 findings and gate approval, per `WORKFLOW.md`, before Stage 02 may begin.**
+**Stage 01 gate closed. Stage 02 (Product Thesis) is open.**
