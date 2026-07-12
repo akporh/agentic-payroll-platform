@@ -6,18 +6,77 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 08 closed 2026-07-13. Open **Stage 09 — Security
-and tenant isolation** (not started). Headline Stage 08 result: **`04-004`
-rejected** — closed with no remediation required; retry and reconciliation
-cannot overlap for the same run by lifecycle construction. Three confirmed
-S2 findings carried forward: 08-001 (nullable `employee_number` despite a
-migration named to enforce `NOT NULL` — its `ALTER` is guarded by a
-swallow-all `EXCEPTION WHEN others`), 08-002 (`payroll_run` totals/period
-fields DB-protected only at `PAID`, no active mutation path found),
-08-003 (disabled statutory components filtered with no compliance guard
-or trace signal — `03-004`'s policy question remains open, not resolved).
-No financial miscalculation or data corruption found. `04-001`/`05-001`
-remain remediated (not reopened); `05-004` deferred to Stage 13.
+**Next action:** Stage 09 opened 2026-07-12, in-progress, awaiting human
+review. Headline Stage 09 result: **`09-000` confirmed S0 — no
+authentication mechanism exists anywhere in the application.** No route,
+including payroll approval/lock/pay and the `/admin*` operator dashboards,
+has any auth dependency; `workspace_id` is a plain client-supplied string,
+not a verified claim. This reframes nearly every other finding this stage.
+Also confirmed: `09-001` (S0, `GET /workspaces` enumerates every tenant
+unauthenticated — the practical enabler of the rest), `09-002` (S0,
+extends/finalizes `06-007` — retry/approve/lock/pay/legacy-reconcile take
+no `workspace_id` at all and the service layer never verifies tenant
+ownership), `09-004`/`09-005` (S1, nominally-scoped reconciliation and
+timeline routes accept `workspace_id` in the path but never use it),
+`09-006` (S1, legacy-executor-stats route returns global cross-tenant data
+regardless of `workspace_id`), `09-007` (S1, unauthenticated admin
+dashboards at predictable paths), `09-008` (S2, CSV/formula injection risk
+in payroll exports). `07-001`'s 21 sites classified: 10 structurally
+disclosure-capable (broad `except Exception` wrapping writes), 11
+currently safe (developer-controlled `ValueError`/custom exceptions).
+`06-007` given final classification: insecure/tenant-bypass risk, not
+secure-but-obsolete. No new cross-workspace relational-schema defect found
+beyond Stage 08's existing register. Two new human decisions raised:
+whether app-level auth is out of scope by design (e.g. network-level
+control assumed) or an unrecognized gap, and what the intended role model
+is. Stage 09 is **not self-closed** — awaiting Michael's review.
+
+## Stage 09 handoff summary (in-progress, awaiting review)
+
+- **`09-000` (confirmed, S0).** No authentication mechanism anywhere in
+  `backend/` or `frontend/`: no token/session, no `current_user`, no auth
+  dependency on any router. CORS defaults `allow_origins=["*"]`. Root cause
+  underlying nearly every other finding this stage.
+- **`09-001` (confirmed, S0).** `GET /workspaces` returns every workspace
+  (id, name, country, currency, status, headcount) to any unauthenticated
+  caller — the practical enabler of the IDOR findings below.
+- **`09-002` (confirmed, S0) — extends and finalizes `06-007`.**
+  Retry/approve/lock/pay and the legacy `/payroll/run/{run_id}/reconcile`
+  pair take only `run_id`, no `workspace_id`; the application-service layer
+  derives `workspace_id` from the run row itself purely for its own joins,
+  never to verify caller entitlement. `06-007` final classification:
+  **insecure/tenant-bypass risk**.
+- **`09-004`/`09-005` (confirmed, S1).** The nominally workspace-scoped
+  reconciliation routes (`GET/POST/PATCH .../reconciliation`) and the
+  timeline route (`GET .../timeline`) accept `workspace_id` in the path but
+  never pass it to the underlying service call — verified against all five
+  function signatures involved, none of which accept a `workspace_id` arg.
+- **`09-006` (confirmed, S1).** `GET .../ops/legacy-executor-stats` ignores
+  its `workspace_id` path param entirely and returns global stats,
+  including per-run breakdowns, across every workspace.
+- **`09-007` (confirmed, S1).** `/admin`, `/admin/onboarding`,
+  `/admin/payroll` are unauthenticated operator dashboards at predictable
+  paths; public reachability is an infrastructure question outside this
+  repository's visibility, not resolved here.
+- **`09-008` (confirmed, S2).** Payroll CSV exports write employee-controlled
+  free-text fields (e.g. `employee_name`) without formula-injection
+  sanitization.
+- **`07-001` (unchanged S1, classified this stage).** 21 sites: 10 broad
+  `except Exception` sites structurally capable of leaking raw DB/schema
+  detail (Group A); 11 sites (`ValueError`/custom exceptions) currently
+  safe because this codebase's service layer only raises them with
+  developer-controlled messages.
+- **`03-004`/`08-003`.** Access-control fact confirmed: no role/auth
+  distinction exists for statutory-component disablement — same (absent)
+  model as every other route. The underlying product-policy question
+  remains open under `03-004`, not resolved by this stage.
+- **§14 cross-workspace relational consistency — rejected.** No new
+  schema/FK-level cross-workspace defect found; the operative risk this
+  stage is uniformly at the route/service layer, not the data model.
+- **New human decisions raised:** (1) is app-level authentication out of
+  scope by design, or an unrecognized gap that must close before
+  production/live-data use; (2) what is the intended role model.
+- **Stage 09 is NOT closed.** Awaiting Michael's review before closure.
 
 ## Stage 08 handoff summary
 
@@ -234,7 +293,7 @@ remain remediated (not reopened); `05-004` deferred to Stage 13.
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
-| 09 | Security and tenant isolation | not-created | — | — | — |
+| 09 | Security and tenant isolation | in-progress | 2026-07-12 | — | awaiting human review |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
 | 11 | Scenario testing | not-created | — | — | — |
 | 12 | Code simplification | not-created | — | — | — |
@@ -242,8 +301,10 @@ remain remediated (not reopened); `05-004` deferred to Stage 13.
 
 ## Open human decisions
 
-Five genuinely open (no decision made yet); the rest below are resolved,
+Seven genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
+- Is application-level authentication out of scope by design (e.g. network-level access control assumed to exist outside this repository), or is `09-000` an unrecognized gap that must close before production/live-data use? (finding 09-000)
+- What is the intended role model — single bureau operator, multiple workspace-scoped client users, or something else? (finding 09-000/10)
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative
