@@ -1,512 +1,240 @@
 # Stage 10 — Execution-Trace Remediation Design
 
-**Status:** not started (see [`../audit-state.md`](../audit-state.md))
+**Status:** in-progress (see [`../audit-state.md`](../audit-state.md))
 
 ## Purpose
 
-Produce an implementation-ready design for the platform’s execution-trace and per-result auditability gaps without changing production code.
+Produce an implementation-ready, read-only remediation design covering:
 
-This stage converts prior findings and human decisions into a bounded remediation specification covering:
+- minimal retry orchestration tracing
+- per-result statutory identity (`04-002`)
+- disabled/excluded component visibility (`08-003`)
+- tenant-safe timeline access (`09-005`)
+- API/UI contracts, migration sequencing, acceptance criteria, and Stage 11 scenarios
 
-- retry orchestration tracing
-- per-result statutory identity
-- omitted/disabled component visibility
-- trace-route tenant isolation and authorization
-- API and UI consumption requirements
-- schema, repository, service, and migration impacts
-- acceptance criteria and regression scenarios
+No production code, migration, test, script, or data change is permitted in this stage.
 
-This is a design stage only. It must not implement the remediation.
-
-## Confirmed handoff state
+## Binding inputs and decisions
 
 - Stages 01–09 are complete.
-- `04-001` and `05-001` are remediated and must not be reopened without regression evidence.
-- `02-002` is confirmed: per-employee retry currently creates zero `execution_trace` rows.
-- The `07-005` human decision is final: retry uses a **defined minimal trace subset**, not full original-run parity and not zero trace.
-- Minimum retry trace:
+- `04-001` and `05-001` remain remediated and are not reopened.
+- `02-002` is confirmed: retry currently writes zero `execution_trace` rows.
+- `07-005` is final: retry uses a **defined minimal trace subset**, not full original-run parity and not zero trace:
   1. invocation/preflight outcome;
-  2. one success/failure outcome per retried employee;
+  2. one terminal success/failure outcome per retried employee;
   3. final run-transition outcome.
 - `component_trace_jsonb` remains the detailed calculation trace.
-- `04-002` remains confirmed: no dedicated persisted fields identify which statutory rule/version a specific `payroll_result` used.
-- Approved recommendation from Stages 05/07: add nullable `payroll_result.statutory_rule_id` and `payroll_result.statutory_version`, populated from the exact frozen statutory context used by original calculation and retry.
-- `08-003` is confirmed: disabled statutory components are filtered before execution and leave no persisted trace that they were omitted.
-- `09-005` is confirmed S1: the timeline route accepts `workspace_id` in the path but does not pass it into the service layer, so tenant ownership is not enforced.
+- `04-002` requires nullable per-result `statutory_rule_id` and `statutory_version`, sourced from the exact frozen statutory context used by the calculation.
+- `08-003` requires a durable distinction between excluded-by-configuration, skipped-by-eligibility, absent, executed-zero, and executed-failed.
+- `09-005` requires tenant-safe trace access.
 - Stage 09 decisions are binding:
-  - application authentication and authorization are mandatory before live/production-data use;
+  - application authentication and authorization are mandatory before live/production use;
   - network controls are defence in depth only;
-  - tenancy model is one authenticated bureau account managing multiple client workspaces through explicit membership and RBAC;
+  - one authenticated bureau account manages multiple client workspaces through explicit membership and RBAC;
   - minimum roles: platform administrator, bureau administrator, payroll operator, payroll approver, read-only auditor/viewer;
-  - direct client users are deferred, but the design must remain extensible to them.
-- `03-004` remains an open product-policy question: whether statutory components may ever be disabled. Stage 10 must design traceability for omission regardless of the eventual policy decision.
+  - direct client users are deferred but the design must remain extensible to them.
+- `03-004` remains an open product-policy question; Stage 10 is policy-neutral and designs visibility regardless of whether statutory disablement is later forbidden or controlled.
 - `05-004` remains deferred to Stage 13.
-- `CLAUDE.md` is authoritative; `docs/wrapper-command/` is reference-only.
-- Stage 10 is read-only: no code, migration, test, script, or data changes.
 
-## Required inputs
+## Approved Stage 10 design
 
-Read before designing:
+The implementation design in `findings.md` is the canonical output. The following decisions are accepted for close review.
 
-- `CLAUDE.md`
-- `docs/audit-program/README.md`
-- `docs/audit-program/WORKFLOW.md`
-- `docs/audit-program/audit-state.md`
-- all files under `docs/audit-program/_core/`
-- Stage 02 findings/evidence, especially `02-002`, `02-004`, and trace baseline
-- Stage 04 findings/evidence, especially `04-002`
-- Stage 05 findings, especially statutory identity and snapshot sufficiency analysis
-- Stage 07 findings, especially `07-005`
-- Stage 08 findings, especially `08-003`
-- Stage 09 findings, especially `09-005` and the authentication/RBAC decisions
-- completed remediation records for `04-001 + 05-001`
+### Retry event model
 
-## Objective
+Use one `invocation_id` per retry API call and persist:
 
-Define one coherent trace and auditability design that allows an authorized operator or auditor to answer:
-
-1. Was this an original run or a retry?
-2. Did retry preflight start, pass, or fail?
-3. Which employees were selected for retry?
-4. Which employees succeeded or failed?
-5. What final run transition occurred?
-6. Which statutory rule ID and version produced each result?
-7. Which components ran, were skipped by eligibility, or were excluded by configuration?
-8. Which workspace owns the run and trace?
-9. Which authenticated user is authorized to view the trace?
-10. Can the design support future direct-client users without weakening bureau-level isolation?
-
-## Required design work
-
-### 1. Current-state trace architecture
-
-Document the existing trace stack:
-
-- `ExecutionTracer`
-- `execution_trace` schema/table
-- trace repository and write semantics
-- original-run `.step(...)` call sites
-- retry service tracer instantiation and zero-write gap
-- `component_trace_jsonb`
-- `payroll_result.error_message`
-- audit log/event store
-- timeline API route/service/repository
-- frontend timeline and component-trace views
-
-Clearly separate:
-
-- orchestration trace
-- calculation/component trace
-- lifecycle audit/event history
-- per-result identity fields
-
-### 2. Retry trace event model
-
-Specify the minimal retry event set required by the final human decision.
-
-At minimum define events for:
-
-#### Retry invocation/preflight
-
-- retry invocation started
-- run eligibility/status check
-- snapshot completeness validation
-- statutory snapshot validation
-- requested/retried employee count
-- preflight passed or failed
-
-#### Per-employee outcome
-
-- employee selected
-- employee retry started, if necessary
-- employee retry succeeded
-- employee retry failed
-- result replacement outcome
-
-#### Final run outcome
-
-- result totals recomputed
-- final status transition (`PARTIAL → CALCULATED` or `PARTIAL → PARTIAL`)
-- retry invocation completed or failed
-
-Avoid reproducing every original-run persistence sub-step unless it adds distinct audit value.
-
-### 3. Trace schema and field contract
-
-Assess whether the current `execution_trace` schema can support the design without migration.
-
-Specify required fields, including where already present:
-
-- trace ID
-- workspace ID
-- payroll run ID
-- employee ID where applicable
-- operation type: original run vs retry
-- retry invocation/correlation ID
-- step/event code
-- status/outcome
-- timestamp and duration
-- message
-- structured metadata JSON
-- error class/code
-- safe error message
-- actor/user ID where available after authentication work
-
-Determine whether new columns are required or whether structured metadata is sufficient.
-
-Prefer queryable columns for high-value identifiers used for tenant scoping, filtering, and correlation. Avoid hiding all important identity in JSON.
-
-### 4. Stable event taxonomy
-
-Define stable machine-readable event codes and human-readable labels.
-
-The design should include a proposed taxonomy such as:
-
-- `RUN_CALCULATION_STARTED`
-- `RUN_CALCULATION_COMPLETED`
-- `RETRY_STARTED`
-- `RETRY_PREFLIGHT_PASSED`
-- `RETRY_PREFLIGHT_FAILED`
-- `RETRY_EMPLOYEE_SUCCEEDED`
-- `RETRY_EMPLOYEE_FAILED`
-- `RETRY_COMPLETED`
+- `RETRY_INVOCATION_STARTED`
+- run-status and snapshot/statutory preflight checks
+- `RETRY_PREFLIGHT_PASSED` or `RETRY_PREFLIGHT_FAILED`
+- exactly one `RETRY_EMPLOYEE_SUCCEEDED` or `RETRY_EMPLOYEE_FAILED` row per retried employee
+- totals recomputation outcome
 - `RUN_STATUS_TRANSITIONED`
-- `COMPONENT_EXCLUDED_BY_CONFIGURATION`
+- `RETRY_COMPLETED` or `RETRY_FAILED`
 
-Do not rely only on free-text messages for semantics.
+Do not duplicate every original-run persistence step.
 
-Specify versioning/extension rules so future events can be added without breaking existing consumers.
+### Execution-trace schema
 
-### 5. Retry correlation and idempotency
+Extend `execution_trace` with queryable columns for:
 
-Design how multiple retry attempts on the same run are distinguished.
+- `workspace_id`
+- `event_code`
+- `operation_type`
+- `invocation_id`
+- `employee_id`
+- `actor_id`
+- `metadata_jsonb`
+- `error_class`
 
-Specify:
+Retain existing human-readable fields. Critical tenant/correlation identity must not exist only inside JSON.
 
-- retry invocation/correlation ID generation
-- whether each API retry request gets one invocation ID
-- how per-employee rows link to it
-- how duplicate client requests are detected or represented
-- whether failed preflight attempts are persisted
-- whether repeated retries remain append-only
-- ordering guarantees
+Use additive, stable event codes. Existing consumers must tolerate unknown future codes.
 
-### 6. Error and failure semantics
+### Error semantics
 
-Define which failures must generate durable trace rows:
+Trace-write failure must never corrupt or reverse payroll execution. It must emit structured server-side logging and a metric where supported.
 
-- invalid run status
-- incomplete snapshot
-- invalid statutory snapshot
-- employee no longer retryable
-- result replacement failure
-- result persistence failure
-- total recomputation failure
-- final transition failure
+No API or trace field may expose uncontrolled `str(e)`, SQL, stack traces, schema, or constraint detail.
 
-Specify what happens if trace persistence itself fails.
+### Per-result statutory identity
 
-Preserve the existing principle that trace failure must not corrupt payroll calculation, but design a compensating observability signal such as structured server logging/metrics for trace-write failures.
+Add nullable:
 
-Do not return raw `str(e)` details to clients.
+- `payroll_result.statutory_rule_id UUID`
+- `payroll_result.statutory_version INTEGER`
 
-### 7. Per-result statutory identity (`04-002`)
+Populate both for original runs and retries from the exact frozen statutory snapshot used by calculation.
 
-Produce the implementation design for:
+Existing rows remain NULL by default. Do not backfill from mutable live statutory tables. NULL means “not recorded/unknown”, not “no statutory deduction applied”.
 
-- `payroll_result.statutory_rule_id UUID NULL`
-- `payroll_result.statutory_version INTEGER NULL`
+Expose both additively through the existing results API and result audit detail UI.
 
-Specify:
+### Excluded component visibility
 
-- migration and backfill policy
-- original-run insert call sites
-- retry insert call sites
-- source of values: exact frozen `rules_context_snapshot["statutory_rule"]` used by the calculation
-- null semantics for legacy results and non-statutory jurisdictions/configurations
-- API exposure
-- UI/audit display
-- indexing requirements
-- validation and consistency checks against the run snapshot
-- immutability requirements
+Extend `component_trace_jsonb` so configured-but-disabled components receive `outcome: excluded_by_configuration`, while eligibility skips, absent components, executed-zero, and executed-failed remain distinguishable.
 
-Legacy rows must not be backfilled from mutable current statutory tables. Define them as unknown/unavailable unless frozen historical evidence proves identity.
+Add one run-level `COMPONENT_EXCLUDED_BY_CONFIGURATION` execution-trace row per distinct excluded component per run, not per employee.
 
-### 8. Disabled/excluded component visibility (`08-003`)
+### Original-run/retry relationship
 
-Design how a run records components excluded before execution.
+Keep one unified timeline per payroll run, grouped by:
 
-Distinguish:
+- original run
+- each retry invocation
 
-- excluded because disabled by workspace/client override
-- skipped because eligibility condition evaluated false
-- absent because component is not part of the applicable configuration
-- executed and returned zero
-- executed and failed
+`component_trace_jsonb` remains attached to the currently persisted employee result. `execution_trace` preserves attempt history.
 
-Assess whether exclusion should be represented in:
+### Tenant-safe timeline access
 
-- `component_trace_jsonb`
-- `execution_trace`
-- a run-level configuration snapshot/header
-- a dedicated excluded-components field/table
+Target request chain:
 
-Recommend the smallest design that creates an unambiguous, durable record without duplicating all component metadata.
+```text
+authenticated principal
+→ bureau account and role
+→ workspace membership/entitlement
+→ run ownership check
+→ query scoped by workspace_id + run_id
+```
 
-The design must work whether Stage 13 ultimately forbids statutory disablement or permits it under controlled policy.
+The route/service/repository must all carry `workspace_id`; child filters never bypass the parent ownership check.
 
-### 9. Original-run and retry trace relationship
+Use:
 
-Define the expected relationship between:
+- `401` for no valid identity
+- non-disclosing `404` for absent or unauthorized run/workspace combinations
 
-- original-run `execution_trace`
-- retry `execution_trace`
-- original result `component_trace_jsonb`
-- retried result `component_trace_jsonb`
-- audit log/event store
+Read-only auditor/viewer, payroll operator, and payroll approver may view authorized traces. Platform-administrator access must be explicit and audited.
 
-Specify what an operator should see as one timeline versus separate attempts.
+This route is not production-secure until Stage 09 authentication, membership, RBAC, and ownership controls exist.
 
-Determine whether retry rows should appear in the existing timeline endpoint by default and how they should be grouped.
+### API/UI design
 
-### 10. Tenant isolation and authorization (`09-005`)
+Keep the existing timeline route and add optional filters for invocation, operation type, employee, event code, status, time range, cursor, and limit.
 
-Design the secure timeline/trace access contract.
+Use deterministic ordering `(created_at, id)`.
 
-At minimum:
+Add a derived retry-invocation summary endpoint over the same trace source of truth.
 
-- authenticated user required
-- bureau account membership verified
-- workspace membership/entitlement verified
-- run ownership verified against path workspace
-- service method accepts workspace/account authorization context
-- repository query scopes by both run ID and workspace ID
-- direct child IDs never bypass parent ownership checks
-- read-only auditor/viewer may view traces
-- payroll operator and approver may view traces
-- platform administrator access is explicit and auditable
-- future direct-client users can only view their permitted workspace
+UI requirements are limited to grouping attempts, showing preflight failures, per-employee outcomes, final transition summaries, statutory identity, excluded-component states, and explicit legacy empty states.
 
-The trace route must not trust `workspace_id` merely because it appears in the path.
+### Migration and rollout
 
-Specify expected responses:
+Use additive schema changes and safe backfills only:
 
-- unauthenticated: `401`
-- authenticated but unauthorized: `403` or a deliberately chosen non-disclosing `404`
-- resource absent within authorized scope: `404`
+1. add nullable trace columns;
+2. backfill `workspace_id` from `payroll_run` and validate before applying NOT NULL;
+3. backfill legacy `event_code` from known step mappings with `UNKNOWN_LEGACY_STEP` fallback;
+4. add nullable statutory identity columns with no automatic legacy backfill;
+5. deploy writes before dependent UI reads;
+6. keep API changes additive;
+7. deploy trace authorization only after Stage 09 authentication/RBAC foundations exist.
 
-Record the chosen resource-concealment policy if one is needed.
-
-### 11. API contract design
-
-Specify request/response contracts for:
-
-- timeline retrieval
-- filtering by attempt/invocation, employee, event code, status, and time
-- pagination and deterministic ordering
-- retry invocation summary
-- per-result statutory identity
-- excluded component display
-
-Define backward compatibility for existing frontend consumers.
-
-No raw exception or internal stack/schema information may be returned.
-
-### 12. UI/operator experience design
-
-Define the minimum UI changes required later, without implementing them:
-
-- timeline grouping by original run and retry invocation
-- preflight failure display
-- per-employee retry outcomes
-- final retry transition summary
-- statutory rule ID/version display in result audit detail
-- excluded/disabled component indicators
-- role-based trace visibility
-- clear empty states for legacy runs with unavailable trace/identity
-
-Do not turn Stage 10 into a general UI redesign.
-
-### 13. Audit/event boundary
-
-Define which information belongs in:
-
-- `execution_trace`
-- `component_trace_jsonb`
-- `audit_log`
-- `event_store`
-- `payroll_result` identity fields
-
-Avoid duplicate writes with unclear ownership.
-
-Recommended boundary to assess:
-
-- execution trace: orchestration and attempt outcomes
-- component trace: calculation decisions and component values
-- audit log: human/business lifecycle actions and before/after state
-- event store: domain events/integration history
-- result columns: durable queryable calculation identity
-
-### 14. Migration and rollout design
-
-Produce a migration/rollout sequence covering:
-
-- schema additions if required
-- compatibility with legacy runs/results
-- application writes before reads, where relevant
-- dual-read/dual-write requirements, if any
-- API versioning or additive response changes
-- frontend deployment order
-- authentication/RBAC dependency from Stage 09
-- rollback strategy
-- data-retention considerations
-
-Stage 10 must explicitly state that trace-route remediation cannot be considered production-safe until Stage 09’s authentication, membership, RBAC, and ownership controls exist.
-
-### 15. Acceptance criteria
-
-Define testable acceptance criteria for the future implementation.
-
-At minimum:
-
-- retry invocation writes a correlated preflight event
-- failed preflight is durably visible
-- each retried employee has one terminal success/failure outcome event
-- final run transition is recorded
-- component trace remains detailed and correct
-- result rows record statutory rule ID/version from the frozen snapshot
-- legacy results do not fabricate statutory identity from live data
-- disabled/excluded components are distinguishable from zero-result or eligibility-skip components
-- timeline query cannot return another workspace’s rows
-- unauthorized users cannot access timeline data
-- timeline output is ordered, paginated, and stable
-- trace-write failure does not corrupt payroll calculation
-- API errors are sanitized
-
-### 16. Regression scenario design
-
-Define scenarios for Stage 11, including:
-
-- successful retry with one employee
-- retry with multiple employees, mixed success/failure
-- preflight failure due to legacy/incomplete snapshot
-- statutory snapshot validation failure
-- repeated retry attempts on the same run
-- original-run vs retry timeline grouping
-- statutory identity parity between original and retry results
-- disabled statutory component recorded as excluded
-- cross-workspace timeline request denied
-- read-only auditor allowed to view authorized trace
-- unauthorized direct-client user denied
+## Required future acceptance criteria
+
+The future implementation must verify at minimum:
+
+- correlated retry preflight events
+- durable failed-preflight evidence with zero employee mutation
+- one terminal outcome per retried employee
+- final run-transition trace
+- unchanged correct component tracing
+- statutory identity parity between run snapshot and every new result
+- no fabricated legacy identity
+- excluded components distinguishable from skipped/zero/failed
+- cross-workspace timeline requests denied after authentication work
+- stable attempt grouping and ordering
 - trace-write failure containment
+- no raw exception/internal detail in API responses
 
-## Required outputs
+## Stage 11 handoff
 
-At minimum produce:
+Stage 11 should use the 12 scenarios specified in `findings.md`, including successful/mixed retry, failed preflight, repeated attempts, grouping, statutory identity parity, excluded-component visibility, tenant denial, authorized auditor access, and trace-write failure containment.
 
-1. Current-state trace architecture map
-2. Retry event model
-3. Execution-trace schema assessment
-4. Stable event taxonomy
-5. Retry correlation/idempotency design
-6. Error/failure trace semantics
-7. `04-002` per-result statutory-identity design
-8. `08-003` excluded-component visibility design
-9. Original-run/retry relationship design
-10. `09-005` secure timeline access design
-11. API contract specification
-12. Minimal UI/operator requirements
-13. Audit/event ownership boundary
-14. Migration and rollout sequence
-15. Acceptance criteria
-16. Stage 11 regression scenario specification
-17. Risks, trade-offs, and alternatives considered
-18. Findings/design decisions using the audit programme’s schemas
-19. Evidence under `docs/audit-program/10-execution-trace-remediation-design/evidence/`
-20. Handoff notes for Stages 11, 12, and 13
+---
 
-## Finding and design rules
+## Close-review instruction
 
-Keep separate:
+No new human decision is required to close Stage 10.
 
-- current implementation
-- approved decisions
-- proposed design
-- alternatives rejected
-- unresolved human decisions
+### Review requirements
 
-Use one valid finding status where findings are recorded:
+Before closing, verify that:
 
-- confirmed
-- plausible
-- unconfirmed
-- rejected
-- human decision required
+1. the design implements the binding minimal retry-trace decision without expanding to full parity;
+2. `execution_trace` gains queryable tenant, correlation, operation, event, employee, and actor fields;
+3. per-result statutory identity is sourced only from the frozen calculation context;
+4. existing result rows are not backfilled from mutable live tables;
+5. excluded components are durably distinguishable from skipped, absent, zero, and failed components;
+6. the timeline design closes `09-005` only when Stage 09 authentication/membership/RBAC dependencies are present;
+7. authorization uses non-disclosing `404` for unauthorized resource combinations;
+8. error semantics prohibit uncontrolled `str(e)` disclosure;
+9. migration, rollback, API compatibility, UI requirements, acceptance criteria, and Stage 11 scenarios are implementation-ready;
+10. Stage 10 remains design-only and no production files were changed.
 
-Do not redesign the entire observability architecture when a smaller additive change satisfies the approved requirements.
+### Close the stage
 
-Do not store critical tenant or result identity only inside unindexed free-form JSON.
+Update:
 
-Do not fabricate historical statutory identity for legacy results.
+- `docs/audit-program/10-execution-trace-remediation-design/findings.md`
+  - change status to `complete`
+  - add a final review/closure summary
+  - preserve the proposed design as the approved implementation specification
+- `docs/audit-program/audit-state.md`
+  - mark Stage 10 `complete`
+  - set the closed date to today
+  - set next action to open Stage 11 — Scenario testing
+  - leave Stage 11 not started
+  - carry the approved trace package (`02-002`/`07-005`, `04-002`, `08-003`, `09-005`) to Stage 13 for sequencing and implementation
+  - carry the 12 regression scenarios to Stage 11
+  - preserve the Stage 09 S0 authentication/RBAC dependency and all prior findings/remediation state
 
-Do not treat network controls as authorization.
+### Constraints during close review
 
-## Constraints
+- Do not modify backend/frontend code, migrations, tests, scripts, or data.
+- Do not implement the trace design.
+- Do not begin Stage 11.
+- Do not create a separate close-review prompt file; this `CONTEXT.md` is the executable instruction.
 
-- Findings and design only.
-- No backend or frontend code changes.
-- No migrations created or edited.
-- No tests or scripts changed.
-- No data modification.
-- Do not start Stage 11.
-- Do not reopen `04-001` or `05-001` without regression evidence.
-- Do not resolve `03-004`’s product-policy decision; design omission traceability for either outcome.
-- Do not design trace access without application authentication, membership, RBAC, and ownership checks.
+### Publish
 
-## Completion criteria
+Commit and push the Stage 10 closure documentation to `uat`.
 
-Stage 10 is ready for human review only when:
-
-- the approved minimal retry-trace decision is fully specified
-- the existing trace schema is assessed and any additions are justified
-- retry event codes, correlation, ordering, and failure semantics are defined
-- `04-002` has an implementation-ready per-result identity design
-- `08-003` has a durable excluded-component visibility design
-- `09-005` has an end-to-end tenant-safe route/service/repository design
-- authentication/RBAC dependencies are explicit
-- API/UI impacts and migration order are defined
-- acceptance criteria are testable
-- Stage 11 regression scenarios are specified
-- trade-offs and rejected alternatives are documented
-- any genuinely unresolved decision is clearly isolated
-
-## Publication
-
-When the design is complete:
-
-1. Create `findings.md` and supporting design/evidence files under this stage.
-2. Update `docs/audit-program/audit-state.md`:
-   - mark Stage 10 `in-progress`
-   - set opened date to today
-   - set next action to human review of Stage 10
-   - preserve all completed stages, decisions, and remediation records
-3. Leave Stage 10 `in-progress, awaiting review`; do not self-close.
-4. Commit and push only Stage 10 documentation/evidence and the audit-state update to `uat`.
-5. Return only:
+Return only:
 
 ```text
 Stage: 10 — Execution-trace remediation design
-Status: in-progress, awaiting review
+Status: complete
 Primary file: docs/audit-program/10-execution-trace-remediation-design/findings.md
 Audit state: docs/audit-program/audit-state.md
 Commit: <SHA>
 
-Important decisions required:
-- <decision or none>
+Result:
+- Minimal retry trace design approved.
+- Per-result statutory identity design approved.
+- Excluded-component visibility design approved.
+- Tenant-safe timeline design approved, dependent on Stage 09 authentication/RBAC remediation.
 
-Design summary:
-- Retry trace model: <summary>
-- Per-result statutory identity: <summary>
-- Excluded-component visibility: <summary>
-- Tenant-safe timeline access: <summary>
+Next stage:
+11 — Scenario testing
 ```
