@@ -135,3 +135,51 @@ behaviour; it falls out of `FAILED` simply not appearing in any
 | 9 | Remediation documentation and audit-state handback are complete | ✅ This file + summary.md + `audit-state.md` update |
 
 All nine acceptance criteria are satisfied.
+
+---
+
+## Close-review re-verification (2026-07-12, commit `a68d495`)
+
+No code changed between commit `68e9307` (implementation) and this review
+— confirmed via `git log --oneline 68e9307..HEAD` (only unrelated
+documentation-prompt commits from other tracks) and
+`git diff --stat 68e9307..HEAD -- backend/ migrations/ tests/` (empty).
+Per the close-review prompt's instruction, the results above remain
+current. Both commands were re-run anyway as an extra check:
+
+```
+$ python -m pytest tests/test_payroll_retry_snapshot_first.py -v
+5 passed, 5 warnings in 2.61s
+
+$ python -m pytest tests/ -q
+302 passed, 1 skipped, 48 warnings in 12.81s
+```
+
+The broader-suite count grew from 291 to 302 between the implementation
+run and this review — confirmed to be new, untracked test files appearing
+in `tests/` from unrelated, concurrent activity in this repository (not
+part of this commit), not a change caused by this remediation.
+
+**One transient failure investigated and ruled out.** A single re-run
+produced `1 failed, 298 passed` against an untracked file,
+`tests/test_statutory_flat_amount_keys_e2e.py` (not part of this
+remediation's diff, not committed). Investigated before dismissing:
+
+- Re-ran in isolation → passed.
+- Re-ran combined with only `test_payroll_retry_snapshot_first.py` → passed.
+- Re-ran the full suite three consecutive times → passed all three
+  (302/302/302), including together with this remediation's changes.
+- Checked out the pre-remediation commit (`68e9307~1`) in a separate git
+  worktree and ran the same untracked test file there → also depends on
+  DB state shared with the concurrent activity, not on this remediation's
+  code (the file is not part of any commit in this repository's history on
+  either side of `68e9307`).
+
+Conclusion: a one-off collision with a concurrent process sharing the same
+local, non-production `payroll_dev` database (evidenced by the growing,
+externally-supplied test count across successive runs), not a regression
+introduced by this remediation. Migration reversibility was independently
+confirmed as part of this review (`alembic downgrade -1` /
+`alembic upgrade head`) — see summary.md's final approval section.
+
+**Review verdict: approved. Remediation complete.**

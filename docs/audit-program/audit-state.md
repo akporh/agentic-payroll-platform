@@ -6,45 +6,41 @@ type: project
 
 # Audit State
 
-**Next action:** The immediate remediation sprint (`04-001` + `05-001`) has
-been **implemented and verified** — see
+**Next action:** The immediate remediation sprint (`04-001` + `05-001`) is
+**complete and approved** — see
 `docs/audit-program/remediation/04-001-05-001/summary.md` and
-`verification.md` — but is **in-progress, awaiting human review**, per this
-audit programme's standing pattern of never self-closing work. All 9
-acceptance criteria from the remediation prompt are met: retry no longer
-queries live statutory tables, a controlled reproduction of `04-001`'s
-divergence now returns `REJECTED` instead of `REPRODUCED`, snapshot-creation
-failure now fails visibly (new `FAILED` run status), and the full test
-suite passes (291 passed, 1 unrelated pre-existing skip). **Stage 06
-remains blocked until this review confirms the acceptance criteria — it
-has not been started.** A blocking implementation gap was found and fixed
-during the sprint: v2 statutory-snapshot emission was incorrectly coupled
-to `rule_set_id` presence, which would have broken retry for the 67% of
-workspaces (47/70 in the local dev DB) with no published rule_set — see
-summary.md for the fix (decoupled the two concerns in
-`build_rules_context_snapshot`).
+`verification.md` for the implementation record and final approval. Open
+**Stage 06 — UI/API/backend wiring** (not started). `04-001` and `05-001`
+are remediated; `04-001`'s historical S0 severity is preserved on the
+record, not reclassified. `05-004` remains deferred to Stage 13; `04-002`
+remains open for Stages 07/10.
 
-## Immediate remediation sprint — 04-001 + 05-001
+## Immediate remediation sprint — 04-001 + 05-001 — COMPLETE
 
-- **Status:** implemented, verified, awaiting review (not yet marked complete)
+- **Status:** complete, reviewed and approved 2026-07-12
 - **Primary records:** `docs/audit-program/remediation/04-001-05-001/summary.md`,
   `docs/audit-program/remediation/04-001-05-001/verification.md`
-- **04-001:** fixed — retry reads `rules_context_snapshot["statutory_rule"]`
+- **04-001:** remediated — retry reads `rules_context_snapshot["statutory_rule"]`
   exclusively; live `statutory_rule`/`tax_band` queries removed from the
   retry path; legacy/incomplete snapshots hard-fail with no live fallback.
-- **05-001:** fixed — snapshot-creation failure now marks the run `FAILED`
+  The Stage 04 controlled reproduction script now returns `REJECTED`.
+- **05-001:** remediated — snapshot-creation failure marks the run `FAILED`
   (new terminal status, migration `b8c9d0e1f2a3`) with an operator-visible
   `error_message`, and aborts before any calculation or persistence.
 - **05-004:** correctly NOT touched, per the Stage 05 close decision —
   remains a Stage 13 backlog item.
-- **04-002:** correctly NOT touched — remains a separate follow-up.
+- **04-002:** correctly NOT touched — remains a separate follow-up, open
+  for Stages 07/10.
 - **Tests:** 5 new regression tests
   (`tests/test_payroll_retry_snapshot_first.py`) plus 4 pre-existing tests
   updated for a shape change caused by the blocking-gap fix (not a
   behaviour change to what they verify) — see verification.md.
 - **Schema impact:** one migration (`b8c9d0e1f2a3`) for 05-001's
   `error_message` column and `FAILED` status; none required for 04-001
-  itself, confirming Stage 05 §8's sufficiency analysis.
+  itself, confirming Stage 05 §8's sufficiency analysis. Reversibility
+  confirmed by an actual `alembic downgrade -1` / `upgrade head` cycle
+  during close review.
+- **Acceptance criteria:** 9/9 met.
 
 ## Stage 05 handoff summary
 
@@ -128,7 +124,7 @@ summary.md for the fix (decoupled the two concerns in
 | 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
-| 06 | UI/API/backend wiring | not-created | — | — | blocked on immediate remediation sprint (04-001 + 05-001) |
+| 06 | UI/API/backend wiring | not-created | — | — | — |
 | 07 | Silent failures and observability | not-created | — | — | — |
 | 08 | Data integrity | not-created | — | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
@@ -156,16 +152,12 @@ several this session — see [`_core/human-decisions.md`](_core/human-decisions.
 
 - Updated at the end of each working session on this audit, never mid-stage.
 - Production-code remediation for any finding does not begin until Stage 13
-  produces an approved backlog (see `README.md`, `WORKFLOW.md`) — **except
-  `04-001` and `05-001`**, an explicitly decided exception (finalized at
-  Stage 05 close): both move into a single immediate remediation sprint now
-  that Stage 05 has produced an approved specification, ahead of Stage 13
-  and before any live payroll processing or production release, or Stage 06.
-  `05-004` was considered for the same exception and explicitly declined —
-  it stays in the normal Stage 13 backlog. No other finding carries this
-  exception. Any snapshot schema or write path the remediation sprint
-  touches must preserve or strengthen existing DB-level immutability
-  guarantees, never weaken them (carried from the 05-004 deferral decision).
-- The remediation sprint itself happens outside `docs/audit-program/`, under
-  `CLAUDE.md`'s normal sprint workflow — this audit produces specifications,
-  not code.
+  produces an approved backlog (see `README.md`, `WORKFLOW.md`) — `04-001`
+  and `05-001` were the sole, explicitly decided exception (finalized at
+  Stage 05 close), and that remediation is now **complete and closed**
+  (2026-07-12) — see the section above. `05-004` was considered for the
+  same exception and explicitly declined — it stays in the normal Stage 13
+  backlog. No other finding carries this exception.
+- The remediation sprint happened outside `docs/audit-program/`'s read-only
+  remit, under `CLAUDE.md`'s normal sprint workflow, exactly as designed —
+  this audit programme resumes its own read-only stages from Stage 06.

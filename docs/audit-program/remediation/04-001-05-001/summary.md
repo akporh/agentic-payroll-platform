@@ -1,9 +1,14 @@
 # Remediation Summary — 04-001 + 05-001
 
+**Status: complete.**
+
 **Sprint:** Immediate remediation, per
 `docs/audit-program/remediation-prompts/2026-07-12-04-001-05-001-immediate-remediation-sprint-prompt.md`
 (commit `6e1d949`), executed under Stage 05's approved canonical contract
-(`docs/audit-program/05-snapshot-integrity/findings.md` §9).
+(`docs/audit-program/05-snapshot-integrity/findings.md` §9). Closed and
+approved per
+`docs/audit-program/remediation-prompts/2026-07-12-04-001-05-001-remediation-close-review-prompt.md`
+(commit `a68d495`).
 
 **Date:** 2026-07-12
 
@@ -175,3 +180,51 @@ of which is snapshot content.
 | `tests/test_status.py` | Updated expected enum set to include `FAILED` |
 
 See `verification.md` for test commands and results.
+
+---
+
+## Final approval (close review, 2026-07-12)
+
+Reviewed against `docs/audit-program/remediation-prompts/2026-07-12-04-001-05-001-remediation-close-review-prompt.md`
+(commit `a68d495`). All six required review conclusions confirmed:
+
+1. **`04-001` remediated** — retry reads statutory content only from the
+   frozen v2 `rules_context_snapshot`; confirmed by grep that no
+   `FROM statutory_rule`/`FROM tax_band` query remains in
+   `payroll_retry_service.py`; legacy/malformed snapshots hard-fail before
+   any result deletion, calculation, or persistence (test-verified); the
+   Stage 04 controlled reproduction script now returns `REJECTED` (was
+   `REPRODUCED`).
+2. **`05-001` remediated** — snapshot-creation failure aborts calculation
+   and persistence, the run becomes terminal `FAILED`, `error_message` is
+   persisted and visible through `GET .../runs/{run_id}`, and audit/event
+   records are written via the existing `build_transition_audit`/
+   `build_transition_event` mechanism — no new audit mechanism invented.
+3. **Blocking implementation gap confirmed valid and correctly handled** —
+   v2 snapshot emission is no longer coupled to `rule_set_id` presence;
+   a workspace with no published rule set now receives a complete v2
+   statutory snapshot with `"rule_set": null`. The 47/70-workspace
+   (67%) evidence from the local dev database is preserved above,
+   unchanged, as the basis for this being in-scope rather than creep: the
+   approved `04-001` fix would otherwise have made every retry-eligible run
+   in those workspaces hard-fail.
+4. **Immutability guarantees intact** — `trg_run_snapshot_immutable` was
+   not modified; no new update-in-place snapshot-content writes were
+   introduced; `test_payroll_run_snapshot_immutable.py` passes.
+5. **Migration `b8c9d0e1f2a3` confirmed reversible** — `alembic downgrade
+   -1` then `alembic upgrade head` was run against the local
+   `payroll_dev` database as part of this review; the `error_message`
+   column was confirmed dropped after downgrade and restored after
+   re-upgrade. Follows `CLAUDE.md`'s ADD COLUMN guard convention.
+6. **Acceptance criteria** — see `verification.md`'s final re-verification
+   note; 5/5 focused, full suite green, zero residue.
+
+**Severity note:** `04-001`'s historical S0 classification is preserved,
+per the close-review prompt's explicit instruction — it is marked
+**remediated**, not reclassified or downgraded retroactively. The
+confirmed finding in `docs/audit-program/04-original-run-retry-parity/findings.md`
+remains as originally recorded.
+
+**Scope discipline:** `05-004` (broad immutability harmonisation) and
+`04-002` (per-result statutory identity) were not touched in this closure,
+consistent with the Stage 05 close decision and this prompt's constraints.
