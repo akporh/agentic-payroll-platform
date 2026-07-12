@@ -1,0 +1,64 @@
+=== employee_contract: strong DB-level positive controls ===
+Indexes:
+    "employee_contract_pkey" PRIMARY KEY, btree (contract_id)
+    "excl_employee_contract_no_overlap" EXCLUDE USING gist (employee_id WITH =, daterange(start_date, COALESCE(end_date, 'infinity'::date), '[)'::text) WITH &&)
+    "idx_employee_contract_employee_date" btree (employee_id, start_date)
+    "uq_employee_active_contract" UNIQUE, btree (employee_id) WHERE end_date IS NULL
+Check constraints:
+    "chk_employee_contract_shift_type" CHECK (shift_type::text = ANY (ARRAY['DAY'::character varying, '2_SHIFT'::character varying, '4_SHIFT'::character varying]::text[]))
+
+=== employee.employee_number: migration c9d0e1f2a3b4 named 'NOT NULL' but guards the ALTER in a swallow-all EXCEPTION block ===
+"""MIG-18-A: employee_number NOT NULL + workspace-scoped unique index
+
+Revision ID: c9d0e1f2a3b4
+Revises: f0a1b2c3d4e5
+Create Date: 2026-05-31 00:00:00.000000
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+revision: str = "c9d0e1f2a3b4"
+down_revision: Union[str, Sequence[str], None] = "f0a1b2c3d4e5"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE employee ALTER COLUMN employee_number SET NOT NULL;
+        EXCEPTION WHEN others THEN NULL; END $$;
+    """)
+
+    op.execute("DROP INDEX IF EXISTS uq_employee_number_per_workspace;")
+
+    op.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_employee_number
+            ON employee (workspace_id, employee_number);
+    """)
+
+
+def downgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS ux_employee_number;")
+
+    op.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_number_per_workspace
+            ON employee (workspace_id, employee_number);
+    """)
+
+    op.execute("""
+        ALTER TABLE employee ALTER COLUMN employee_number DROP NOT NULL;
+    """)
+
+=== confirmed: employee_number IS nullable in the live (dev) schema today ===
+ employee_number            | character varying(50)       |           |          | 
+    "ux_employee_number" UNIQUE, btree (workspace_id, employee_number)
+
+=== confirmed: 11 of 4673 employee rows currently have NULL employee_number (dev data, not production evidence) ===
+ total | null_count 
+-------+------------
+  4673 |         11
+(1 row)
+

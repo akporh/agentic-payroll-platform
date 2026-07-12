@@ -6,20 +6,25 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 07 closed 2026-07-12. Open **Stage 08 — Data
-integrity** (not started). Headline Stage 07 result: **07-001** — a
-systemic, confirmed S1 violation of `CLAUDE.md`'s own standing "never
-return `str(e)`" rule, 21 occurrences across `payroll.py`/`workspace.py`
-(the largest recurrence of this already-twice-documented defect class),
-carried to Stages 09/13. Also confirmed: 07-002 (reconciliation
-transitions write no `audit_log`/`event_store` entry, Stage 08/13),
-07-003 (background-task outer exception handler still silent outside the
-05-001-remediated snapshot step, Stage 11/13), 07-004 (stray `print()` in
-`paye.py`, Stage 12). `02-002`'s retry-trace-parity question resolved at
-close: a defined minimal subset (invocation/preflight, per-employee
-outcome, final transition), not full parity, not zero — `07-005`, input to
-Stage 10 alongside the unchanged `04-002` recommendation. `04-001`/`05-001`
-remain remediated (not reopened); `05-004` deferred to Stage 13.
+**Next action:** Stage 08 (data integrity) has produced `findings.md`
+(08-001–08-004) but is **not yet marked complete** — awaiting explicit
+review. Headline result: **`04-004` is REJECTED** — strong structural
+evidence (state machine + service guards, multiply redundant) proves
+retry and reconciliation can never temporally overlap for the same run;
+Stage 04's original concern cannot occur. New findings: 08-001 (confirmed,
+S2) — `employee.employee_number` is nullable in the live schema despite a
+migration explicitly named to enforce `NOT NULL`, because its `ALTER` is
+wrapped in a swallow-all `EXCEPTION WHEN others`; 11/4,673 dev rows
+currently NULL. 08-002 (confirmed, S2) — `payroll_run`'s own totals/period
+fields are DB-protected only at `PAID`, one stage later than
+`payroll_result`'s protection (`CALCULATED` onward); no live exploitation
+path found. 08-003 (confirmed, S2) — extends 03-004: disabled statutory
+components are silently filtered with no compliance guard or trace signal.
+Strong positive controls confirmed: contract-overlap exclusion constraint,
+active-contract uniqueness, `payroll_result`'s three-layer immutability,
+and reconciliation's MATCHED/MISMATCH CHECK constraints (the strongest
+DB-level invariant enforcement found anywhere in this audit). `04-001`/
+`05-001` remain remediated (not reopened); `05-004` deferred to Stage 13.
 
 ## Stage 07 handoff summary
 
@@ -196,7 +201,7 @@ remain remediated (not reopened); `05-004` deferred to Stage 13.
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
-| 08 | Data integrity | not-created | — | — | — |
+| 08 | Data integrity | in-progress | 2026-07-12 | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
 | 11 | Scenario testing | not-created | — | — | — |

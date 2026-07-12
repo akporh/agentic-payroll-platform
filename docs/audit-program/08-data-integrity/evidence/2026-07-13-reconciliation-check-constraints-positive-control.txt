@@ -1,0 +1,8 @@
+=== payroll_reconciliation: CHECK constraints directly enforce CLAUDE.md's MATCHED/MISMATCH invariants at the DB level ===
+Check constraints:
+    "chk_matched_totals_equal" CHECK (status <> 'MATCHED'::text OR actual_total = expected_total)
+    "chk_mismatch_totals_differ" CHECK (status <> 'MISMATCH'::text OR actual_total <> expected_total)
+    "chk_reconciliation_status" CHECK (status = ANY (ARRAY['PENDING'::text, 'MATCHED'::text, 'MISMATCH'::text, 'RESOLVED'::text]))
+    "chk_resolved_audit_fields" CHECK (status <> 'RESOLVED'::text OR resolved_by IS NOT NULL AND resolved_at IS NOT NULL)
+Foreign-key constraints:
+    "payroll_reconciliation_payroll_run_id_fkey" FOREIGN KEY (payroll_run_id) REFERENCES payroll_run(payroll_run_id)
