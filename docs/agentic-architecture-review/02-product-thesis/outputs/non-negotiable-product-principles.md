@@ -12,7 +12,7 @@ Matches the document's own PII-stripping, structured-JSON-envelope, and slot-fil
 
 ## 3. Agents use controlled tools rather than database access
 **Classification: retain, with an explicit addition (see Principle 11 below).**
-Sound as a general principle, but insufficient on its own: Stage 02 confirmed at least one case (F-02-06, `get_reconciliation`) where a "controlled tool" built as a thin wrapper over an existing, unscoped repository function would silently fail to deliver the isolation the principle promises. The principle needs to be paired with an explicit requirement that tool implementations independently verify workspace scoping rather than assuming the underlying query already does.
+Sound as a general principle, but insufficient on its own: Stage 02 confirmed at least one case (F-02-06, `get_reconciliation`) where a "controlled tool" built as a thin wrapper over an existing, unscoped repository function would silently fail to deliver the isolation the principle promises. The principle needs to be paired with an explicit requirement that tool implementations independently verify workspace scoping rather than assuming the underlying query already does. **Resolved by D-02-02 (2026-07-12)**: the repository-level fix is mandatory and a precondition for `get_reconciliation`; tool-layer validation is required in addition, as defence in depth — not a substitute.
 
 ## 4. Generated explanations must link to evidence
 **Classification: retain, revise scope.**
@@ -27,8 +27,8 @@ Matches Track X/Y's stated confirmation-protocol requirement. Dependency: the co
 Already reflected in the document's own design (`agent_session_log`: ephemeral session + 7-year audit-only retention, "no full replay"). No contradicting evidence found.
 
 ## 7. Historical payroll outcomes must remain reproducible
-**Classification: retain, but flag as currently only partially satisfied.**
-See F-02-09. The principle is correct and important — it should not be weakened — but it should be adopted with an explicit note that Stage 01 found specific gaps (F-01-27, F-01-29, F-01-38) that mean the platform does not yet fully satisfy it. Adopting the principle without that note risks the review implicitly certifying a property that isn't yet true.
+**Classification: retain, with a decided launch precondition (D-02-03, 2026-07-12).**
+See F-02-09. The principle is correct and important — it should not be weakened. The human reviewer resolved the open question on how to treat the current gap: Stage 01's F-01-27/F-01-29/F-01-38 must close **before launch** of any capability that explains, traces, or investigates a historical outcome — this is a hard precondition, explicitly not a disclosed residual risk. Track W may still ship for current-state-only navigation/assistance; Track X's reconciliation/trace investigation agents (and any historical-explanation mode of Track W) are blocked until these gaps close.
 
 ## 8. Chat is an interface, not the product strategy
 **Classification: retain, unchanged.**
@@ -58,7 +58,7 @@ Directly motivated by F-02-06: Stage 01 confirmed at least one existing data pat
 | 4 | Generated explanations must link to evidence | Retain, revise scope (all outputs, not just one tool) |
 | 5 | High-risk mutations require structured approval | Retain |
 | 6 | Agent memory must not become a shadow system of record | Retain |
-| 7 | Historical payroll outcomes must remain reproducible | Retain, flag partial current satisfaction |
+| 7 | Historical payroll outcomes must remain reproducible | Retain — launch precondition per D-02-03 (not a disclosed residual risk) |
 | 8 | Chat is an interface, not the product strategy | Retain |
 | 9 | AI should not be used where deterministic software is sufficient | Retain, strengthen with enforcement mechanism |
 | 10 | Autonomy must be earned through measured performance | Retain |

@@ -30,6 +30,46 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 - **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes; this was obtained directly rather than inferred from the user directing work toward Stage 02.
 - **Affects**: Stage 01 status (`review-state.md`), Stage 02 eligibility to begin
 
+### HD-2: Architecture document remains unapproved pending this review
+- **Date**: 2026-07-12
+- **Stage**: cross-cutting (raised Stage 02, binds Stage 12/13)
+- **Decision**: `docs/architecture/agent-layer-architecture.html`'s `NEEDS REVISION` status remains open. This review is the formal revision path; the document is not approved until Stage 12 synthesises the target direction and Stage 13 records approval.
+- **Made by**: Michael Emedo, via `docs/agentic-architecture-review/02-product-thesis/stage-02-review-decision-prompt.md` (D-02-01)
+- **Context**: Only the human reviewer can determine whether "NEEDS REVISION" reflects a still-open objection or stale labelling; this could not be derived from evidence alone.
+- **Affects**: F-02-02; Stage 12 (must treat the document as revisable input, not settled design); Stage 13 (sole stage authorized to record approval)
+
+### HD-3: Reconciliation workspace scoping — repository fix mandatory, tool-layer check is defence-in-depth only
+- **Date**: 2026-07-12
+- **Stage**: cross-cutting (raised Stage 02, binds Stage 03/05/07)
+- **Decision**: `payroll_reconciliation` repository-level workspace scoping (F-01-33) must be corrected before `get_reconciliation` is exposed as an agent tool. Tool-layer workspace-ownership validation is additionally mandatory as defence in depth, but is explicitly not an acceptable permanent substitute for the repository-level fix.
+- **Made by**: Michael Emedo, via `stage-02-review-decision-prompt.md` (D-02-02)
+- **Context**: A sequencing/risk-acceptance tradeoff between a platform-level data fix and a compensating control — a product/engineering priority call, not derivable from evidence alone.
+- **Affects**: F-02-06; Stage 03 (`get_reconciliation` tool blocked until this is fixed); Stage 05 (repo-level fix is now a named precondition); Stage 07 (defence-in-depth requirement)
+
+### HD-4: Historical reproducibility is a launch precondition, not a disclosed residual risk
+- **Date**: 2026-07-12
+- **Stage**: cross-cutting (raised Stage 02, binds Stage 03/05/08)
+- **Decision**: Historical reproducibility (F-01-27, F-01-29, F-01-38) is a launch precondition for any capability that explains, traces, or investigates historical payroll outcomes. Track W may proceed selectively for current-state navigation/assistance not dependent on historical truth. Historical explanation and all of Track X's reconciliation/trace investigation remain blocked until these gaps are resolved. This is explicitly not to be treated as a general accepted residual risk disclosed to operators.
+- **Made by**: Michael Emedo, via `stage-02-review-decision-prompt.md` (D-02-03)
+- **Context**: A risk-acceptance decision balancing delivery speed against the risk of an agent generating a plausible-but-wrong historical explanation — not derivable from evidence alone.
+- **Affects**: F-02-09, F-02-05, F-02-11; Stage 03 (splits Track W scope; blocks Track X investigation agents); Stage 05 (F-01-27/29/38 closure now a named launch precondition); Stage 08
+
+### HD-5: Statutory-rule change management scoped independently of Y1; Y1 may never author/deploy migrations
+- **Date**: 2026-07-12
+- **Stage**: cross-cutting (raised Stage 02, binds Stage 03/05/06/08)
+- **Decision**: Statutory-rule change management is scoped as a separate deterministic platform and compliance capability, independent of Y1 (Compliance Monitoring). Y1 may later detect external regulatory changes, compare evidence, and prepare proposals — it must never directly author, execute, or deploy production Alembic migrations.
+- **Made by**: Michael Emedo, via `stage-02-review-decision-prompt.md` (D-02-04)
+- **Context**: A roadmap-prioritization/build-vs-defer decision with compliance risk-appetite implications — not derivable from evidence alone.
+- **Affects**: F-02-12; Stage 05 (new deterministic capability to scope); Stage 06 (compliance-owned change-management workflow); Stage 08 (mechanism design); Stage 03/11 (Track Y sequencing)
+
+### HD-GATE-02: Stage 02 (Product Thesis) gate approved
+- **Date**: 2026-07-12
+- **Stage**: 02 — Product Thesis
+- **Decision**: Approved closing Stage 02's gate following resolution of HD-2 through HD-5. 14 confirmed findings (0 draft, 0 parked) are now citable by Stage 03 onward.
+- **Made by**: Michael Emedo, via `stage-02-review-decision-prompt.md`
+- **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes.
+- **Affects**: Stage 02 status (`review-state.md`), Stage 03 eligibility to begin
+
 ## Next action
 
-**Stage 02 (Product Thesis) is open.**
+**Stage 02 is complete. Await approval to begin Stage 03 — Agent Portfolio.**

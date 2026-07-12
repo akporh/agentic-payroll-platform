@@ -1,7 +1,7 @@
 # Stage 02: Product Thesis — Context
 
 ## Status
-awaiting-review (investigation complete 2026-07-12; not `complete` per the stage prompt's completion criteria — 14 confirmed findings, 4 unresolved human decisions logged in `decisions.md`, Stage 03 not started)
+complete (gate closed 2026-07-12, HD-GATE-02) — 14 confirmed findings, 0 draft, 0 parked; all 4 human decisions resolved (D-02-01–04) via `stage-02-review-decision-prompt.md`. Stage 03 not started.
 
 ## Scope
 
@@ -37,4 +37,4 @@ Six required investigations (per the prompt): (1) reconstruct the intended produ
 
 ## Next action
 
-**Human review of Stage 02 outputs and the 4 logged decisions in `decisions.md`; gate approval required before Stage 03.**
+**Await approval to begin Stage 03 — Agent Portfolio.**

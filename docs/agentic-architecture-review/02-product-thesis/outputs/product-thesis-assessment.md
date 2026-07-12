@@ -21,11 +21,11 @@
 
 **Future intent**: a five-phase build-out (auth → event/tool foundation → read-only chat → confirmed-write proactive agents → autonomous agents), gated at each transition on the prior phase being complete and, for 2C, "proven in production."
 
-**Unresolved product decisions** (identified in this stage, logged in `decisions.md`):
-- Whether the document's "NEEDS REVISION" status reflects concerns already addressed elsewhere, or is still open (F-02-02).
-- Whether the `payroll_reconciliation` workspace-scoping gap is a precondition for Track V, or something the tool layer is expected to compensate for independently (F-02-06).
-- Whether Stage 01's reproducibility-relevant gaps (F-01-27, F-01-38) must close before Track W/X ship, or are accepted residual risk (F-02-09).
-- Whether a statutory-rule change-management mechanism is scoped as its own deliverable, independent of Y1's AI-detection capability (F-02-12).
+**Product decisions** (identified in this stage; resolved 2026-07-12 by the human reviewer via `stage-02-review-decision-prompt.md`, recorded in `decisions.md` and `_core/HUMAN-DECISIONS.md` HD-2–HD-5):
+- The document's "NEEDS REVISION" status remains open; this review is the formal revision path — the document is not approved until Stage 12/13 (D-02-01, F-02-02).
+- The `payroll_reconciliation` workspace-scoping gap must be fixed at the repository level before `get_reconciliation` is exposed as a tool; tool-layer validation is required in addition, as defence in depth, not instead (D-02-02, F-02-06).
+- Historical reproducibility (F-01-27, F-01-29, F-01-38) is a launch precondition — not an accepted residual risk — for any capability explaining/tracing/investigating historical outcomes. Track W may proceed for current-state-only capabilities; Track X's reconciliation/trace investigation is blocked until these gaps close (D-02-03, F-02-09).
+- Statutory-rule change management is scoped as its own deterministic platform/compliance capability, independent of Y1; Y1 may detect and propose but never author/execute/deploy migrations (D-02-04, F-02-12).
 
 ## 2. Capability classification
 

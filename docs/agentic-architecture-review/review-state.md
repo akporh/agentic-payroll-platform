@@ -2,14 +2,14 @@
 
 Single source of truth for "where are we in the review." Update this file at the start and end of every stage transition.
 
-Last updated: 2026-07-12 (Stage 02 investigation complete, awaiting review)
+Last updated: 2026-07-12 (Stage 02 complete, gate closed; Stage 03 eligible)
 
 ## Stage status
 
 | # | Stage | Status | Gate passed | Notes |
 |---|---|---|---|---|
 | 01 | Current Operating Model | gated-closed | 2026-07-12 (HD-GATE-01) | 46 confirmed findings, 0 draft, 0 parked. See `01-current-operating-model/findings.md` and `outputs/current-operating-model-summary.md`. |
-| 02 | Product Thesis | awaiting-review | not yet | 14 confirmed findings, 0 draft, 0 parked; 4 human decisions logged in `02-product-thesis/decisions.md`. 5 outputs produced (assessment, capability matrix, boundary doc, principles, Stage 03 handoff). Not marked `complete` per the stage prompt's own completion criteria — awaiting human review + gate approval. |
+| 02 | Product Thesis | complete (gated-closed) | 2026-07-12 (HD-GATE-02) | 14 confirmed findings, 0 draft, 0 parked; all 4 human decisions resolved (D-02-01–04, `_core/HUMAN-DECISIONS.md` HD-2–HD-5) via `stage-02-review-decision-prompt.md`. 5 outputs produced and updated to reflect the decisions (assessment, capability matrix, boundary doc, principles, Stage 03 handoff). Downstream stage CONTEXT.md files (03, 05, 06, 07, 08, 12, 13) updated with inherited binding decisions. |
 | 03 | Agent Portfolio | not-started | — | — |
 | 04 | Outcome Discovery | not-started | — | — |
 | 05 | Platform Readiness | not-started | — | — |
@@ -32,4 +32,4 @@ Last updated: 2026-07-12 (Stage 02 investigation complete, awaiting review)
 
 ## Next action
 
-**Human review of Stage 02 findings/outputs and the 4 logged decisions; gate approval required before Stage 03 begins.**
+**Await approval to begin Stage 03 — Agent Portfolio.**

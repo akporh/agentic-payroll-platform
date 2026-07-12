@@ -37,8 +37,8 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Confidence**: High (the label itself is unambiguous); the reason for the "needs revision" label is not established by this stage's evidence.
 - **Severity**: Not rated — this is a process/provenance fact, not a defect.
 - **Recommendation**: Do not treat this document as a finished design in Stage 12; treat it as the primary but revisable input this review is itself helping to revise.
-- **Required human decision**: Confirm whether a specific "what needs revision" record exists outside this document and should be pulled into this review. Logged in `decisions.md`.
-- **Downstream stage dependency**: Stage 12 (Target Direction).
+- **Required human decision**: ~~Confirm whether a specific "what needs revision" record exists outside this document and should be pulled into this review.~~ **Resolved (D-02-01, HD-2, 2026-07-12)**: no separate record exists — this review itself is the formal revision path. The document remains unapproved until Stage 12 synthesises the target direction and Stage 13 records approval.
+- **Downstream stage dependency**: Stage 12 (Target Direction — must treat this document as revisable input, not settled design); Stage 13 (Approved Roadmap — sole stage authorized to record approval).
 
 ### F-02-03: Tracks P and most of Track V are infrastructure engineering, not AI capability — the "Agent Foundation" framing risks implying otherwise
 - **Statement**: Authentication (Track P) and most of the event/tool/notification infrastructure (Track V) involve no LLM or AI reasoning at all; they are prerequisites that any agent would need, but are not themselves agentic.
@@ -76,8 +76,8 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Confidence**: Medium — genuinely ambiguous from the document text alone.
 - **Severity**: Medium — same reasoning as F-02-04: the risk is a probabilistic mechanism silently replacing what should be a deterministic one.
 - **Recommendation**: Require X3's actual causal diff (which employee, which component, which amount) to be computed by deterministic code reading `component_trace_jsonb`/`payroll_reconciliation`, with the LLM's role limited to composing the plain-English explanation from that pre-computed, structured result — the same slot-filling pattern already specified for `explain_component_trace`.
-- **Required human decision**: None — forwarded to Stage 03 as a required design constraint to verify at agent-spec level.
-- **Downstream stage dependency**: Stage 03 (Agent Portfolio).
+- **Required human decision**: None — forwarded to Stage 03 as a required design constraint to verify at agent-spec level. **Superseded by D-02-03 (HD-4, 2026-07-12)**: X3 (Track X reconciliation/trace investigation) is now blocked outright — not merely constrained — until the historical-reproducibility gaps in F-02-09 are resolved. This finding's deterministic/narration split still applies once X3 is unblocked.
+- **Downstream stage dependency**: Stage 03 (Agent Portfolio — X3 blocked pending F-02-09 resolution, per D-02-03).
 
 ### F-02-06: The proposed tool layer must independently (re-)implement workspace scoping — it cannot inherit it from the existing data layer for at least one confirmed case
 - **Statement**: The architecture document treats "workspace_id from JWT only, tool calls scoped" as a non-negotiable security invariant, implemented via new "narrow domain-shaped tools." Stage 01 confirmed that at least one of the data sources these tools would plausibly wrap (`payroll_reconciliation`) has no workspace scoping at all in its current repository functions.
@@ -89,8 +89,8 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Confidence**: High — this is a direct, specific consequence of an already-confirmed Stage 01 finding, not a speculative concern.
 - **Severity**: High — a confirmed data-layer gap that would carry directly into a stated non-negotiable security invariant of the proposed agent architecture if the tool layer is built as a thin pass-through.
 - **Recommendation**: Require every Track V tool definition to independently verify/enforce workspace ownership at the tool-serialization layer, regardless of what the underlying repository function does — do not assume the data layer already enforces this. `get_reconciliation` specifically needs this fix before Track V ships.
-- **Required human decision**: Whether closing the `payroll_reconciliation` workspace-scoping gap is a precondition for building the `get_reconciliation` tool, or whether the tool layer is expected to compensate independently. Logged in `decisions.md`.
-- **Downstream stage dependency**: Stage 03 (Agent Portfolio — specific tool design), Stage 05 (Platform Readiness), Stage 07 (Security & Identity).
+- **Required human decision**: ~~Whether closing the `payroll_reconciliation` workspace-scoping gap is a precondition for building the `get_reconciliation` tool, or whether the tool layer is expected to compensate independently.~~ **Resolved (D-02-02, HD-3, 2026-07-12)**: the repository-level fix is mandatory and is a precondition for exposing `get_reconciliation` as a tool. Tool-layer validation is additionally required as defence in depth, but is explicitly not an acceptable substitute for the repository-level fix.
+- **Downstream stage dependency**: Stage 03 (Agent Portfolio — `get_reconciliation` tool blocked on this fix), Stage 05 (Platform Readiness — repo-level fix now a named precondition), Stage 07 (Security & Identity — defence-in-depth requirement).
 
 ### F-02-07: The `explain_component_trace` anti-hallucination design depends on `component_trace_jsonb` being populated — which Stage 01 confirmed is not always true
 - **Statement**: The document's Blocking Condition #4 requires `explain_component_trace` to fill named slots from structured trace data only, never inventing numbers. This design is sound, but assumes the trace data exists.
@@ -127,9 +127,9 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Evidence**: Stage 01 F-01-27, F-01-29, F-01-38
 - **Confidence**: High
 - **Severity**: Medium — a real dependency the product principle would otherwise obscure.
-- **Recommendation**: Adopt the principle (see `outputs/non-negotiable-product-principles.md`), but explicitly record it as currently only partially satisfied, with the specific Stage 01 findings that must be resolved (or explicitly accepted as residual risk) before any agent relies on full reproducibility.
-- **Required human decision**: Whether closing F-01-27/F-01-38 is a precondition for Track W/X, or an accepted residual risk to be disclosed to operators. Logged in `decisions.md`.
-- **Downstream stage dependency**: Stage 05 (Platform Readiness), Stage 08 (Technical Architecture).
+- **Recommendation**: Adopt the principle (see `outputs/non-negotiable-product-principles.md`), but explicitly record it as currently only partially satisfied, with the specific Stage 01 findings that must be resolved before any agent relies on full reproducibility.
+- **Required human decision**: ~~Whether closing F-01-27/F-01-38 is a precondition for Track W/X, or an accepted residual risk to be disclosed to operators.~~ **Resolved (D-02-03, HD-4, 2026-07-12)**: closing F-01-27/F-01-29/F-01-38 is a **launch precondition** — explicitly not a general accepted residual risk to disclose to operators. Track W may proceed selectively for current-state navigation/assistance not dependent on reconstructing historical truth; historical explanation and all of Track X's reconciliation/trace investigation remain blocked until these gaps close.
+- **Downstream stage dependency**: Stage 03 (Agent Portfolio — splits Track W scope per D-02-03; blocks Track X investigation agents), Stage 05 (Platform Readiness — F-01-27/29/38 closure now a named launch precondition), Stage 08 (Technical Architecture).
 
 ### F-02-10: The Onboarding Agent (Y2) is one of the more clearly AI-justified proposed capabilities
 - **Statement**: Interpreting arbitrary, human-authored Excel column headers and proposing salary-definition/grade/designation mappings is an inherently ambiguous natural-language/fuzzy-matching problem, unlike the largely deterministic checks discussed in F-02-04.
@@ -154,8 +154,8 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Confidence**: High
 - **Severity**: Informational
 - **Recommendation**: Retain Track W's scope and read-only/PII-stripped/rate-limited constraints as-is; ensure the "State Explainer" mode's tool set includes all the individual deterministic facts (status, enrollment, contract window, salary-definition presence) needed to compose an accurate exclusion narrative, rather than a single pre-packaged "why excluded" tool that itself embeds unreviewed logic.
-- **Required human decision**: None.
-- **Downstream stage dependency**: Stage 03 (Agent Portfolio).
+- **Required human decision**: None. **Note added per D-02-03 (HD-4, 2026-07-12)**: Track W's launch scope is now split — current-state navigation/assistance (e.g. Navigation Guide; State Explainer answers grounded in *current* status/enrollment/contract facts) may proceed. Any Track W behavior that would explain or reconstruct a *historical* payroll outcome is blocked until F-01-27/F-01-29/F-01-38 (F-02-09) are resolved, same as Track X.
+- **Downstream stage dependency**: Stage 03 (Agent Portfolio — must design Track W's launch scope to exclude historical-outcome explanation per D-02-03).
 
 ### F-02-12: The Compliance Monitoring agent's (Y1) proposed output has no current product-side application mechanism — it would generate proposals with nowhere concrete to land
 - **Statement**: Y1 proposes detecting FIRS/PenCom statutory changes, comparing against the current `statutory_rule` table, flagging deltas, and proposing a migration, subject to operator approval.
@@ -167,8 +167,8 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 - **Confidence**: High
 - **Severity**: High — a proposed capability with no viable current application path, for one of the platform's most legally consequential data categories (statutory tax/pension/levy rates).
 - **Recommendation**: Treat Y1 as blocked on a not-yet-designed statutory-rule change-management capability (which is itself a legitimate, valuable, and largely deterministic feature — an approval workflow over migration-style changes — independent of whether AI is involved in detecting the need for the change). Do not scope Y1 as a near-term Track Y deliverable until that foundation is designed.
-- **Required human decision**: Whether a statutory-rule change-management mechanism should be scoped as platform work independent of the AI-detection capability, and if so, in which phase. Logged in `decisions.md`.
-- **Downstream stage dependency**: Stage 05 (Platform Readiness), Stage 06 (Compliance & Controls — this is exactly the kind of compliance question the Stage 02 prompt asks to forward), Stage 11 (Commercial & Product Strategy).
+- **Required human decision**: ~~Whether a statutory-rule change-management mechanism should be scoped as platform work independent of the AI-detection capability, and if so, in which phase.~~ **Resolved (D-02-04, HD-5, 2026-07-12)**: statutory-rule change management is scoped as a separate deterministic platform and compliance capability, independent of Y1. Y1 may later detect external regulatory changes, compare evidence, and prepare proposals — it must never directly author, execute, or deploy production Alembic migrations.
+- **Downstream stage dependency**: Stage 05 (Platform Readiness — new deterministic capability to scope), Stage 06 (Compliance & Controls — compliance-owned change-management workflow), Stage 08 (Technical Architecture — mechanism design), Stage 03/11 (Track Y sequencing).
 
 ### F-02-13: The Phase 2B write-confirmation protocol is specified conceptually but leaves concurrency/expiry questions unanswered — appropriately flagged by the document itself as a pre-condition, not yet resolved
 - **Statement**: The document itself states the confirmation protocol "must be fully specified" before Phase 2B sprint planning begins — this stage confirms that specification gap still exists in the document as written.
@@ -200,7 +200,7 @@ This stage is evaluative by design (the prompt asks whether AI is justified, not
 
 ## Parked / Rejected
 
-_None — every lead investigated in this stage reached a confirmed finding or an explicitly logged human decision in `decisions.md`._
+_None — every lead investigated in this stage reached a confirmed finding. All 4 human decisions raised (HD-02-1–4) were resolved by the human reviewer via `stage-02-review-decision-prompt.md` (D-02-01–04, recorded in `decisions.md` and `_core/HUMAN-DECISIONS.md` HD-2–HD-5) on 2026-07-12._
 
 ## Cross-references for later stages
 
