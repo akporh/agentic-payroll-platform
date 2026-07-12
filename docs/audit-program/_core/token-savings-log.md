@@ -36,21 +36,22 @@ memory `feedback_terse_audit_reporting`.
 | Stage 02 close | old (full recap) | 3,870 | ~968 | Baseline — measured retroactively from the actual message text |
 | Stage 03 in-progress report | old (full recap) | 5,382 | ~1,346 | Baseline — measured retroactively from the actual message text |
 | Stage 03 close-out (Casper prompt execution) | new (terse) | 240 | ~60 | First report under the new format — status/file/commit/next-stage only, no findings recap |
-| Stage 04 | — | — | — | To be filled in on close |
+| Stage 04 in-progress report (reproduced S0 finding 04-001) | new (terse) | 562 | ~141 | Includes two decision-required lines (S0 escalation) — longer than the Stage 03 close-out but still no findings/tables recap |
+| Stage 04 close | — | — | — | To be filled in on close |
 
 **Old-style baseline (2 measured reports):** ~1,157 tokens per report.
-**New-style (1 measured report):** ~60 tokens.
-**Per-report saving so far:** ~1,097 tokens (~95% reduction), based on one
-new-style sample — treat as directional until more Stage 04+ reports land,
-since a single sample is not a reliable average.
+**New-style (2 measured reports):** ~60, ~141 — avg ~101 tokens.
+**Per-report saving so far:** ~1,056 tokens average (~91% reduction), n=2 —
+still a small sample, but consistent with the Stage 03 measurement.
 
 ## Running totals
 
 - Reports measured under old style: 2
 - Total old-style tokens (measured): ~2,314
-- Reports measured under new style: 1
-- Total new-style tokens (measured): ~60
-- Estimated cumulative savings so far: ~1,097 tokens (one report only)
+- Reports measured under new style: 2
+- Total new-style tokens (measured): ~201
+- Estimated cumulative savings so far: ~2,113 tokens (2 new-style reports
+  vs. what 2 old-style equivalents would have cost: 2 × 1,157 = 2,314)
 - Full-programme estimate: if every remaining stage (04–13, 10 stages ×
   2 reports each — in-progress + close, per the two formats in
   `feedback_terse_audit_reporting`) had instead used the old style, the
