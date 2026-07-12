@@ -1,393 +1,59 @@
 # Stage 09 — Security and Tenant Isolation
 
-**Status:** not started (see [`../audit-state.md`](../audit-state.md))
+**Status:** in-progress (see [`../audit-state.md`](../audit-state.md))
 
 ## Purpose
 
-Determine whether authentication, authorization, tenant scoping, data exposure, privileged operations, and security-relevant error handling are consistently enforced across the payroll platform.
+Determine whether authentication, authorization, tenant scoping, privileged operations, error handling, exports, diagnostics, and data-access paths protect payroll and personal data consistently.
 
-This stage must distinguish between:
-
-- missing authentication
-- missing authorization
-- missing tenant scoping
-- tenant scoping present only in the UI
-- tenant scoping enforced in routes but not repositories/services
-- schema-permitted cross-workspace relationships
-- information disclosure through errors, logs, exports, traces, or diagnostics
-- intentionally privileged operator/admin routes
-- dead or superseded routes that retain security risk
-- security controls that are correctly enforced end to end
-
-The focus is application and data-access security for the current codebase. Do not perform destructive penetration testing or modify production/shared data.
+This is a read-only audit stage. Do not modify application code, migrations, tests, scripts, secrets, or data.
 
 ## Confirmed handoff state
 
 - Stages 01–08 are complete.
-- `04-001` and `05-001` are remediated and must not be reopened without regression evidence.
-- `07-001` is confirmed S1: 21 API-route sites return raw exception text via `str(e)`/`str(exc)` and require security classification.
-- `06-007` is confirmed: an older unscoped reconciliation route pair has no frontend caller and is superseded by workspace-scoped routes; tenant enforcement was not verified.
-- `03-004` / `08-003` remain open: statutory-deduction components can be disabled without a class-aware guard or omission signal. This stage should assess who can perform that action and whether tenant/role boundaries protect it; do not resolve the product-policy question.
-- Stage 08 found no new cross-workspace referential defect in targeted spot checks, but did not perform a full route-by-route tenant audit.
-- `04-002` and the minimal retry-trace design belong to Stage 10.
+- `04-001` and `05-001` remain remediated.
+- `07-001` identified 21 raw-exception response sites.
+- `06-007` identified legacy unscoped reconciliation routes.
+- `03-004` / `08-003` remain an open product-policy question concerning whether statutory components may be disabled; Stage 09 assesses access control only.
+- `04-002` and retry-trace design remain Stage 10 inputs.
 - `05-004` remains deferred to Stage 13.
-- `CLAUDE.md` is authoritative; `docs/wrapper-command/` is reference-only.
-- Stage 09 is read-only: no backend, frontend, migration, test, script, or data changes.
-
-## Required inputs
-
-Read before investigation:
-
-- `CLAUDE.md`
-- `docs/audit-program/README.md`
-- `docs/audit-program/WORKFLOW.md`
-- `docs/audit-program/audit-state.md`
-- all files under `docs/audit-program/_core/`
-- Stage 01 findings, especially route-prefix, operator, and architecture observations
-- Stage 03 findings, especially `03-004`
-- Stage 06 findings, especially `06-007` and tenant/permission observations
-- Stage 07 findings, especially `07-001`
-- Stage 08 findings, especially `08-003` and referential/tenant spot checks
-- completed remediation records for `04-001 + 05-001`
-
-## Objective
-
-Establish whether the platform can guarantee that:
-
-1. every protected route requires the intended authentication context;
-2. every workspace-scoped operation independently verifies tenant ownership server-side;
-3. route, service, repository, and SQL layers do not trust client-supplied workspace or resource IDs without validation;
-4. cross-workspace reads, writes, retries, exports, traces, reconciliation, and configuration changes are prevented;
-5. privileged admin/operator capabilities are intentionally separated and protected;
-6. error handling, logs, exports, and diagnostic endpoints do not disclose sensitive payroll, personal, schema, or infrastructure information;
-7. security-relevant failures are logged and auditable without leaking secrets or personal data;
-8. dead or legacy routes do not retain bypassable security surfaces.
-
-## Required investigation
-
-### 1. Build the route security catalogue
-
-Inventory all backend routes and classify each by:
-
-- route and HTTP method
-- router/module
-- intended user/role
-- authentication dependency
-- authorization dependency
-- workspace/account identifier source
-- resource ownership check
-- service/repository call
-- SQL tenant predicate
-- response sensitivity
-- frontend caller or operator-only classification
-- security status
-- evidence
-
-Cover at minimum:
-
-- workspace setup/configuration
-- employees and contracts
-- attendance/timesheets
-- payroll inputs
-- payroll-run creation/list/detail/results
-- retry
-- approval/lock/pay
-- reconciliation
-- exports
-- audit and execution traces
-- diagnostics/ops
-- admin routes
-- onboarding routes
-
-### 2. Authentication architecture
-
-Trace how identity enters the application and is propagated.
-
-Determine:
-
-- authentication mechanism in use
-- token/session validation location
-- current-user object contents
-- how account/workspace membership is represented
-- whether unauthenticated development bypasses exist
-- whether route modules consistently apply authentication dependencies
-- whether admin/operator routes use stronger checks
-- whether frontend route protection is merely cosmetic or backed by server checks
-
-Record missing or inconsistent authentication separately from tenant authorization.
-
-### 3. Tenant-isolation audit
-
-For every material workspace-scoped route, verify the full chain:
-
-```text
-request identity
-→ account/workspace membership check
-→ route resource lookup
-→ service/repository call
-→ SQL WHERE/JOIN tenant predicate
-→ returned or modified rows
-```
-
-Check for insecure direct object reference patterns involving:
-
-- workspace ID
-- employee ID
-- employee-contract ID
-- salary-definition ID
-- grade/designation ID
-- payroll-run ID
-- payroll-result ID
-- payroll-input ID
-- reconciliation ID
-- rule-set/statutory-rule ID
-- audit/trace identifiers
-
-Do not accept a workspace ID in the path as proof of isolation. Verify the requested child resource belongs to that workspace.
-
-### 4. Unscoped and legacy reconciliation routes (`06-007`)
-
-Inspect:
-
-- `GET /payroll/run/{run_id}/reconcile`
-- `POST /payroll/run/{run_id}/reconcile`
-
-Determine:
-
-- whether authentication is required
-- whether workspace ownership is derived and checked internally
-- whether a user with one workspace can supply another workspace's `run_id`
-- whether the route exposes or modifies reconciliation data cross-tenant
-- whether it duplicates weaker logic than the workspace-scoped route family
-- whether it is reachable through current router registration
-
-Classify each route as:
-
-- secure but obsolete
-- insecure/tenant-bypass risk
-- unreachable dead code
-- indeterminate
-
-Do not remove it; hand off removal to Stage 12/13.
-
-### 5. Raw exception disclosure (`07-001`)
-
-Review all 21 known `str(e)`/`str(exc)` response sites individually or by evidence-backed risk class.
-
-For each site record:
-
-- underlying operation
-- likely exception classes
-- whether raw DB/schema/constraint details can reach the client
-- whether personal/payroll values may appear
-- whether filesystem, host, SQL, or internal identifiers may appear
-- HTTP status used
-- whether the frontend renders the message verbatim
-- risk classification
-
-Group into:
-
-- confirmed sensitive disclosure
-- structurally capable of disclosure
-- currently safe developer-authored exception only
-- dead/unreachable
-
-Preserve `07-001` as the systemic parent finding; create child findings only where a materially distinct risk warrants it.
-
-### 6. Authorization for configuration and statutory controls
-
-Verify who can modify:
-
-- component metadata
-- client component overrides
-- `is_active`
-- proration strategy
-- salary definitions
-- pay-cycle configuration
-- payroll rules/rule sets
-- attendance policies
-- public holidays
-- statutory-component enablement/disablement
-
-For `03-004` / `08-003`, determine whether:
-
-- ordinary workspace users can disable statutory deductions
-- only privileged roles can do so
-- role checks exist server-side
-- changes are audited
-- cross-workspace changes are prevented
-- direct API calls bypass UI restrictions
-
-Do not decide whether statutory components should be disableable; assess access control and accountability only.
-
-### 7. Privileged lifecycle operations
-
-Verify authorization for:
-
-- creating payroll runs
-- retrying runs
-- approving
-- locking
-- marking paid
-- reconciling
-- resolving mismatches
-- exporting payroll and bank files
-- viewing audit logs and traces
-
-Determine whether role distinctions exist and are enforced, or whether any authenticated workspace member can perform every operation.
-
-Where intended roles are undocumented, record a human-decision requirement rather than inventing policy.
-
-### 8. Admin, operator, and diagnostic surfaces
-
-Inspect:
-
-- `admin.py` routes
-- onboarding/admin dashboards
-- legacy executor stats
-- diagnostic endpoints
-- health/debug endpoints
-- any scripts or routes exposing database state
-
-Determine:
-
-- authentication and authorization
-- deployment reachability
-- sensitive data returned
-- tenant scoping
-- whether routes are intended for internal networks only
-- whether environment/configuration accidentally exposes them publicly
-
-### 9. Export and report security
-
-Verify tenant and authorization controls for all export routes, including:
-
-- bank upload
-- PAYE
-- pension
-- full detail
-- any legacy export functions/routes
-
-Assess:
-
-- cross-workspace run ID access
-- inclusion of unnecessary personal/payroll data
-- filename/header information leakage
-- formula/CSV injection risks from employee-controlled text fields
-- content-type and download handling
-- auditability of export actions
-
-Do not generate or retain real sensitive exports.
-
-### 10. Audit, trace, and error-data exposure
-
-Inspect whether APIs/UI expose:
-
-- stack traces
-- SQL or constraint names
-- internal filesystem paths
-- raw input payloads
-- salary values beyond the viewer's authorization
-- personal identifiers
-- secrets/tokens
-- cross-workspace trace or audit rows
-
-Review:
-
-- `error_message`
-- `component_trace_jsonb`
-- `execution_trace`
-- `audit_log`
-- `event_store`
-- reconciliation notes
-- timesheet audit output
-
-### 11. Logging and secret handling
-
-Review configuration and code for:
-
-- credentials or tokens committed to the repository
-- secrets in environment examples or defaults
-- database URLs in logs/errors
-- personal/payroll data logged unnecessarily
-- authentication tokens logged
-- insecure debug logging
-- `print()` of sensitive state
-- overly permissive CORS or trusted-host configuration
-
-Do not report secret values verbatim in findings. Redact and cite location/type only.
-
-### 12. Cross-workspace relational consistency
-
-Extend Stage 08's targeted checks where security impact exists.
-
-Verify whether schemas or writes can create combinations such as:
-
-- payroll result employee from workspace A attached to run in workspace B
-- payroll input employee/workspace mismatch
-- contract references to salary definition/grade/designation from another workspace
-- reconciliation linked to mismatched workspace/run
-- snapshot rows linked to the wrong employee/workspace
-
-Distinguish:
-
-- schema-permitted but no application path
-- application-path reachable
-- blocked by FK/constraint
-- blocked only by route/service checks
-
-### 13. Controlled non-production verification
-
-Use controlled, self-cleaning checks only where static analysis is insufficient.
-
-Candidate checks:
-
-- call a workspace-scoped endpoint with a valid resource ID from another workspace
-- call the unscoped reconciliation route using another workspace's run ID
-- trigger representative raw exceptions and inspect sanitized/unsanitized responses
-- attempt a statutory-component override across workspace boundaries
-- access export, audit, and trace endpoints cross-workspace
-
-Constraints:
-
-- no destructive testing
-- no brute force
-- no credential attacks
-- no production/shared data
-- verify zero residue
-- stop after proving or rejecting the specific hypothesis
+- `CLAUDE.md` is authoritative.
+
+## Investigation scope
+
+Stage 09 must assess:
+
+1. authentication architecture and caller identity;
+2. account/workspace membership and role representation;
+3. tenant isolation at route, service, repository, and SQL levels;
+4. run lifecycle operations: create, retry, approve, lock, pay, reconcile;
+5. configuration and statutory-control authorization;
+6. admin, operator, diagnostic, audit, trace, and export surfaces;
+7. raw exception, log, CORS, secret, and personal-data exposure;
+8. insecure legacy or decorative-scoping routes;
+9. cross-workspace resource access and IDOR patterns;
+10. positive controls where workspace ownership is correctly enforced.
 
 ## Required outputs
 
-At minimum produce:
+Maintain in `findings.md` and `evidence/`:
 
-1. Route security catalogue
-2. Authentication architecture summary
-3. Tenant-isolation matrix by major domain
-4. IDOR/resource-ownership register
-5. `06-007` unscoped reconciliation security assessment
-6. `07-001` 21-site disclosure-risk classification
-7. Configuration/statutory-control authorization assessment
-8. Privileged lifecycle-operation role matrix
-9. Admin/operator/diagnostic exposure register
-10. Export/report security assessment
-11. Audit/trace/error-data exposure matrix
-12. Logging, CORS, and secret-handling assessment
-13. Cross-workspace relational-risk register
-14. Positive-control register for correctly isolated routes
-15. Findings using `_core/finding-schema.md`
-16. Evidence under `docs/audit-program/09-security-tenant-isolation/evidence/`
-17. Handoff notes for Stages 10, 11, 12, and 13
+- route security catalogue;
+- authentication and role-model assessment;
+- tenant-isolation and IDOR register;
+- `06-007` final classification;
+- `07-001` disclosure-risk grouping;
+- privileged-operation role matrix;
+- admin/diagnostic exposure register;
+- export and CSV-injection assessment;
+- audit/trace/error exposure matrix;
+- logging, CORS, and secret-handling assessment;
+- positive controls;
+- handoffs for Stages 10–13.
 
 ## Finding rules
 
-Keep separate:
-
-- current implementation
-- intended behaviour
-- suspected or confirmed defect
-
-Use exactly one valid status per finding:
+Use one status only:
 
 - confirmed
 - plausible
@@ -395,68 +61,123 @@ Use exactly one valid status per finding:
 - rejected
 - human decision required
 
-Do not classify a route as insecure merely because `workspace_id` is absent from the path; verify internal ownership checks.
+Do not treat a `workspace_id` path segment as tenant enforcement unless it reaches an ownership check and scoped query. Do not treat UI visibility as authorization. Do not record real secret values or personal data.
 
-Do not classify UI role hiding as authorization unless the backend independently enforces it.
+---
 
-Do not include actual secret values, raw personal data, or exploit-ready sensitive payloads in audit documentation.
+## Close-review instruction
 
-A dead route can still be a security defect if it is registered and reachable.
+Use this section after the initial Stage 09 findings have been committed and presented for human review.
 
-## Constraints
+### Human decisions
 
-- Read-only audit stage.
-- Do not modify backend or frontend code.
-- Do not modify migrations.
-- Do not modify tests or scripts.
-- Do not rotate or expose secrets.
-- Do not perform destructive penetration testing.
-- Do not start Stage 10.
-- Do not reopen remediated `04-001` or `05-001` without regression evidence.
-- Do not resolve the `03-004` product-policy decision; assess authorization and auditability only.
+#### Decision 1 — application authentication
 
-## Completion criteria
+`09-000` is an **unrecognized S0 production blocker**, not an intentionally accepted network-only architecture.
 
-Stage 09 is ready for human review only when:
+- Application-level authentication and server-side authorization are mandatory before any live or production-data use.
+- Network, VPN, reverse-proxy, firewall, or private-subnet controls may be retained as defence in depth, but they do not replace application identity, membership, and authorization checks.
+- Development environments may support an explicit, disabled-by-default local bypass, but production must fail closed when authentication configuration is absent.
 
-- all material route families are security-classified or explicitly marked not investigated
-- authentication and authorization mechanisms are mapped
-- tenant ownership is verified at route/service/repository/SQL layers for high-value payroll operations
-- `06-007` has a final security classification
-- the 21 `07-001` sites are grouped by evidence-backed disclosure risk
-- privileged lifecycle and configuration actions have a role/authorization assessment
-- exports, audit, trace, and diagnostic surfaces are reviewed
-- security-relevant cross-workspace relational risks are assessed
-- every finding uses a valid status and evidence reference
-- handoffs exist for Stages 10–13 as applicable
+#### Decision 2 — tenancy and role model
 
-## Publication
+The intended operating model is:
 
-When the investigation is complete:
+- one **bureau account** can manage multiple client **workspaces**;
+- every user is authenticated and belongs to an account;
+- access to workspaces is explicit through membership, not inferred from a caller-supplied UUID;
+- the current product scope is bureau-operated, not direct client self-service;
+- the model must remain extensible to workspace-scoped client users later without redesigning tenancy.
 
-1. Create `findings.md` and the `evidence/` directory under this stage.
-2. Update `docs/audit-program/audit-state.md`:
-   - mark Stage 09 `in-progress`
-   - set opened date to today
-   - set next action to human review of Stage 09
-   - preserve all completed stages and remediation records
-3. Leave Stage 09 `in-progress, awaiting review`; do not self-close.
-4. Commit and push only Stage 09 audit documentation/evidence and the audit-state update to `uat`.
-5. Return only:
+Minimum roles for backlog/design purposes:
+
+1. **Platform administrator** — platform-wide operational administration; not an ordinary payroll user.
+2. **Bureau administrator** — account/workspace membership, configuration, and user administration across permitted workspaces.
+3. **Payroll operator** — employee/input maintenance, run creation, retry, reconciliation preparation, and exports for assigned workspaces.
+4. **Payroll approver** — approve, lock, resolve reconciliation where permitted, and authorize payment-state transitions; separation from preparation should be supported.
+5. **Read-only auditor/viewer** — results, traces, audit history, and reports without mutations.
+
+A single person may hold multiple roles in the initial client deployment, but the system must enforce permissions as roles rather than hard-code a single-operator assumption.
+
+Direct client-workspace users are out of the current MVP scope, but future membership must be constrainable to one or more explicit workspaces.
+
+### Review conclusions to accept
+
+- `09-000` remains confirmed S0: no application authentication or caller identity exists.
+- `09-001` remains confirmed S0: unauthenticated `GET /workspaces` enumerates all tenants and enables downstream attacks.
+- `09-002` remains confirmed S0: retry, approve, lock, pay, and legacy reconcile use global `run_id` without caller/workspace authorization.
+- `09-004` remains confirmed S1: scoped reconciliation routes accept but discard `workspace_id`.
+- `09-005` remains confirmed S1: timeline/trace accepts but discards `workspace_id`.
+- `09-006` remains confirmed S1: legacy executor stats returns global cross-workspace data.
+- `09-007` remains confirmed S1: predictable admin dashboards are unauthenticated; infrastructure reachability may affect exposure but not the code-level finding.
+- `09-008` remains confirmed S2: employee-controlled text reaches CSV exports without spreadsheet-formula sanitization.
+- `06-007` is finalized as insecure/tenant-bypass risk and remains a Stage 12 removal candidate after secure replacement paths exist.
+- `07-001` remains S1: 10 of 21 sites are structurally capable of raw DB/schema disclosure; 11 currently catch controlled developer-authored exceptions.
+- No committed secrets and correctly scoped employee/export guards remain positive controls.
+- `03-004` remains an open product-policy decision. Stage 09 only confirms that currently anyone reaching the API can modify the control and that no role model or audit trail protects it.
+
+### Required backlog/design handoff
+
+Stage 13 must treat security remediation as a sequenced programme, not isolated route patches:
+
+1. Introduce authentication and account/workspace membership.
+2. Introduce centralized authorization dependencies/policies and the role model above.
+3. Make workspace ownership checks mandatory for every child resource and lifecycle operation.
+4. Replace or remove unscoped/decoratively scoped routes.
+5. Restrict `/admin*` and diagnostics to platform-admin/operator roles and deployment controls.
+6. Sanitize Group A raw exceptions and log full details server-side.
+7. Add security audit events for privileged changes and lifecycle transitions.
+8. Add CSV-injection protection.
+9. Add regression scenarios for cross-workspace enumeration, reads, mutations, exports, and lifecycle transitions.
+
+Do not authorize production/live-data use merely because individual tenant predicates exist on some routes. The platform remains unsafe until caller identity, membership, and authorization are enforced consistently.
+
+### Close the stage
+
+Update:
+
+- `docs/audit-program/09-security-tenant-isolation/findings.md`
+  - change status to `complete`;
+  - resolve both human decisions using the decisions above;
+  - preserve finding severities and evidence;
+  - add the final operating-model and remediation-sequencing handoff.
+- `docs/audit-program/_core/human-decisions.md`
+  - mark the authentication-scope and tenancy/role-model questions resolved.
+- `docs/audit-program/audit-state.md`
+  - mark Stage 09 `complete` and set the closed date;
+  - set next action to open Stage 10 — Execution-trace remediation design;
+  - leave Stage 10 not started;
+  - record `09-000`, `09-001`, and `09-002` as S0 production blockers for Stage 13;
+  - carry `09-004`, `09-005`, `09-006`, `09-007`, and `07-001` to Stage 13;
+  - carry `09-005` specifically into Stage 10's trace-route design;
+  - carry `09-008` to Stages 11/13;
+  - carry `06-007` to Stages 12/13;
+  - preserve `03-004` as open and preserve all prior completed-stage/remediation records.
+
+### Constraints during close review
+
+- Do not implement authentication, authorization, route scoping, exception sanitization, CSV protection, or admin restrictions.
+- Do not run destructive cross-tenant tests.
+- Do not begin Stage 10.
+- Do not create a separate close-review prompt file.
+
+### Publish
+
+Commit and push the Stage 09 closure documentation to `uat`.
+
+Return only:
 
 ```text
 Stage: 09 — Security and tenant isolation
-Status: in-progress, awaiting review
+Status: complete
 Primary file: docs/audit-program/09-security-tenant-isolation/findings.md
 Audit state: docs/audit-program/audit-state.md
 Commit: <SHA>
 
-Important decisions required:
-- <decision or none>
+Decisions:
+- Application authentication and authorization are mandatory before any live/production-data use; network controls are defence in depth only.
+- Intended model: authenticated bureau users, one bureau account managing multiple client workspaces, explicit membership and RBAC; direct client users deferred but supported by the tenancy design.
 
-Headline security gaps:
-- Confirmed tenant-isolation defects: <count>
-- Authorization/role gaps: <count>
-- Information-disclosure findings: <count>
-- Insecure legacy/diagnostic routes: <count>
+Next stage:
+10 — Execution-trace remediation design
 ```
