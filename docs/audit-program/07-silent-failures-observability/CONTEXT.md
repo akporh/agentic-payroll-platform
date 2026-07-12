@@ -1,6 +1,6 @@
 # Stage 07 — Silent Failures and Observability
 
-**Status:** not started (see [`../audit-state.md`](../audit-state.md))
+**Status:** in-progress (see [`../audit-state.md`](../audit-state.md))
 
 ## Purpose
 
@@ -406,4 +406,87 @@ Headline observability gaps:
 - Logs only: <count>
 - Persisted/API but not UI: <count>
 - Trace/audit gaps: <count>
+```
+
+---
+
+## Close-review instruction
+
+Use this section after the initial Stage 07 findings have been committed and presented for human review.
+
+### Human decision: retry execution-trace parity
+
+Resolve `07-005` and the inherited `02-002` decision as follows:
+
+- Retry should produce a **defined minimal execution trace**, not full step-by-step parity with the original run and not zero trace.
+- The minimum required retry trace is:
+  1. one persisted row per retry invocation recording start and preflight outcome, including whether snapshot/statutory validation passed or failed;
+  2. one persisted row per retried employee recording success or failure and the employee identifier;
+  3. one final persisted row recording the resulting run transition (`PARTIAL → CALCULATED` or `PARTIAL → PARTIAL`).
+- `component_trace_jsonb` remains the authoritative fine-grained calculation trace; `execution_trace` should cover orchestration, preflight, and outcome.
+- Full duplication of all original-run persistence and batching steps is unnecessary unless Stage 10 identifies a concrete audit requirement.
+
+Rationale: this provides enough durable evidence to reconstruct whether retry started, passed preflight, which employees were processed, and how the run ended, without duplicating every original-run orchestration step already represented elsewhere.
+
+### Review requirements
+
+Before closing Stage 07, verify that:
+
+1. `07-001` is supported by the 21-site evidence and remains S1.
+2. `07-002` accurately distinguishes missing unified audit/event entries from the reconciliation row's own local `notes`/`resolved_by` history.
+3. `07-003` accurately identifies the outer background-task catch as logs-only with no persisted status, audit/event, API, or UI signal.
+4. `07-004` remains an S3 cleanup finding.
+5. `07-005` is updated from `human decision required` to `confirmed`, recording the minimal-trace decision above.
+6. The `04-002` recommendation remains unchanged: add per-result `statutory_rule_id` and `statutory_version` as the primary auditable identity.
+7. `04-001` and `05-001` remain remediated and are not reopened.
+8. Every completion criterion above is satisfied and every finding uses one valid status.
+
+### Close the stage
+
+Update:
+
+- `docs/audit-program/07-silent-failures-observability/findings.md`
+  - change Stage 07 status to `complete`
+  - update `07-005` to `confirmed`
+  - record the defined minimal retry-trace decision
+  - add the final decision and handoff summary
+- `docs/audit-program/_core/human-decisions.md`
+  - mark the retry trace-parity question resolved with the decision above
+- `docs/audit-program/audit-state.md`
+  - mark Stage 07 `complete`
+  - set the closed date to today
+  - set next action to open Stage 08 — Data integrity
+  - leave Stage 08 not started
+  - carry `07-001` to Stages 09/13
+  - carry `07-002` to Stages 08/13
+  - carry `07-003` to Stages 11/13
+  - carry `07-004` to Stage 12
+  - carry `04-002`, `02-002`, and the resolved minimal-trace specification to Stage 10
+  - preserve `05-004` for Stage 13 and the completed status of prior stages/remediation
+
+### Constraints during close review
+
+- Do not modify frontend or backend code.
+- Do not implement tracing, logging, reconciliation audit, or error-handling changes.
+- Do not begin Stage 08.
+- Do not create a separate close-review prompt file; this `CONTEXT.md` is the executable instruction.
+
+### Publish
+
+Commit and push the Stage 07 closure documentation to `uat`.
+
+Return only:
+
+```text
+Stage: 07 — Silent failures and observability
+Status: complete
+Primary file: docs/audit-program/07-silent-failures-observability/findings.md
+Audit state: docs/audit-program/audit-state.md
+Commit: <SHA>
+
+Decision:
+- Retry execution_trace uses a defined minimal subset: invocation/preflight, per-employee outcome, and final run transition. component_trace_jsonb remains the detailed calculation trace.
+
+Next stage:
+08 — Data integrity
 ```
