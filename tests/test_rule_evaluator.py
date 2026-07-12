@@ -271,6 +271,58 @@ class TestFixedAmount:
         assert components["FLAT_BONUS"] == Decimal("10000")
         assert trace[0]["status"] == "applied"
 
+    def test_component_source_recorded_when_fallback_fires(self):
+        """AUD-1/Q1: amount=0 + component_source set → derives from named
+        component and records that name in the trace, so the derivation
+        path is auditable from component_trace_jsonb alone."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("50000")},
+            payroll_rules=[_rule("DERIVED_BONUS", "fixed_amount",
+                                 amount=0, component_source="BASIC")],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert components["DERIVED_BONUS"] == Decimal("50000")
+        assert trace[0]["component_source"] == "BASIC"
+
+    def test_component_source_null_when_fallback_does_not_fire(self):
+        """Nonzero configured amount → no fallback → component_source key
+        present but null, never omitted."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("50000")},
+            payroll_rules=[_rule("FLAT_BONUS", "fixed_amount",
+                                 amount=10000, component_source="BASIC")],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert components["FLAT_BONUS"] == Decimal("10000")
+        assert trace[0]["component_source"] is None
+
+    def test_component_source_null_when_not_configured(self):
+        """No component_source on the rule at all → key present, null."""
+        components, trace = apply_payroll_rules(
+            salary_components={},
+            payroll_rules=[_rule("FLAT_BONUS", "fixed_amount", amount=10000)],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert trace[0]["component_source"] is None
+
+    def test_component_source_present_on_not_applied_branch(self):
+        """Condition not met → not_applied trace entry still carries the
+        component_source key (present, per AC #2)."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("50000")},
+            payroll_rules=[_rule("DERIVED_BONUS", "fixed_amount",
+                                 amount=0, component_source="BASIC",
+                                 condition={"no_accident": "True"})],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert "DERIVED_BONUS" not in components
+        assert trace[0]["status"] == "not_applied"
+        assert "component_source" in trace[0]
+
 
 # ---------------------------------------------------------------------------
 # Inactive / unknown rules
