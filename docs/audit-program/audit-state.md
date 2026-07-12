@@ -6,30 +6,24 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 10 opened 2026-07-12, in-progress, awaiting human
-review. This is a design-only stage (no code/migration/test/data changes).
-Headline Stage 10 design: **retry gets a minimal, correlated event model**
-(invocation/preflight → per-employee outcome → final transition, per the
-binding `07-005` decision) via a proposed `execution_trace` migration
-adding `workspace_id`, `event_code`, `operation_type`, `invocation_id`,
-`employee_id`, `actor_id`, `metadata_jsonb`, `error_class`. **`04-002`**
-gets an implementation-ready design: `payroll_result.statutory_rule_id`/
-`statutory_version` (nullable, no backfill of legacy rows, sourced from
-the run's own frozen `rules_context_snapshot`). **`08-003`** gets a design
-extending `component_trace_jsonb` with an `outcome` discriminator
-(`executed`/`skipped_eligibility`/`excluded_by_configuration`) plus one
-run-level `COMPONENT_EXCLUDED_BY_CONFIGURATION` trace row per excluded
-component — policy-neutral regardless of `03-004`'s eventual resolution.
-**`09-005`** gets a target secure-query design (mandatory `workspace_id`
-predicate directly on `execution_trace`, `404`-on-mismatch concealment
-policy) but this design is **explicitly stated as not implementable until
-Stage 09's authentication/RBAC work lands** — the schema/write-side/API
-portions can ship independently as a lower-risk increment; only the actual
-authorization check is hard-blocked on Stage 09. Full migration/rollout
-sequence, 12 acceptance criteria, and 12 Stage 11 regression scenarios are
-specified. No human decision required to close as currently specified.
+**Next action:** Stage 10 closed 2026-07-12. Open **Stage 11 — Scenario
+testing** (not started). Stage 10 was a design-only stage (no code/
+migration/test/data changes throughout). The full trace-remediation
+package — minimal retry event model (`07-005`), `execution_trace` schema
+extension (`workspace_id`, `event_code`, `operation_type`, `invocation_id`,
+`employee_id`, `actor_id`, `metadata_jsonb`, `error_class`), `04-002`
+per-result statutory identity, `08-003` excluded-component visibility, and
+`09-005` tenant-safe timeline access — was **approved as the canonical
+implementation specification at close review**, with no design section
+revised. The `09-005` portion remains explicitly stated as not
+production-secure until Stage 09's authentication/membership/RBAC
+dependencies exist; the schema/write-side/API portions may ship
+independently ahead of that. The approved package (`02-002`/`07-005`,
+`04-002`, `08-003`, `09-005`) carries to Stage 13 for sequencing and
+implementation. The 12 regression scenarios carry to Stage 11. No new
+human decision was raised or required.
 
-## Stage 10 handoff summary (in-progress, awaiting review)
+## Stage 10 handoff summary (complete)
 
 - **Retry event model (§2).** 4 invocation/preflight events + 1 terminal
   event per retried employee + 3 final-outcome events, all sharing one
@@ -63,7 +57,11 @@ specified. No human decision required to close as currently specified.
 - **No human decision required** to close Stage 10 as currently specified;
   every design choice resolves against a prior binding decision or this
   stage's own finding rules.
-- **Stage 10 is NOT closed.** Awaiting Michael's review before closure.
+- **Approved at close, unchanged from the initial design.** All 17 design
+  sections held at review; the approved trace package carries to Stage 13
+  for sequencing/implementation, and the 12 regression scenarios carry to
+  Stage 11.
+- **Stage 10 is complete**, closed 2026-07-12.
 
 ## Stage 09 handoff summary (complete)
 
@@ -334,7 +332,7 @@ specified. No human decision required to close as currently specified.
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
-| 10 | Execution-trace remediation (findings + design only — no code changes) | in-progress | 2026-07-12 | — | awaiting human review |
+| 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
 | 11 | Scenario testing | not-created | — | — | — |
 | 12 | Code simplification | not-created | — | — | — |
 | 13 | Consolidated backlog | not-created | — | — | — |

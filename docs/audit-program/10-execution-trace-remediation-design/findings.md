@@ -1,7 +1,8 @@
 # Stage 10 — Execution-Trace Remediation Design
 
-**Status:** in-progress, awaiting review
+**Status:** complete
 **Opened:** 2026-07-12
+**Closed:** 2026-07-12
 **Evidence:** `docs/audit-program/10-execution-trace-remediation-design/evidence/01-current-state-schema.txt`
 
 This is a **design stage**. No code, migration, test, or data was changed. All schema/behaviour facts below are read directly from the current codebase and local `payroll_dev` schema (evidence file). Where this document proposes new fields, tables, or behaviour, it is explicitly marked **PROPOSED**, distinct from **CURRENT**.
@@ -358,3 +359,33 @@ This remediation is **not production-safe on its own** — see the explicit depe
 ## Human decisions
 
 None required to close Stage 10 as currently specified — every design choice above resolves against either a prior binding decision (`07-005`, Stage 09's auth/RBAC decisions) or this stage's own finding rules (smallest-additive-design preference, no backfill from mutable data, no network-controls-as-authorization). If review disagrees with a specific design choice (e.g. the resource-concealment policy in §10, or the "grandfather `legacy_executor_fallback`'s code" call in §4), that would surface as a targeted decision at close-review rather than a structurally open question left by this investigation.
+
+---
+
+## Stage 10 close — final review and closure summary
+
+No new human decision was required to close Stage 10. The proposed design in §1–17 above is **approved as the canonical implementation specification** for the future remediation work — no section was revised at close review; all design choices held.
+
+Review requirements verified at closure:
+
+1. The retry event model (§2) implements the binding `07-005` minimal-subset decision exactly (invocation/preflight → one terminal outcome per retried employee → final transition) and does not expand to full original-run parity.
+2. `execution_trace`'s proposed schema (§3) adds `workspace_id`, `event_code`, `operation_type`, `invocation_id`, `employee_id`, and `actor_id` as real queryable columns, not JSON-only fields — satisfying this stage's own "do not hide critical tenant/correlation identity only in JSON" rule.
+3. Per-result statutory identity (§7) is sourced exclusively from the run's own frozen `rules_context_snapshot["statutory_rule"]`, for both original runs and retries — never from a live re-query of mutable `statutory_rule`/`tax_band` tables.
+4. Existing `payroll_result` rows are explicitly left `NULL` with no automatic backfill from mutable live data — confirmed in §7's "Backfill policy: none" and restated in §14's migration sequence.
+5. Excluded components (§8) are durably distinguishable from skipped-by-eligibility, absent, executed-zero, and executed-failed via the `outcome` discriminator on `component_trace_jsonb`, plus the run-level `COMPONENT_EXCLUDED_BY_CONFIGURATION` trace row.
+6. The tenant-safe timeline design (§10) is explicitly stated as closing `09-005` **only once** Stage 09's authentication/membership/RBAC dependencies exist — §14 point 5 states this as a hard, non-negotiable dependency, not an assumption. The schema/write-side/API portions are correctly scoped as independently shippable ahead of that dependency.
+7. Authorization semantics (§10) use `401` strictly for "no valid identity" and a non-disclosing `404` for both "run not found" and "run exists but caller lacks workspace authorization" — never `403` for the cross-tenant case, preventing response-code-based tenant enumeration.
+8. Error semantics (§6, §11) prohibit uncontrolled `str(e)`/SQL/stack-trace/schema disclosure in both trace rows (`error_class` restricted to exception class name, `error_message` restricted to developer-authored text) and API responses — consistent with `07-001`'s standing prohibition and explicitly designed not to reintroduce that defect class on a new surface.
+9. Migration/rollback (§14), API backward compatibility (§11), minimal UI requirements (§12), 12 acceptance criteria (§15), and 12 Stage 11 regression scenarios (§16) are all implementation-ready and specified in full.
+10. Stage 10 remained design-only throughout — no `backend/`, `frontend/`, `migrations/`, `tests/`, or `scripts/` file was created, modified, or touched at any point in this stage; confirmed by `git status` showing only `docs/audit-program/` changes at every commit in this stage.
+
+### Approved trace package — carried to Stage 13
+
+The following bounded package is approved as a coherent unit for Stage 13's sequencing and eventual implementation:
+
+- **`02-002`/`07-005`** — minimal retry event model and `execution_trace` schema extension (§2, §3, §4, §5, §6).
+- **`04-002`** — per-result statutory identity (§7).
+- **`08-003`** — excluded-component visibility (§8).
+- **`09-005`** — tenant-safe timeline access (§10), **hard-blocked on Stage 09's authentication/RBAC remediation**; the schema/write-side/API portions of this same package may ship independently and earlier, per §14 and the Stage 13 handoff note already recorded above.
+
+The Stage 09 S0 authentication/RBAC dependency (`09-000`/`09-001`/`09-002`) remains the controlling blocker for any claim that trace access is production-secure, regardless of how complete this stage's schema and query design is.
