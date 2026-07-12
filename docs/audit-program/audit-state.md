@@ -6,20 +6,53 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 06 (UI/API/backend wiring) has produced its feature
-catalogue and `findings.md` (06-001–06-007) but is **not yet marked
-complete** — awaiting explicit review. Headline result: the `05-001`
-remediation (payroll_run `FAILED` status + `error_message`) reached the
-backend/API correctly but was never surfaced in the frontend — the
-`PayrollRunStatus` type, `StatusBadge`, and `ActionPanel` were not updated,
-so a `FAILED` run shows a generic-gray badge and a blank action panel
-(06-001, 06-004). `RunPayroll.tsx` also offers a `FULL_RUN` retry-strategy
-option the backend always rejects (06-003). Positive controls confirmed:
-the retry mechanism itself is correctly wired for `PARTIAL` runs, and
-component-override dual-storage precedence (Stage 03's 03-001) is
-correctly reflected end-to-end in the UI. `04-001`/`05-001` remain
-remediated (not reopened); `05-004` deferred to
-Stage 13; `04-002` open for Stages 07/10.
+**Next action:** Stage 06 closed 2026-07-12. Open **Stage 07 — Silent
+failures and observability** (not started). Headline Stage 06 result: the
+`05-001` remediation (payroll_run `FAILED` status + `error_message`)
+reached the backend/API correctly but was never surfaced in the
+frontend — the `PayrollRunStatus` type, `StatusBadge`, and `ActionPanel`
+were not updated, so a `FAILED` run shows a generic-gray badge and a blank
+action panel (06-001, 06-004, both confirmed, carried to Stage 13).
+`RunPayroll.tsx` also offers a `FULL_RUN` retry-strategy option the
+backend always rejects (06-003, confirmed, Stage 13). `pay_cycle.
+definition_json` confirmed write-once-then-unreachable (06-002, Stage
+08/13). `06-006` (timesheet per-employee audit endpoint) resolved at close
+review as a missing UI feature, not intentionally API-only — carried to
+Stage 13. `04-001`/`05-001` remain remediated (not reopened); `05-004`
+deferred to Stage 13; `04-002` open for Stages 07/10.
+
+## Stage 06 handoff summary
+
+- **`06-001`/`06-004` (confirmed) → Stage 13.** The `05-001` remediation's
+  frontend consumption gap — `PayrollRunStatus` type missing `FAILED`,
+  `StatusBadge` falls back to generic gray, `ActionPanel` returns `null`
+  for `FAILED` runs. Both share one root cause (the frontend type) and are
+  a natural single small follow-up sprint.
+- **`06-002` (confirmed) → Stage 08, Stage 13.** `pay_cycle.definition_json`
+  affects runtime (via `pay_cycle_definition` in the calculation context)
+  but has been unreachable for view or edit since onboarding — no GET
+  route returns it, the PATCH route doesn't accept it.
+- **`06-003` (confirmed) → Stage 13.** `RunPayroll.tsx` offers `FULL_RUN`
+  as a retry-strategy option; the backend allowlist is `{"PER_EMPLOYEE"}`
+  only — always rejected on submission.
+- **`06-006` (confirmed at close review) → Stage 13.** `GET .../timesheet/
+  audit/{employee_id}` is a missing UI feature (bureau-operator workflow
+  for explaining timesheet-to-payroll-input interpretation), not
+  intentionally API-only. Backend route retained as the correct source.
+- **`06-007` (confirmed) → Stage 09, Stage 12.** Unscoped
+  `/payroll/run/{run_id}/reconcile` (GET/POST) is dead code, superseded by
+  the workspace-scoped reconciliation routes — Stage 09 should verify its
+  tenant-scoping before Stage 12 removes it (not verified in Stage 06).
+- **`06-005` (confirmed, S3) — no further action required.** D-ARCH-1
+  salary-definition edit lock is correctly enforced and its error
+  correctly surfaced, just reactively rather than proactively — a UX
+  polish opportunity, not a wiring gap.
+- **Positive controls confirmed**, not carried forward as action items:
+  retry mechanism correctly wired for `PARTIAL` runs including the
+  legacy-hard-fail modal (`EMP-UX-3`); component-override
+  `proration_strategy`/`is_active` dual-storage precedence (Stage 03's
+  03-001) correctly reflected end-to-end in the UI; all 4 export types
+  fully wired.
 
 ## Immediate remediation sprint — 04-001 + 05-001 — COMPLETE
 
@@ -130,7 +163,7 @@ Stage 13; `04-002` open for Stages 07/10.
 | 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
-| 06 | UI/API/backend wiring | in-progress | 2026-07-12 | — | — |
+| 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
 | 07 | Silent failures and observability | not-created | — | — | — |
 | 08 | Data integrity | not-created | — | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
@@ -141,7 +174,7 @@ Stage 13; `04-002` open for Stages 07/10.
 
 ## Open human decisions
 
-Six genuinely open (no decision made yet); the rest below are resolved,
+Five genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
@@ -151,7 +184,7 @@ several this session — see [`_core/human-decisions.md`](_core/human-decisions.
 - Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — resolved: yes, per 04-001's remediation specification
 - Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003) — effectively resolved via 05-002: no, confirmed safe to remove in Stage 12
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
-- Is `timesheet/audit/{employee_id}` intentionally operator/API-only, or a missing UI feature? (finding 06-006)
+- ~~Is `timesheet/audit/{employee_id}` intentionally operator/API-only, or a missing UI feature?~~ — **resolved 2026-07-12**: missing UI feature, backend route retained, carried to Stage 13.
 - ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; remediation specification approved, ahead of Stage 13, before any live payroll processing or production release.
 - ~~Should 05-001/05-004 be bundled with the 04-001 sprint?~~ — **resolved 2026-07-12**: 05-001 bundled in; 05-004 deferred to Stage 13 (immutability of the run must be preserved/strengthened, never weakened, by whatever the sprint touches).
 

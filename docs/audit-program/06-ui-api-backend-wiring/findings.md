@@ -1,6 +1,6 @@
 # Stage 06 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md). Status values
 restricted to this stage's five-value set.
 
@@ -31,7 +31,7 @@ persistence-safety fixes are unaffected and remain sound) — see 06-001.
 | Payroll rules / rule sets | `WorkspaceConfig.tsx` | Wired for CRUD; rule sets themselves have no direct UI (consistent with Stage 03 — rule sets are a backend snapshot mechanism, not a user-facing config surface) | Not a defect |
 | Employee registry / contracts | `Employees.tsx` | Fully wired, including the Upload/Enroll separation (`CLAUDE.md` invariant) | Not re-verified in depth this stage — no new evidence gathered beyond confirming API calls exist |
 | Attendance-code configuration | `AttendanceConfiguration.tsx` | Fully wired | `/workspaces/{id}/attendance-codes`, `/attendance-policies/{code}` confirmed called |
-| Timesheet upload/derivation | `TimesheetUpload.tsx` | Mostly wired; `timesheet/audit/{employee_id}` is backend-only (06-006) | `evidence/2026-07-12-backend-only-routes.txt` |
+| Timesheet upload/derivation | `TimesheetUpload.tsx` | Mostly wired; `timesheet/audit/{employee_id}` is a confirmed missing UI feature (06-006) | `evidence/2026-07-12-backend-only-routes.txt` |
 | Public holidays | `PublicHolidays.tsx` | Fully wired | `/workspaces/{id}/public-holidays` CRUD confirmed called |
 | Payroll-run creation | `RunPayroll.tsx` | Wired but offers a dead-end option (06-003 — `FULL_RUN` retry strategy) | `evidence/2026-07-12-full-run-retry-strategy-dead-ui-option.txt` |
 | Payroll-run list/detail/status | `PayrollRuns.tsx`, `PayrollResults.tsx` | `FAILED` status/`error_message` not surfaced (06-001) | `evidence/2026-07-12-failed-status-error-message-not-wired.txt` |
@@ -133,15 +133,15 @@ frontend's consumption of the now-available signal.
 
 ---
 
-### 06-006 — `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}` has no frontend caller
+### 06-006 — `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}` has no frontend caller — resolved: missing UI feature, not intentionally API-only
 
 - **stage:** 06-ui-api-backend-wiring
 - **location:** `backend/api/routes/payroll.py:1725` (route definition); confirmed via grep — zero matches anywhere in `frontend/src/`
 - **current implementation:** A per-employee timesheet audit-trail endpoint exists with no UI surface.
-- **intended behaviour:** Not documented. Could plausibly be intended as an operator/API-only diagnostic tool (consistent with the "audit" naming pattern used elsewhere for operator-facing routes), or could be a planned-but-not-yet-built UI feature.
-- **suspected or confirmed defect:** Not classified as a defect — per the sprint's explicit instruction, a backend-only feature is not automatically a defect, and this stage did not find enough context to confirm intent either way.
+- **intended behaviour:** **Resolved by human decision, 2026-07-12 (Stage 06 close review):** this is a **planned-but-missing UI feature**, not an intentionally API-only route. Rationale: it supports a core bureau-operator workflow — explaining how an employee's uploaded attendance/timesheet data was interpreted and converted into payroll inputs — which belongs alongside the already-wired timesheet upload, payroll-result trace, reconciliation, and audit-history surfaces, all of which serve the same "show the operator what happened and why" purpose.
+- **suspected or confirmed defect:** Confirmed as a missing UI surface. The backend endpoint is the correct, retained source for this feature — not obsolete, not operator-only. Implementation is out of scope for this read-only audit stage; the UI requirement is recorded for Stage 13's consolidated backlog.
 - **evidence:** `evidence/2026-07-12-backend-only-routes.txt`
-- **status:** human decision required
+- **status:** confirmed
 - **severity:** S3
 - **related invariant:** none
 
@@ -177,7 +177,7 @@ frontend's consumption of the now-available signal.
 | `GET/POST /payroll/run/{run_id}/reconcile` (unscoped) | Obsolete/dead — superseded | 06-007 |
 | `GET /{workspace_id}/payroll/ops/legacy-executor-stats` | Intentionally operator/API-only (confirmed, Stage 01 01-005) | Carried forward, not re-derived |
 | `admin.py` (3 routes: `/admin`, `/admin/onboarding`, `/admin/payroll`) | Intentionally operator-only (HTML dashboard, unprefixed mount per Stage 01 01-012) | Carried forward |
-| `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}` | Indeterminate, human decision required | 06-006 |
+| `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}` | Planned but not exposed (missing UI feature — resolved 2026-07-12) | 06-006 |
 
 ## Frontend-only/dead UI register
 
@@ -253,5 +253,67 @@ exhaustive across all 88 backend routes.
 
 ## Human decisions required
 
-- **06-006** — is `timesheet/audit/{employee_id}` intentionally
-  operator/API-only, or a planned-but-unbuilt UI feature?
+None remaining open from this stage — 06-006 was resolved at close review
+(below). All other findings (06-001 through 06-005, 06-007) reached
+`confirmed` status directly during the investigation.
+
+---
+
+## Final decision and handoff (stage close, 2026-07-12)
+
+**Decision recorded:** `06-006` — `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}`
+is a **missing UI feature** for the core bureau-operator workflow of
+explaining how an employee's uploaded timesheet data was interpreted and
+converted into payroll inputs — not an intentionally API-only endpoint. The
+backend route is retained as the correct source; no code changes were made
+in this read-only stage. The UI requirement is recorded for Stage 13.
+
+**Review requirements verified before closing:**
+
+1. `06-001` and `06-004` are correctly classified as frontend visibility
+   regressions following the completed `05-001` backend remediation — both
+   findings explicitly state the backend/API layer is correct and that
+   `04-001`/`05-001` are not reopened; neither finding's evidence or
+   defect statement touches the remediated backend code paths.
+2. `06-002` establishes, via direct citation of the writer
+   (`onboarding.py`), the runtime consumer (`payroll.py`'s
+   `pay_cycle_definition` context key), and both the GET and PATCH routes'
+   field lists, that `pay_cycle.definition_json` affects runtime but is
+   unavailable for post-onboarding read or edit.
+3. `06-003` establishes, via direct citation of both the frontend
+   `RadioGroup` options and the backend's `_VALID_RETRY_STRATEGIES`
+   allowlist, that the frontend offers `FULL_RUN` while the backend
+   accepts only `PER_EMPLOYEE`.
+4. `06-006` updated from `human decision required` to `confirmed`, with
+   intended behaviour recorded as a missing UI audit surface (above).
+5. `06-007` remains scoped to a Stage 09 security handoff (tenant-scoping
+   of the unscoped route pair, not verified in this stage) and a Stage 12
+   simplification candidate (dead code) — no security conclusion was drawn
+   in Stage 06.
+6. All completion criteria in `CONTEXT.md` are satisfied: the feature
+   catalogue covers every domain in the sprint's minimum list; all six
+   `05-001` visibility checks were explicitly resolved (§2); `pay_cycle.
+   definition_json`, onboarding/edit alignment (Upload/Enroll — confirmed
+   via existing API call-site citations, no new gap found), component
+   override UI mapping (confirmed correct, positive control), the D-ARCH-1
+   edit-lock UI behaviour, and retry-strategy visibility were each
+   explicitly resolved with evidence; the backend-only and frontend-only/
+   dead-UI registers are populated; API contract alignment was checked for
+   the payroll-run and retry surfaces (06-001, 06-003); tenant/permission
+   observations were recorded for Stage 09 without expanding into a full
+   security audit; every finding now uses exactly one of the five valid
+   status values (re-verified: 6 `confirmed`, 0 `plausible`/`unconfirmed`/
+   `human decision required` remaining).
+
+**Handoff carry-forward (finalized):**
+
+- `06-001`, `06-004`, `06-006` → Stage 13 (consolidated backlog) — all
+  three are small, frontend-only fixes; 06-001/06-004 share a root cause
+  (the `PayrollRunStatus` type) and are natural candidates for a single
+  follow-up sprint alongside 06-006's new UI surface.
+- `06-002` → Stage 08 (data integrity) and Stage 13.
+- `06-007` → Stage 09 (security/tenant isolation) and Stage 12
+  (simplification).
+- `04-002` remains open for Stages 07/10; `05-004` remains deferred to
+  Stage 13 — both carried forward unchanged from Stage 05, not
+  re-litigated in Stage 06.
