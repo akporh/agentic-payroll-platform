@@ -1,0 +1,7 @@
+=== Reconciliation, owner workspace path (control) ===
+{"run_id":"d1c2f67d-e6df-4f0b-b41c-735398be1a06","expected_total":196231.72,"actual_payment":196230.0,"status":"MISMATCH","notes":null,"resolved_by":null,"resolved_at":null}
+HTTP:200
+
+=== Reconciliation, WRONG workspace path — same data returned? (09-004 proof) ===
+{"run_id":"d1c2f67d-e6df-4f0b-b41c-735398be1a06","expected_total":196231.72,"actual_payment":196230.0,"status":"MISMATCH","notes":null,"resolved_by":null,"resolved_at":null}
+HTTP:200

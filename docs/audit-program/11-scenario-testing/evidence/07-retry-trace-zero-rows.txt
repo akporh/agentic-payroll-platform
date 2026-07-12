@@ -1,0 +1,6 @@
+=== Retry trace row count check (02-002/07-005 gap, read-only) ===
+            payroll_run_id            | status  | failed_results | trace_rows 
+--------------------------------------+---------+----------------+------------
+ ea130d61-c3c6-4eb2-855f-027c91716422 | PARTIAL |            177 |        186
+(1 row)
+

@@ -6,22 +6,68 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 10 closed 2026-07-12. Open **Stage 11 — Scenario
-testing** (not started). Stage 10 was a design-only stage (no code/
-migration/test/data changes throughout). The full trace-remediation
-package — minimal retry event model (`07-005`), `execution_trace` schema
-extension (`workspace_id`, `event_code`, `operation_type`, `invocation_id`,
-`employee_id`, `actor_id`, `metadata_jsonb`, `error_class`), `04-002`
-per-result statutory identity, `08-003` excluded-component visibility, and
-`09-005` tenant-safe timeline access — was **approved as the canonical
-implementation specification at close review**, with no design section
-revised. The `09-005` portion remains explicitly stated as not
-production-secure until Stage 09's authentication/membership/RBAC
-dependencies exist; the schema/write-side/API portions may ship
-independently ahead of that. The approved package (`02-002`/`07-005`,
-`04-002`, `08-003`, `09-005`) carries to Stage 13 for sequencing and
-implementation. The 12 regression scenarios carry to Stage 11. No new
-human decision was raised or required.
+**Next action:** Stage 11 opened 2026-07-12, in-progress, awaiting human
+review. Full backend test suite re-run: **306 passed, 1 skipped**,
+deterministic. `04-001`/`05-001` regression suite re-executed directly:
+**6/6 passed**, both remain remediated, no drift. Headline result: **six
+of Stage 09's security findings were reaffirmed with LIVE execution
+against a running local instance**, not just code reading — most notably,
+`09-004` was proven with a real financial reconciliation record
+(`MISMATCH`, expected ₦196,231.72 / actual ₦196,230.00) returned
+byte-identical whether the correct or a deliberately wrong `workspace_id`
+was supplied in the path, and `09-005`'s timeline route was proven to
+return identical output regardless of path `workspace_id`. `09-008`
+(CSV/formula injection) was proven via a self-contained synthetic
+in-memory reproduction — confirmed a leading `=` reaches the CSV cell
+unescaped. No new distinct defect was found this stage — every scenario
+that surfaced a problem reproduces an already-confirmed finding from
+Stages 02–10; several had their evidence class upgraded from
+static-code-only to live-executed. `07-003` remains blocked by a missing
+test seam (documented, not executed). The single largest coverage gap
+identified: **zero automated regression tests exist for any tenant/
+security finding** — every Stage 09 finding was proven by manual/live
+investigation only. 8 permanent-test recommendations produced for Stage
+13. Stage 10's 12 scenarios classified: mostly `blocked-by-unimplemented-
+design` (expected, since Stage 10 is design-only) or `blocked-by-
+missing-auth`. No human decision required.
+
+## Stage 11 handoff summary (in-progress, awaiting review)
+
+- **Automated baseline (§1).** 306 passed, 1 skipped, deterministic, no
+  dedicated tenant/security test file exists anywhere in `tests/`.
+- **`04-001`/`05-001` (§2, §3).** Re-executed directly, 6/6 passed, both
+  remain remediated, no drift since Stage 05's close.
+- **`07-003` (§4).** No safe injection seam exists without editing
+  production source; documented as a blocked-test specification for
+  future implementation, not executed.
+- **Retry behaviour matrix (§5).** All tested paths pass via the existing
+  suite; `execution_trace` zero-rows-on-retry gap reaffirmed via live
+  read-only query, consistent with Stages 02/07/10.
+- **Security/tenant scenarios (§12) — six executed LIVE** against local
+  `payroll_dev`: unauthenticated workspace enumeration (`09-001`),
+  cross-workspace timeline access returning identical data (`09-005`),
+  cross-workspace reconciliation access returning a real `MISMATCH`
+  financial record identically regardless of workspace (`09-004`, the
+  strongest evidence produced in this audit programme for that finding),
+  legacy unscoped reconciliation route (`06-007`/`09-002`), global
+  legacy-executor-stats leak (`09-006`), unauthenticated admin dashboards
+  (`09-007`). All reaffirmed unchanged in status/severity, evidence class
+  upgraded to live-executed.
+- **`09-008` (§14) — executed and confirmed** via a synthetic, zero-residue
+  in-memory CSV-injection proof: a leading `=` reaches the exported cell
+  completely unescaped.
+- **Stage 10 disposition matrix (§15).** 12 scenarios graded against
+  *current shipped behaviour*, not the design's internal coherence — most
+  are `blocked-by-unimplemented-design` or `blocked-by-missing-auth`, as
+  expected for a design-only prior stage.
+- **Coverage gap analysis (§16).** Zero automated tests exist for any
+  Stage 09 security finding, `07-003`, `08-001`, `08-002`, `08-003`, or
+  `07-001`. 8 permanent-test recommendations produced, each scoped to a
+  specific finding's eventual remediation.
+- **No new distinct finding.** Every scenario result links to an existing
+  finding; none contradicted.
+- **No human decision required.**
+- **Stage 11 is NOT closed.** Awaiting Michael's review before closure.
 
 ## Stage 10 handoff summary (complete)
 
@@ -333,7 +379,7 @@ human decision was raised or required.
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
-| 11 | Scenario testing | not-created | — | — | — |
+| 11 | Scenario testing | in-progress | 2026-07-12 | — | awaiting human review |
 | 12 | Code simplification | not-created | — | — | — |
 | 13 | Consolidated backlog | not-created | — | — | — |
 

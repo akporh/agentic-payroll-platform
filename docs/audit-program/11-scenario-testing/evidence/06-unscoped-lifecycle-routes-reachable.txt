@@ -1,0 +1,6 @@
+['post'] /api/v1/payroll/run/{run_id}/retry
+['post'] /api/v1/payroll/run/{run_id}/approve
+['post'] /api/v1/payroll/run/{run_id}/lock
+['post'] /api/v1/payroll/run/{run_id}/pay
+['post', 'get'] /api/v1/payroll/run/{run_id}/reconcile
+GET /admin -> 200 (unauthenticated), GET /admin/payroll -> 200 (unauthenticated)
