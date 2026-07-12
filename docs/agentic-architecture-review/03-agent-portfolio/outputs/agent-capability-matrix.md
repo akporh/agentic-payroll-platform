@@ -1,5 +1,7 @@
 # Stage 03 Output: Agent Capability Matrix
 
+**Approved 2026-07-12 (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6) as the reference portfolio for all downstream stages**, replacing the source architecture document's original five-track/named-agent structure for the purposes of this review.
+
 Consolidates Stage 02's 24 fine-grained capability items (`02-product-thesis/outputs/capability-classification-matrix.md`) into 15 portfolio-level capabilities, reviewed at capability level rather than accepting the architecture document's track grouping (per the Stage 03 prompt). Each capability carries the full required-assessment field set.
 
 Portfolio decision legend: **keep** / **revise** / **merge** / **split** / **defer** / **block** / **reject** / **reclassify** (as deterministic platform capability).

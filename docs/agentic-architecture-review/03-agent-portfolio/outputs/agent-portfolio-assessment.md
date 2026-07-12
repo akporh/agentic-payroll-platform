@@ -1,5 +1,7 @@
 # Stage 03 Output: Agent Portfolio Assessment
 
+**Status: the 15-capability portfolio below was approved by the human reviewer on 2026-07-12 (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6) as the reference portfolio for all downstream stages, with all 14 conditions in `stage-03-review-decision-prompt.md` preserved unchanged from this document's own analysis.**
+
 ## Approach
 
 This stage reviewed the source document's 5 tracks (P, V, W, X, Y) and their ~24 fine-grained capabilities (per Stage 02's classification) at capability level rather than accepting the document's track/agent grouping. The result is a consolidated 15-capability portfolio (`outputs/agent-capability-matrix.md`), a tool-by-tool contract review (`outputs/tool-portfolio-matrix.md`), an overlap/UX/coherence analysis (`outputs/portfolio-boundary-map.md`), and a clear blocked/deferred/rejected register (`outputs/blocked-and-deferred-register.md`).

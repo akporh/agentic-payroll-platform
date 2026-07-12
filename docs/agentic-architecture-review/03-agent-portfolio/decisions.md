@@ -5,7 +5,16 @@ Stage-local log of human decisions made during this stage. Master log: `_core/HU
 ## Gate
 
 - **Gate opened**: 2026-07-12, by human reviewer (Michael Emedo) — pointed to `stage-03-agent-portfolio-prompt.md` on GitHub as the instruction to begin Stage 03.
-- **Gate closed**: not yet — investigation complete; per the stage prompt, Stage 03 is marked `awaiting-review`, not `complete`.
+- **Gate closed**: 2026-07-12 — approved via `stage-03-review-decision-prompt.md` (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6, HD-GATE-03). Stage 03 marked `complete`.
+
+## D-03-01: Revised 15-capability portfolio approved as the reference portfolio
+- **Date**: 2026-07-12
+- **Decision**: The revised 15-capability portfolio (`outputs/agent-capability-matrix.md`) is approved as the reference portfolio for all downstream stages, replacing the source architecture document's original five-track/named-agent structure for the purposes of this review. The architecture document is preserved as a source input (per D-02-01, still "NEEDS REVISION"), but its original track/agent grouping is no longer the target portfolio.
+- **Made by**: Michael Emedo, via `stage-03-review-decision-prompt.md`
+- **Approved conditions** (all 14 preserved unchanged from this stage's findings — see the prompt's numbered list for full text): Stage 02 blockers/preconditions preserved (conditions 1–3); C5 null-trace refusal required (4); C3 current-state-only launch with explicit historical refusal (5); C6 stays deterministic (6); C7 deterministic detection + optional narration, threshold forwarded (7); C10 stays deterministic infrastructure, open questions forwarded to Stage 08 (8); C11 detect/compare/propose only (9); C12 separate deterministic capability (10); C13 cannot ship without C14 as hard gate, dry-run mechanism forwarded to Stage 08 (11); C1/C2 stay deterministic platform foundations (12); Trace Agent rejection stands (13); every tool requires independent workspace-ownership verification (14).
+- **Affects**: all 16 confirmed findings and all 9 Stage 03 outputs; downstream Stages 04, 05, 06, 07, 08, 09, 11, 12 now consume the approved (not merely recommended) portfolio.
+
+## Inherited binding decisions applied (not re-litigated)
 
 ## Inherited binding decisions applied (not re-litigated)
 
@@ -23,4 +32,4 @@ The one substantive judgment call this stage made on its own initiative — cons
 
 ## Next action
 
-**Human review of Stage 03 outputs (especially the recommended 15-capability portfolio and its dispositions); gate approval required before Stage 04.**
+**Stage 03 is complete. Await approval to begin Stage 04 — Outcome Discovery.**

@@ -187,8 +187,8 @@ _None — every observation below reached a confirmed disposition, backed by Sta
 - **Evidence**: `outputs/agent-capability-matrix.md` (full matrix and summary table)
 - **Confidence**: High
 - **Recommendation**: adopt the revised 15-capability portfolio as the reference structure for Stage 04 (outcome discovery), Stage 11 (commercial framing), and Stage 12 (target direction) — not the source document's original 5-track/named-agent structure.
-- **Required human decision**: none — this is the stage's own synthesis, offered as a recommendation for later stages to adopt or challenge, not a claim requiring separate human sign-off beyond the stage gate itself.
-- **Downstream dependency**: Stage 04, Stage 11, Stage 12.
+- **Required human decision**: ~~none — offered as a recommendation for later stages to adopt or challenge~~ **Approved (D-03-01, HD-6, 2026-07-12)**: the human reviewer approved the revised 15-capability portfolio as the reference portfolio for all downstream stages, via `stage-03-review-decision-prompt.md`.
+- **Downstream dependency**: Stage 04, Stage 05, Stage 06, Stage 07, Stage 08, Stage 09, Stage 11, Stage 12 — all now consume the approved (not merely recommended) portfolio.
 
 ---
 
@@ -196,6 +196,10 @@ _None — every observation below reached a confirmed disposition, backed by Sta
 
 ### P-03-1: Whether to build a dedicated "why unenrolled" narrative-conclusion tool
 - **Reason parked/rejected**: rejected in favor of the facts-only design (F-03-08) — recorded here only to make explicit that the alternative (a conclusion-returning tool) was considered and declined, not merely absent from discussion.
+
+## Portfolio approval
+
+The 15-capability portfolio recommended throughout this findings file was **approved** by the human reviewer on 2026-07-12 (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6), via `stage-03-review-decision-prompt.md`, with all 14 conditions from that prompt preserved unchanged from this stage's own findings — see `decisions.md` for the full condition list.
 
 ## Cross-references for later stages
 

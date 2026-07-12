@@ -2,7 +2,7 @@
 
 Single source of truth for "where are we in the review." Update this file at the start and end of every stage transition.
 
-Last updated: 2026-07-12 (Stage 03 investigation complete, awaiting review)
+Last updated: 2026-07-12 (Stage 03 complete, gate closed; Stage 04 eligible)
 
 ## Stage status
 
@@ -10,7 +10,7 @@ Last updated: 2026-07-12 (Stage 03 investigation complete, awaiting review)
 |---|---|---|---|---|
 | 01 | Current Operating Model | gated-closed | 2026-07-12 (HD-GATE-01) | 46 confirmed findings, 0 draft, 0 parked. See `01-current-operating-model/findings.md` and `outputs/current-operating-model-summary.md`. |
 | 02 | Product Thesis | complete (gated-closed) | 2026-07-12 (HD-GATE-02) | 14 confirmed findings, 0 draft, 0 parked; all 4 human decisions resolved (D-02-01–04, `_core/HUMAN-DECISIONS.md` HD-2–HD-5) via `stage-02-review-decision-prompt.md`. 5 outputs produced and updated to reflect the decisions (assessment, capability matrix, boundary doc, principles, Stage 03 handoff). Downstream stage CONTEXT.md files (03, 05, 06, 07, 08, 12, 13) updated with inherited binding decisions. |
-| 03 | Agent Portfolio | awaiting-review | not yet | 16 confirmed findings, 0 draft, 1 parked note; 24 Stage 02 items consolidated into a 15-capability portfolio with dispositions (7 reclassified deterministic, 2 blocked, 1 rejected, 1 restricted, 1 deferred, 5 genuine AI capabilities retained). 9 outputs produced. D-02-01–04 applied throughout, not re-litigated. No new human decisions beyond gate approval of the recommended portfolio. |
+| 03 | Agent Portfolio | complete (gated-closed) | 2026-07-12 (HD-GATE-03) | 16 confirmed findings, 0 draft, 1 parked note; 24 Stage 02 items consolidated into a 15-capability portfolio with dispositions (7 reclassified deterministic, 2 blocked, 1 rejected, 1 restricted, 1 deferred, 5 genuine AI capabilities retained) — **approved as the reference portfolio** (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6) via `stage-03-review-decision-prompt.md`, all 14 approved conditions preserved unchanged. 9 outputs produced (dedicated handoffs to Stages 04/05/06/08 updated with approval banner; Stage 07/09/11/12 `CONTEXT.md` files updated with inherited binding decisions, matching Stage 02's pattern). |
 | 04 | Outcome Discovery | not-started | — | — |
 | 05 | Platform Readiness | not-started | — | — |
 | 06 | Compliance & Controls | not-started | — | — |
@@ -32,4 +32,4 @@ Last updated: 2026-07-12 (Stage 03 investigation complete, awaiting review)
 
 ## Next action
 
-**Human review of Stage 03 outputs; gate approval required before Stage 04.**
+**Await approval to begin Stage 04 — Outcome Discovery.**

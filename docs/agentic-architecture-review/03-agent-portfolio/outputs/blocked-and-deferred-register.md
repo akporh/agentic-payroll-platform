@@ -1,5 +1,7 @@
 # Stage 03 Output: Blocked and Deferred Register
 
+**Approved 2026-07-12 (D-03-01, `_core/HUMAN-DECISIONS.md` HD-6)** — every block/reject/defer/restrict entry below is confirmed unchanged by the approval decision; conditions 1–3, 8, 9, 11, 13 of `stage-03-review-decision-prompt.md` explicitly re-affirm these.
+
 Single place to check what is blocked, deferred, or rejected, why, and what unblocks it. Cross-references `agent-capability-matrix.md` for full detail per capability.
 
 ## Blocked

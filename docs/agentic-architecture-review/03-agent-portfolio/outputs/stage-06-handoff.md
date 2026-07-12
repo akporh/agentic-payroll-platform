@@ -1,5 +1,7 @@
 # Stage 03 → Stage 06 Handoff (Compliance & Controls)
 
+**The 15-capability portfolio is approved (D-03-01, 2026-07-12), including C11's detect/compare/propose-only restriction and C12's split as a separate capability — both binding, not open questions.**
+
 ## Primary compliance question: Statutory-Rule Change Management (C12)
 
 Per D-02-04, statutory-rule change management is a separate deterministic platform/compliance capability, independent of Compliance Monitoring (C11). Stage 06 is the natural owner for designing:

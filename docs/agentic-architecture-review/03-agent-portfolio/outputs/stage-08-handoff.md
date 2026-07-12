@@ -1,5 +1,7 @@
 # Stage 03 → Stage 08 Handoff (Technical Architecture)
 
+**The 15-capability portfolio is approved (D-03-01, 2026-07-12) — the specification questions below are confirmed open work items within an approved portfolio, not pending a portfolio-level decision.**
+
 ## Specification questions this stage explicitly did not resolve (by design, per the prompt's constraints)
 
 1. **Structured confirmation / pending-action protocol (C10)** — full detail needed on:

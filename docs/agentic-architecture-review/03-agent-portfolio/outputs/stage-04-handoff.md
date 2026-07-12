@@ -1,5 +1,7 @@
 # Stage 03 → Stage 04 Handoff (Outcome Discovery)
 
+**The 15-capability portfolio (`outputs/agent-capability-matrix.md`) is approved (D-03-01, 2026-07-12) — Stage 04 should frame outcomes against this portfolio, not the source document's original tracks.**
+
 Stage 03 did not perform outcome discovery in full — these are newly-noticed opportunities and open framing questions to expand, not resolved conclusions.
 
 ## New outcome opportunities noticed during portfolio review

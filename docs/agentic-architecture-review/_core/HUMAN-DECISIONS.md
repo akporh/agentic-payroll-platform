@@ -70,6 +70,22 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 - **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes.
 - **Affects**: Stage 02 status (`review-state.md`), Stage 03 eligibility to begin
 
+### HD-6: Revised 15-capability portfolio approved as the reference portfolio
+- **Date**: 2026-07-12
+- **Stage**: cross-cutting (raised Stage 03, binds Stage 04/05/06/07/08/09/11/12)
+- **Decision**: The revised 15-capability portfolio (`03-agent-portfolio/outputs/agent-capability-matrix.md`) is approved as the reference portfolio, replacing the source architecture document's original five-track/named-agent structure for the purposes of this review. The document remains a preserved source input (still "NEEDS REVISION" per HD-2/D-02-01), but its original grouping is no longer the target. All 14 approved conditions from `stage-03-review-decision-prompt.md` (preserving every Stage 02 blocker/precondition, plus capability-specific constraints on C3, C5–C7, C10–C14, and the tool-scoping requirement) are binding and unchanged from Stage 03's own findings.
+- **Made by**: Michael Emedo, via `03-agent-portfolio/stage-03-review-decision-prompt.md` (D-03-01)
+- **Context**: Approving a consolidated capability portfolio that replaces a previously-circulated architecture document's structure is a product-direction call requiring explicit human sign-off, not something a review stage can self-approve.
+- **Affects**: F-03-01 through F-03-16; all 9 Stage 03 outputs; Stages 04, 05, 06, 07, 08, 09, 11, 12 (all now consume the approved portfolio)
+
+### HD-GATE-03: Stage 03 (Agent Portfolio) gate approved
+- **Date**: 2026-07-12
+- **Stage**: 03 — Agent Portfolio
+- **Decision**: Approved closing Stage 03's gate following HD-6/D-03-01. 16 confirmed findings (0 draft, 1 parked note) are now citable by Stage 04 onward.
+- **Made by**: Michael Emedo, via `stage-03-review-decision-prompt.md`
+- **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes.
+- **Affects**: Stage 03 status (`review-state.md`), Stage 04 eligibility to begin
+
 ## Next action
 
-**Stage 02 is complete. Await approval to begin Stage 03 — Agent Portfolio.**
+**Stage 03 is complete. Await approval to begin Stage 04 — Outcome Discovery.**

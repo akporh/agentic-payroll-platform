@@ -1,7 +1,7 @@
 # Stage 03: Agent Portfolio — Context
 
 ## Status
-awaiting-review (investigation complete 2026-07-12 — 16 confirmed findings, 0 draft, 1 parked/rejected note (P-03-1); 15-capability portfolio produced with dispositions; 9 outputs created; no new human decisions required beyond gate approval of the recommended portfolio itself. Not marked `complete` per the stage prompt's own completion criteria — Stage 04 not started.)
+complete (gate closed 2026-07-12, HD-GATE-03) — 16 confirmed findings, 0 draft, 1 parked note (P-03-1); the 15-capability portfolio was approved (D-03-01) via `stage-03-review-decision-prompt.md`. Stage 04 not started.
 
 ## Binding decisions inherited from Stage 02 (pre-scope — do not re-litigate)
 
@@ -47,4 +47,4 @@ Eight required investigations: (1) agent boundary/overlap analysis across 8 name
 
 ## Next action
 
-**Human review of Stage 03 outputs (especially the recommended 15-capability portfolio); gate approval required before Stage 04.**
+**Await approval to begin Stage 04 — Outcome Discovery.**

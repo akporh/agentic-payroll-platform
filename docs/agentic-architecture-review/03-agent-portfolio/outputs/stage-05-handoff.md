@@ -1,5 +1,7 @@
 # Stage 03 → Stage 05 Handoff (Platform Readiness)
 
+**The 15-capability portfolio is approved (D-03-01, 2026-07-12) — all preconditions below are confirmed, binding launch gates, not open questions.**
+
 ## Named preconditions this stage confirmed block specific capabilities
 
 1. **`payroll_reconciliation` repository-level workspace scoping (F-01-33)** — a named precondition for C8 (Reconciliation Investigation) and the `get_reconciliation` tool. Per D-02-02, this is mandatory; tool-layer verification is required *in addition*, not instead. See `outputs/blocked-and-deferred-register.md`.
