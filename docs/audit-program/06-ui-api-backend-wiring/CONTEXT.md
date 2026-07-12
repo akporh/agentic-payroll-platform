@@ -89,3 +89,90 @@ observations, configuration round-trip findings, `findings.md`,
 - Every finding uses one of the five valid status values.
 - Handoff notes exist for Stages 07, 08, 09, 11, 12, 13.
 - `audit-state.md` left `in-progress` — this stage does not self-close.
+
+---
+
+## Close-review instruction
+
+Use this section after the initial Stage 06 findings have been committed and
+presented for human review.
+
+### Human decision
+
+Resolve finding `06-006` as follows:
+
+- `GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}` is a
+  **planned-but-missing UI feature**, not an intentionally API-only route.
+- Rationale: it supports a core bureau-operator workflow — explaining how an
+  employee's uploaded attendance/timesheet data was interpreted and converted
+  into payroll inputs. That belongs alongside the existing timesheet upload,
+  payroll-result trace, reconciliation, and audit-history surfaces.
+- Keep the endpoint as the backend source; do not classify it as obsolete or
+  operator-only.
+- Record the UI requirement for Stage 13 rather than implementing it during
+  this read-only stage.
+
+### Review requirements
+
+Before closing Stage 06, verify that:
+
+1. `06-001` and `06-004` are correctly classified as frontend visibility
+   regressions following the completed `05-001` backend remediation, without
+   reopening `04-001` or `05-001`.
+2. `06-002` accurately establishes that `pay_cycle.definition_json` affects
+   runtime but is unavailable for post-onboarding read or edit.
+3. `06-003` accurately establishes that the frontend offers `FULL_RUN` while
+   the backend accepts only `PER_EMPLOYEE`.
+4. `06-006` is updated from `human decision required` to `confirmed`, with the
+   intended behaviour recorded as a missing UI audit surface.
+5. `06-007` remains a Stage 09 security handoff and Stage 12 simplification
+   candidate; do not make a security conclusion in Stage 06.
+6. All completion criteria above are satisfied and every finding uses one
+   valid status.
+
+### Close the stage
+
+Update:
+
+- `docs/audit-program/06-ui-api-backend-wiring/findings.md`
+  - change Stage 06 status to `complete`
+  - update `06-006` to `confirmed`
+  - classify it as a missing UI feature
+  - add the human decision and final handoff summary
+- `docs/audit-program/audit-state.md`
+  - mark Stage 06 `complete`
+  - set the closed date to today
+  - set the next action to open Stage 07 — Silent failures and observability
+  - leave Stage 07 not started
+  - carry `06-001`, `06-004`, and `06-006` to Stage 13
+  - carry `06-002` to Stage 08/13
+  - carry `06-007` to Stage 09/12
+  - preserve `04-002` for Stages 07/10 and `05-004` for Stage 13
+
+### Constraints during close review
+
+- Do not modify frontend or backend code.
+- Do not implement the missing timesheet-audit UI.
+- Do not begin Stage 07.
+- Do not create a separate close-review prompt file; this `CONTEXT.md` is the
+  executable stage instruction.
+
+### Publish
+
+Commit and push the Stage 06 closure documentation to `uat`.
+
+Return only:
+
+```text
+Stage: 06 — UI/API/backend wiring
+Status: complete
+Primary file: docs/audit-program/06-ui-api-backend-wiring/findings.md
+Audit state: docs/audit-program/audit-state.md
+Commit: <SHA>
+
+Decision:
+- 06-006 is a missing UI feature for bureau-operator timesheet audit, not an intentionally API-only endpoint.
+
+Next stage:
+07 — Silent failures and observability
+```
