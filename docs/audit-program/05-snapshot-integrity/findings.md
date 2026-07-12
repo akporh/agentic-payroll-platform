@@ -1,6 +1,6 @@
 # Stage 05 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md). Status values are
 restricted to this stage's five-value set.
 
@@ -392,3 +392,81 @@ catch a *future* regression of 04-001's class automatically.
   be implemented in the same sprint (small, additive migration) or deferred
   to a follow-up — this stage recommends bundling them, since the same
   sprint will already be touching the exact insert call sites.
+
+---
+
+## Final decision and handoff (stage close, 2026-07-12)
+
+**Decisions recorded** (see `_core/human-decisions.md` for the full entries):
+
+1. **`05-001` is included in the immediate post-Stage-05 remediation sprint,
+   bundled with `04-001`.** Rationale: snapshot creation is part of the
+   retry guarantee — a silent background-task failure can leave a completed
+   run permanently non-retryable with no operator-visible cause. The
+   remediation must make snapshot-creation failure fail visibly and must
+   prevent the run from proceeding as successfully retryable when the
+   required snapshot was not persisted.
+2. **`05-004` (broad cross-snapshot immutability hardening) is NOT included
+   in the immediate remediation sprint** — deferred to Stage 13. Rationale:
+   `05-004` is a confirmed defence-in-depth inconsistency, but no current
+   update path mutates the unprotected snapshot tables, and
+   `payroll_run.rules_context_snapshot` — the specific snapshot the 04-001
+   fix depends on — already has DB-level immutability enforcement
+   (`trg_run_snapshot_immutable`). `05-004` remains a Stage 13 backlog item,
+   with Stage 12 input where relevant, **unless** implementing `04-001` or
+   `05-001` introduces or changes any snapshot mutation path — in that case,
+   any snapshot touched by the remediation must preserve or strengthen its
+   existing immutability guarantees, never weaken them.
+3. **The `04-001` remediation specification (§9) is approved as ready for
+   implementation** once Stage 05 closes.
+
+**Immediate remediation sprint scope: `04-001` + `05-001`.**
+
+### `04-001` implementation handoff
+
+- Read `rules_context_snapshot["statutory_rule"]` for v2 runs (per §9's
+  canonical contract) instead of re-querying live `statutory_rule`/`tax_band`.
+- Remove the live statutory-rule/tax-band re-resolution queries from
+  `payroll_retry_service.py::_build_shared_context` entirely for the
+  retry-eligible path — not merely bypass them conditionally.
+- Hard-fail legacy/incomplete snapshots (tiers B, C, E per §6) with the
+  specified error wording; no live-query fallback for any tier.
+- Add the two regression tests specified in §9 (fixed-behaviour divergence
+  test; legacy hard-fail test).
+
+### `05-001` implementation handoff
+
+- Do not swallow the `create_payroll_snapshot(...)` exception in
+  `_calculate_and_persist` — it must not be reduced to a log line with
+  execution continuing regardless.
+- Ensure a run cannot proceed into normal calculation/persistence while its
+  required snapshot creation has failed silently — the run must not end up
+  in a state where it looks like a normal completed/PARTIAL run but is
+  actually permanently retry-blocked with no visible cause.
+- Surface an operator-visible failure state or error (exact mechanism —
+  a distinct run status, an error field, an alert — is an implementation
+  decision for the remediation sprint, not specified further by this audit
+  stage).
+- Preserve the existing self-cleaning and transactional guarantees
+  `create_payroll_snapshot()` already provides (its own atomic three-table
+  commit, per its docstring) — the fix is to what happens *after* a failure
+  is detected, not to the snapshot-write mechanism itself.
+- Add a regression test proving a snapshot-creation failure does not yield
+  a silently non-retryable completed run.
+
+**Explicitly excluded from this sprint:** the broad `05-004`
+immutability-trigger harmonisation across `component_metadata_snapshot`,
+`client_component_metadata_snapshot`, `employee_contract_snapshot`, and the
+uncovered `payroll_result` columns. Recorded for Stage 13. **Constraint
+carried into the remediation sprint regardless:** any snapshot schema or
+write path touched by the `04-001`/`05-001` work must retain or strengthen
+existing immutability guarantees — it must never weaken a DB-level guarantee
+that exists today.
+
+**Next action:** immediate remediation sprint (`04-001` + `05-001`) before
+Stage 06 or any live payroll processing/production release, under
+`CLAUDE.md`'s normal sprint workflow (`/pm` → plan → `/arch-council` →
+implementation → `/security`/`/auditor`). This sprint happens outside the
+`docs/audit-program/` workspace, per `README.md`'s "Read-only, end to end"
+policy — this audit stage produced the specification; it does not implement
+it.

@@ -6,15 +6,47 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 05 (snapshot integrity) has produced its full
-inventory, immutability/timing analysis, and `findings.md` (05-001–05-005)
-but is **not yet marked complete** — awaiting explicit review. Key result:
-the v2 statutory snapshot is **already sufficient** — 04-001 was always a
-retry-read-path gap, never a snapshot-completeness gap, which bounds the
-remediation to a narrow read-path change (§9's canonical contract). Two new
-findings: 05-001 (snapshot creation can fail silently, S2) and 05-004
-(immutability enforcement inconsistent across snapshot tables, S2). **`04-001`
-remains a confirmed S0 release blocker**, unchanged and not re-litigated.
+**Next action:** Stage 05 closed 2026-07-12. **The immediate remediation
+sprint is now unblocked and must occur before Stage 06 or any live payroll
+processing/production release.** Remediation scope: **`04-001` + `05-001`**
+(snapshot-first retry fix, plus making silent snapshot-creation failure
+fail visibly). `05-004` (broad cross-snapshot immutability hardening) is
+**deferred to Stage 13** — no current mutation path threatens the
+unprotected tables, and the specific snapshot `04-001` depends on
+(`payroll_run.rules_context_snapshot`) already has DB-level immutability.
+**`04-001` remains a confirmed S0 release blocker**, unchanged throughout
+Stage 05. Stage 06 is not started — it opens only after the remediation
+sprint completes.
+
+## Stage 05 handoff summary
+
+- **`04-001` remediation specification approved as ready for
+  implementation** — see Stage 05 `findings.md` §9 (canonical snapshot-first
+  retry contract) and the "Immediate remediation handoff" section added at
+  stage close.
+- **`05-001` (S2, confirmed) bundled into the same sprint** — snapshot
+  creation for component metadata, client overrides, and employee contracts
+  runs in a background task with its exception silently logged and
+  swallowed; the run proceeds to calculate/persist regardless, only
+  surfacing later as a permanently retry-blocked run with no visible cause.
+  The remediation must make this fail visibly.
+- **`05-004` (S2, confirmed) deferred to Stage 13**, with Stage 12 input
+  where relevant (Stage 12 candidate: harmonizing immutability triggers
+  across `component_metadata_snapshot`, `client_component_metadata_snapshot`,
+  `employee_contract_snapshot`, and uncovered `payroll_result` columns).
+  **Standing constraint carried into the remediation sprint regardless:**
+  any snapshot schema or write path the `04-001`/`05-001` work touches must
+  preserve or strengthen existing DB-level immutability guarantees, never
+  weaken them.
+- **05-002/05-003/05-005** (dead column, unread audit column, duplicated
+  extraction logic) pass to Stage 12 (simplification) as documented in
+  Stage 05 `findings.md`'s handoff section — not part of the immediate
+  sprint.
+- **04-002** (no persisted statutory-identity field) — Stage 05 §10
+  recommends per-result `statutory_rule_id`/`statutory_version` columns on
+  `payroll_result`; recommended to bundle into the same remediation sprint
+  (small additive migration touching the same insert call sites) but not
+  mandated — passes to Stage 07/10 either way.
 
 ## Stage 04 handoff summary
 
@@ -67,8 +99,8 @@ remains a confirmed S0 release blocker**, unchanged and not re-litigated.
 | 02 | Execution trace & diagnostic-script baseline | complete | 2026-07-11 | 2026-07-12 | — |
 | 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
-| 05 | Snapshot integrity | in-progress | 2026-07-12 | — | — |
-| 06 | UI/API/backend wiring | not-created | — | — | — |
+| 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
+| 06 | UI/API/backend wiring | not-created | — | — | blocked on immediate remediation sprint (04-001 + 05-001) |
 | 07 | Silent failures and observability | not-created | — | — | — |
 | 08 | Data integrity | not-created | — | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
@@ -79,25 +111,33 @@ remains a confirmed S0 release blocker**, unchanged and not re-litigated.
 
 ## Open human decisions
 
-Nine pending, one resolved this session — see [`_core/human-decisions.md`](_core/human-decisions.md):
+Five genuinely open (no decision made yet); the rest below are resolved,
+several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative
 - Should per-employee retry produce the same `execution_trace` step-level footprint as an original run? (finding 02-002)
 - Should `export_payroll_register_csv` and siblings be fixed or retired? (finding 02-009)
-- Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — superseded by 04-001's resolution below, effectively decided: yes
-- Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003)
+- Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — resolved: yes, per 04-001's remediation specification
+- Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003) — effectively resolved via 05-002: no, confirmed safe to remove in Stage 12
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
-- Should 05-001 (silent snapshot-creation failure) and 05-004 (inconsistent immutability enforcement) be bundled into the 04-001 remediation sprint or deferred to Stage 13? (findings 05-001/05-004)
-- ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; Stage 05 validates and specifies the fix; remediation follows immediately after, ahead of Stage 13, before any live payroll processing or production release. Full decision text in `_core/human-decisions.md`.
+- ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; remediation specification approved, ahead of Stage 13, before any live payroll processing or production release.
+- ~~Should 05-001/05-004 be bundled with the 04-001 sprint?~~ — **resolved 2026-07-12**: 05-001 bundled in; 05-004 deferred to Stage 13 (immutability of the run must be preserved/strengthened, never weakened, by whatever the sprint touches).
 
 ## Notes
 
 - Updated at the end of each working session on this audit, never mid-stage.
 - Production-code remediation for any finding does not begin until Stage 13
   produces an approved backlog (see `README.md`, `WORKFLOW.md`) — **except
-  `04-001`**, which is an explicitly decided exception: it moves into an
-  immediate remediation sprint as soon as Stage 05 produces a validated
-  snapshot-first fix specification, ahead of Stage 13 and before any live
-  payroll processing or production release. No other finding carries this
-  exception.
+  `04-001` and `05-001`**, an explicitly decided exception (finalized at
+  Stage 05 close): both move into a single immediate remediation sprint now
+  that Stage 05 has produced an approved specification, ahead of Stage 13
+  and before any live payroll processing or production release, or Stage 06.
+  `05-004` was considered for the same exception and explicitly declined —
+  it stays in the normal Stage 13 backlog. No other finding carries this
+  exception. Any snapshot schema or write path the remediation sprint
+  touches must preserve or strengthen existing DB-level immutability
+  guarantees, never weaken them (carried from the 05-004 deferral decision).
+- The remediation sprint itself happens outside `docs/audit-program/`, under
+  `CLAUDE.md`'s normal sprint workflow — this audit produces specifications,
+  not code.
