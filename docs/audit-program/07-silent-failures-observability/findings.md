@@ -1,6 +1,6 @@
 # Stage 07 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md). Status values
 restricted to this stage's five-value set.
 
@@ -172,16 +172,16 @@ as valid and unimplemented as when Stage 05 wrote it. **Handoff to Stage
   without requiring full step-by-step parity. This is a recommendation, not
   an implementation; left for Stage 10.
 
-### 07-005 — `02-002`'s intended trace-parity level for retry is undocumented — human decision required
+### 07-005 — `02-002`'s intended trace-parity level for retry — resolved: defined minimal subset, not full parity, not zero
 
 - **stage:** 07-silent-failures-observability
-- **location:** No location — an absence-of-documentation finding, confirmed by searching `CLAUDE.md` and all prior audit-stage findings for any stated intent on this question
-- **current implementation:** N/A
-- **intended behaviour:** Not documented anywhere in this codebase or its accumulated audit findings.
-- **suspected or confirmed defect:** Not a defect — a genuine open product/architecture question this stage cannot resolve from evidence alone, exactly as the sprint prompt anticipated ("This may require a human decision if the intended trace parity level is not documented").
-- **evidence:** Absence confirmed by search; see §3 above for the full parity assessment
-- **status:** human decision required
-- **severity:** S3
+- **location:** No single code location — this finding concerns intended behaviour, resolved by human decision rather than further code evidence; see §3 above for the underlying parity assessment and its citations
+- **current implementation:** Unchanged from §3 — retry writes zero `execution_trace` rows today.
+- **intended behaviour:** **Resolved by human decision, 2026-07-12 (Stage 07 close review):** retry must produce a **defined minimal execution trace**, not full step-by-step parity with the original run and not zero trace. The minimum required retry trace is: (1) one persisted row per retry invocation recording start and preflight outcome, including whether the `04-001` snapshot/statutory validation passed or failed; (2) one persisted row per retried employee recording success or failure and the employee identifier; (3) one final persisted row recording the resulting run transition (`PARTIAL → CALCULATED` or `PARTIAL → PARTIAL`). `component_trace_jsonb` remains the authoritative fine-grained calculation trace; `execution_trace` is scoped to orchestration, preflight, and outcome — not a duplicate of every original-run batching/persistence step, unless Stage 10 later identifies a concrete audit requirement for more.
+- **suspected or confirmed defect:** Confirmed as a gap against this now-resolved intended behaviour — retry's current zero-row `execution_trace` footprint falls short of the three-row minimum just defined.
+- **evidence:** §3 above (parity assessment); this entry's own decision record
+- **status:** confirmed
+- **severity:** S3 (unchanged — the decision resolves the ambiguity but doesn't change the underlying gap's severity; the design itself is deferred to Stage 10, not implemented here)
 - **related invariant:** none
 
 ---
@@ -281,6 +281,73 @@ Stage 06's original framing.
 
 ## Human decisions required
 
-- **07-005** — what is the intended `execution_trace` parity level for
-  retry (full step-by-step, a defined minimal subset, or none beyond what
-  already exists)? Blocks Stage 10's `02-002` remediation design.
+None remaining open from this stage — `07-005` was resolved at close
+review (below).
+
+---
+
+## Final decision and handoff (stage close, 2026-07-12)
+
+**Decision recorded:** Retry's `execution_trace` footprint should be a
+**defined minimal subset**, not full original-run parity and not the
+current zero rows — see `07-005`'s resolved text for the exact three-row
+minimum (invocation/preflight outcome, per-employee outcome, final run
+transition). `component_trace_jsonb` remains the authoritative
+fine-grained calculation trace. This is a decision, not an
+implementation — the design is deferred to Stage 10.
+
+**Review requirements verified before closing:**
+
+1. `07-001` remains S1, supported by the 21-site evidence
+   (`evidence/2026-07-12-str-e-leak-systemic.txt`), including the
+   representative raw-DB-write citation (`workspace.py:2020-2027`)
+   establishing the risk is live, not merely theoretical.
+2. `07-002` distinguishes the missing unified `audit_log`/`event_store`
+   entries from the reconciliation row's own local `notes`/`resolved_by`
+   fields — the finding text explicitly states the who/why is captured
+   locally, so this is a discoverability/consistency gap, not a full
+   absence of record.
+3. `07-003` identifies the outer background-task catch precisely as
+   log-only, with no persisted status, audit/event, API, or UI signal —
+   distinct from the inner, `05-001`-remediated snapshot-creation catch,
+   which is fully fixed.
+4. `07-004` remains S3.
+5. `07-005` updated from `human decision required` to `confirmed`, with
+   the minimal-trace decision recorded above and in the finding itself.
+6. `04-002`'s recommendation is unchanged from Stage 05 §10 — per-result
+   `statutory_rule_id`/`statutory_version` remains the primary
+   recommended auditable identity; independently re-confirmed no
+   `payroll_result` schema change occurred since Stage 05 that would
+   affect this.
+7. `04-001` and `05-001` remain remediated throughout this stage — no
+   finding's evidence or defect statement touches the remediated backend
+   code paths, and both are explicitly reaffirmed sound in §4 above.
+8. All completion criteria in `CONTEXT.md` are satisfied: all required
+   failure surfaces were covered (§1) or the domains not deep-dived are
+   explicitly noted as summarized rather than exhaustively traced; every
+   confirmed silent failure states its exact missing observability
+   layer(s) (§1's table, 07-001 through 07-004); `04-002` has a bounded
+   recommendation (§2); `02-002` has an evidence-backed parity assessment
+   plus a now-resolved human decision (§3, 07-005); `FAILED`-run
+   propagation is mapped end to end (§4); audit/event coverage was
+   assessed across the required transitions (§1's table, 07-002); recovery
+   guidance is documented for at least one representative case (the
+   `EMP-UX-3` legacy-snapshot modal, §6); all 5 findings now use exactly
+   one of the five valid statuses (re-verified: 5 `confirmed`, 0
+   `plausible`/`unconfirmed`/`human decision required` remaining).
+
+**Handoff carry-forward (finalized):**
+
+- `07-001` → Stages 09 (security review of all 21 sites) and 13
+  (prioritized backlog entry, S1).
+- `07-002` → Stages 08 (data integrity — reconstructability of live
+  reconciliation history) and 13.
+- `07-003` → Stages 11 (forced-failure scenario test once addressed) and
+  13.
+- `07-004` → Stage 12 (trivial removal).
+- `04-002`, `02-002`, and the resolved minimal-trace specification
+  (`07-005`) → Stage 10, as the bounded input for that stage's
+  execution-trace remediation design.
+- `05-004` remains deferred to Stage 13, unchanged from Stage 05.
+- Stages 01–06 and the `04-001`/`05-001` remediation record are preserved
+  unchanged.

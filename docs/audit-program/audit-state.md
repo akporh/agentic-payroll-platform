@@ -6,22 +6,51 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 07 (silent failures and observability) has produced
-`findings.md` (07-001–07-005) but is **not yet marked complete** —
-awaiting explicit review. Headline result: **07-001** — a systemic,
-confirmed violation of `CLAUDE.md`'s own standing "never return `str(e)`"
-rule, 21 occurrences across `payroll.py`/`workspace.py` (S1, the largest
-recurrence of this already-twice-documented defect class). Also confirmed:
-07-002 (reconciliation transitions write no `audit_log`/`event_store`
-entry), 07-003 (background-task outer exception handler still silent
-outside the 05-001-remediated snapshot step), 07-004 (stray `print()` in
-`paye.py`). Produced bounded recommendations for `04-002` (reusing Stage
-05 §10 unchanged) and `02-002` (full parity assessment; intended
-trace-parity level for retry is undocumented — human decision required,
-07-005). Formally mapped `06-001`/`06-004`'s signal path end to end,
-confirming observability stops exactly at the frontend type boundary and
-that `04-001`/`05-001` remain sound. `04-001`/`05-001` remain remediated
-(not reopened); `05-004` deferred to Stage 13; `04-002` open for Stage 10.
+**Next action:** Stage 07 closed 2026-07-12. Open **Stage 08 — Data
+integrity** (not started). Headline Stage 07 result: **07-001** — a
+systemic, confirmed S1 violation of `CLAUDE.md`'s own standing "never
+return `str(e)`" rule, 21 occurrences across `payroll.py`/`workspace.py`
+(the largest recurrence of this already-twice-documented defect class),
+carried to Stages 09/13. Also confirmed: 07-002 (reconciliation
+transitions write no `audit_log`/`event_store` entry, Stage 08/13),
+07-003 (background-task outer exception handler still silent outside the
+05-001-remediated snapshot step, Stage 11/13), 07-004 (stray `print()` in
+`paye.py`, Stage 12). `02-002`'s retry-trace-parity question resolved at
+close: a defined minimal subset (invocation/preflight, per-employee
+outcome, final transition), not full parity, not zero — `07-005`, input to
+Stage 10 alongside the unchanged `04-002` recommendation. `04-001`/`05-001`
+remain remediated (not reopened); `05-004` deferred to Stage 13.
+
+## Stage 07 handoff summary
+
+- **`07-001` (confirmed, S1) → Stages 09, 13.** 21 sites returning raw
+  exception text to API clients, violating `CLAUDE.md`'s standing
+  prohibition for the third documented time. Stage 09 should determine
+  which sites can leak genuinely sensitive detail versus which are safe
+  today; Stage 13 should prioritize this near `04-001`'s historical S0.
+- **`07-002` (confirmed, S2) → Stages 08, 13.** Reconciliation create/
+  resolve actions write no `audit_log`/`event_store` entry — captured
+  locally on `payroll_reconciliation` itself, but absent from the unified
+  audit view every other transition uses.
+- **`07-003` (confirmed, S2) → Stages 11, 13.** The background
+  calculation task's outer exception handler remains log-only outside the
+  `05-001`-remediated snapshot-creation step.
+- **`07-004` (confirmed, S3) → Stage 12.** Stray `print()` at module scope
+  in `backend/domain/rules/paye.py` — trivial removal.
+- **`07-005` (resolved, confirmed) + `04-002` (unchanged recommendation)
+  → Stage 10.** Retry's `execution_trace` should carry a defined minimal
+  subset (invocation/preflight outcome, per-employee outcome, final
+  transition) rather than full parity or zero rows; `04-002`'s
+  recommendation (per-result `statutory_rule_id`/`statutory_version`
+  columns) is unchanged from Stage 05 §10. Both are decisions/
+  recommendations only — Stage 10 designs, does not implement in this
+  audit workspace.
+- **Positive controls confirmed**, not carried forward as action items:
+  approval/lock/pay audit trail complete and consistent; per-employee
+  original-run failures fully observable end to end; `04-001`'s
+  legacy-snapshot retry rejection has a well-labeled frontend modal
+  (`EMP-UX-3`) with good recovery guidance; `component_trace_jsonb`
+  confirmed complete and accurate for both original runs and retries.
 
 ## Stage 06 handoff summary
 
@@ -166,7 +195,7 @@ that `04-001`/`05-001` remain sound. `04-001`/`05-001` remain remediated
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
-| 07 | Silent failures and observability | in-progress | 2026-07-12 | — | — |
+| 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
 | 08 | Data integrity | not-created | — | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
@@ -176,19 +205,19 @@ that `04-001`/`05-001` remain sound. `04-001`/`05-001` remain remediated
 
 ## Open human decisions
 
-Seven genuinely open (no decision made yet); the rest below are resolved,
+Five genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative
-- Should per-employee retry produce the same `execution_trace` step-level footprint as an original run? (finding 02-002)
+- ~~Should per-employee retry produce the same `execution_trace` step-level footprint as an original run?~~ — **resolved 2026-07-12 (as 07-005)**: a defined minimal subset (invocation/preflight, per-employee outcome, final transition), not full parity and not zero — see finding 07-005.
 - Should `export_payroll_register_csv` and siblings be fixed or retired? (finding 02-009)
 - Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — resolved: yes, per 04-001's remediation specification
 - Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003) — effectively resolved via 05-002: no, confirmed safe to remove in Stage 12
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
 - ~~Is `timesheet/audit/{employee_id}` intentionally operator/API-only, or a missing UI feature?~~ — **resolved 2026-07-12**: missing UI feature, backend route retained, carried to Stage 13.
 - Should the systemic `str(e)`-leak pattern (07-001) be a dedicated priority fix, flow through Stage 13 normally, or bundle with Stage 09's security review? (finding 07-001)
-- What is the intended `execution_trace` parity level for retry (full, a defined subset, or none)? (finding 07-005 — blocks Stage 10's 02-002 design)
+- ~~What is the intended `execution_trace` parity level for retry?~~ — **resolved 2026-07-12**: defined minimal subset — see finding 07-005.
 - ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; remediation specification approved, ahead of Stage 13, before any live payroll processing or production release.
 - ~~Should 05-001/05-004 be bundled with the 04-001 sprint?~~ — **resolved 2026-07-12**: 05-001 bundled in; 05-004 deferred to Stage 13 (immutability of the run must be preserved/strengthened, never weakened, by whatever the sprint touches).
 
