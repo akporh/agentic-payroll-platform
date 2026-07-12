@@ -37,19 +37,22 @@ stages:
     date: 2026-07-12
 
   implementation:
-    status: eligible
+    status: complete
     depends_on: [pm, arch-council]
     plan_ref: plan.md
     decision_ref: DEC-aud-q1-trace-source-05
+    evidence: evidence/implementation/component_source_trace_fix.md
     note: >
       Both graph dependencies are terminal (pm: complete, arch-council:
-      not-applicable). Plan mode has now also run for the Q1 fix and
-      was approved via ExitPlanMode (2026-07-12); the approved plan is
-      persisted at plan.md (Changeset 4). Status remains `eligible`,
-      not `active` — no product code has been written yet. Changeset 4
-      explicitly excludes implementing the product change; the next
-      permitted action is writing the code described in plan.md, in a
-      future session/changeset.
+      not-applicable). Plan mode ran for the Q1 fix and was approved via
+      ExitPlanMode (2026-07-12); the approved plan is persisted at
+      plan.md (Changeset 4). Changeset 5 activated implementation per
+      the existing DEC-aud-q1-trace-source-05 `activate` decision (no
+      new decision fabricated), applied the exact plan.md diff to
+      rule_evaluator.py, added 4 focused tests, and confirmed the full
+      regression suite (306 passed, 1 pre-existing skip, 0 failed).
+      Completion criteria met: code changed, tests added and passing,
+      no regression.
 
   verification:
     status: not-applicable
@@ -66,33 +69,50 @@ stages:
     date: 2026-07-12
 
   audit:
-    status: blocked
+    status: complete
     depends_on: [implementation, security]
-    waiting_for:
-      - implementation
+    evidence: audit.md
     note: >
-      Entry condition already evaluated TRUE — rule_evaluator.py is the
-      file being changed — so this stage is NOT not-applicable, it is
-      genuinely pending. Registry: "conditional," entry condition holds,
-      so it must eventually run, not be skipped.
+      Entry condition evaluated TRUE — rule_evaluator.py is the file
+      being changed — so this stage was NOT not-applicable, it was
+      genuinely pending. Live /auditor pass run this session
+      (Changeset 5): confirmed AUD-1/Q1 genuinely closed from code
+      (rule_evaluator.py:421-465) and test evidence
+      (tests/test_rule_evaluator.py::TestFixedAmount, 7/7 passing), not
+      merely that the field exists. Existing docs/audit/ output written
+      (docs/audit/2026-07-12-aud-q1-trace-source-audit-review.md) plus
+      sprint-local audit.md.
 
   test:
-    status: blocked
+    status: complete
     depends_on: [implementation, verification, security, audit]
-    waiting_for:
-      - implementation
-      - audit
+    evidence: evidence/test/component_source_verification.md
+    note: >
+      All four dependencies terminal (implementation: complete,
+      verification: not-applicable, security: not-applicable, audit:
+      complete). Live /tester pass run this session (Changeset 5): all
+      3 CONTEXT.md acceptance criteria verified PASS (LIVE taxonomy —
+      production apply_payroll_rules invoked directly), full regression
+      suite 306 passed / 1 pre-existing skip / 0 failed. Existing
+      docs/test-reports/ output written
+      (docs/test-reports/2026-07-12-aud-q1-trace-source.md) plus
+      sprint-local evidence/test/ pointer.
 
   retro:
-    status: blocked
+    status: eligible
     depends_on: [test]
-    waiting_for:
-      - test
+    note: >
+      `test` reached `complete` in Changeset 5 — `retro` is now the only
+      remaining non-terminal stage and is eligible. Not activated in
+      this changeset: Changeset 5's scope is implementation +
+      audit/test persistence only; `retro` (sprint close, per
+      CLAUDE.md's "done"/"sprint complete" trigger) is a separate human
+      gate, tracked as Changeset 8 in the implementation plan.
 ```
 
 ## Reading this file
 
 - `not-applicable` entries are terminal for this sprint's scope and will not be re-evaluated unless scope changes (per `WORKFLOW.md`).
-- `implementation` is `eligible` — its graph dependencies (`pm`, `arch-council`) are both terminal. This is the correct next permitted action per the pilot acceptance criteria ("what are the next permitted actions?" → any stage with `status: eligible`). It has not been activated because Changeset 2 explicitly excludes running plan mode or implementing the product change (§5.2 of the implementation plan) — that is a scope boundary on this session, not a graph dependency, so it is recorded here as a note rather than a `blocked` status.
-- `audit`, `test`, and `retro` remain genuinely `blocked` — each cascades behind `implementation` actually reaching `complete`, which has not happened.
-- Per Changeset 2 (`docs/diagnostics/2026-07-12-nonlinear-icm-sprint-workflow-implementation-plan.md` §5.2), this plan and this workspace stop here. Changeset 3 (command/skill integration) has not begun.
+- `implementation` moved from `eligible` to `active` in Changeset 5, per user approval to run Changeset 5 (2026-07-12) — the approved plan (`plan.md`) is now being executed.
+- `audit` and `test` remain `blocked` until `implementation` reaches `complete`; `retro` cascades behind `test`.
+- Per Changeset 2 (`docs/diagnostics/2026-07-12-nonlinear-icm-sprint-workflow-implementation-plan.md` §5.2), earlier changesets stopped short of implementation. Changeset 5 (this pass) implements the pilot's product change and validates `audit`/`test` persistence live; `security`/`verification` remain `not-applicable` and are not re-run.
