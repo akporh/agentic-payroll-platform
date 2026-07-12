@@ -1,6 +1,6 @@
 # Stage 03 — Findings
 
-Status: **in-progress**. All entries below use the template in
+Status: **complete**. All entries below use the template in
 [`../_core/finding-schema.md`](../_core/finding-schema.md).
 
 ---
