@@ -1,0 +1,15 @@
+=== confirmed backend-only routes: zero frontend callers found ===
+1. GET/POST /payroll/run/{run_id}/reconcile (unscoped) -- superseded by workspace-scoped /payroll/runs/{run_id}/reconciliation
+1236:@router.post("/payroll/run/{run_id}/reconcile")
+1264:@router.get("/payroll/run/{run_id}/reconcile")
+
+2. GET /{workspace_id}/payroll/ops/legacy-executor-stats
+1344:@router.get("/{workspace_id}/payroll/ops/legacy-executor-stats")
+
+3. admin.py -- all 3 routes, operator HTML dashboard
+10:@router.get("/admin", response_class=HTMLResponse)
+17:@router.get("/admin/onboarding", response_class=HTMLResponse)
+24:@router.get("/admin/payroll", response_class=HTMLResponse)
+
+4. GET /workspaces/{workspace_id}/timesheet/audit/{employee_id}
+1725:@router.get("/workspaces/{workspace_id}/timesheet/audit/{employee_id}")

@@ -1,0 +1,54 @@
+=== RunPayroll.tsx offers FULL_RUN as a retry-strategy option ===
+  const [payDate, setPayDate] = useState(today());
+  const [runType, setRunType] = useState<'REGULAR' | 'ADJUSTMENT'>('REGULAR');
+  const [periodType, setPeriodType] = useState<'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM'>('MONTHLY');
+  const [workingDays, setWorkingDays] = useState('');
+  const [retryStrategy, setRetryStrategy] = useState<'PER_EMPLOYEE' | 'FULL_RUN'>('PER_EMPLOYEE');
+
+  const [loading, setLoading] = useState(false);
+          )}
+
+          {/* Retry strategy */}
+          <RadioGroup
+            label="Retry Strategy"
+            name="retry_strategy"
+            value={retryStrategy}
+            onChange={(v) => setRetryStrategy(v as 'PER_EMPLOYEE' | 'FULL_RUN')}
+            options={[
+              { value: 'PER_EMPLOYEE', label: 'Per Employee (recommended)', description: 'Failed employees are retried individually — successful employees are preserved' },
+              { value: 'FULL_RUN',     label: 'Full Run',                   description: 'The entire run is retried from scratch on failure' },
+            ]}
+          />
+
+=== backend hard-rejects FULL_RUN at run creation — _VALID_RETRY_STRATEGIES = {PER_EMPLOYEE} ===
+    returning HTTP 409.
+    """
+
+    workspace_id       = payload.get("workspace_id")
+    period_start       = payload.get("period_start")
+    period_end         = payload.get("period_end")
+    period_type_raw    = payload.get("period_type")
+    working_days_input = payload.get("working_days")
+    retry_strategy     = payload.get("retry_strategy", "PER_EMPLOYEE")
+    run_type           = payload.get("run_type", "REGULAR").upper()
+    # Optional rule_set_id override for ADJUSTMENT runs targeting a specific rule set
+    override_rule_set_id = payload.get("rule_set_id")
+
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="workspace_id required")
+
+    _VALID_RUN_TYPES = {"REGULAR", "ADJUSTMENT", "CORRECTION"}
+    if run_type not in _VALID_RUN_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid run_type. Allowed values: {sorted(_VALID_RUN_TYPES)}",
+        )
+
+    _VALID_RETRY_STRATEGIES = {"PER_EMPLOYEE"}
+    if retry_strategy not in _VALID_RETRY_STRATEGIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid retry_strategy. Allowed values: {sorted(_VALID_RETRY_STRATEGIES)}",
+        )
+
+    if period_type_raw and period_type_raw.upper() == "CUSTOM" and not working_days_input:

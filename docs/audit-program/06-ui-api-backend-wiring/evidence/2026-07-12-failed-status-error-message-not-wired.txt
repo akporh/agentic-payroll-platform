@@ -1,0 +1,92 @@
+=== frontend PayrollRunStatus type — no FAILED ===
+export type PayrollRunStatus =
+  | 'DRAFT'
+  | 'CALCULATING'
+  | 'CALCULATED'
+  | 'PARTIAL'
+  | 'APPROVED'
+  | 'LOCKED'
+  | 'PAID';
+
+export interface PayrollRun {
+  run_id: string;
+  workspace_id: string;
+  period_start: string;
+  period_end: string;
+  pay_date: string;
+  status: PayrollRunStatus;
+  created_at: string;
+  statutory_effective_date?: string | null;
+}
+
+=== StatusBadge.tsx — PAYROLL_COLORS keyed strictly by PayrollRunStatus, falls back to generic gray for unmapped values ===
+import type { WorkspaceStatus } from '../../types/workspace';
+import type { PayrollRunStatus } from '../../types/payroll';
+
+const WORKSPACE_COLORS: Record<WorkspaceStatus, string> = {
+  DRAFT: 'bg-slate-100 text-slate-600',
+  STRUCTURE_DEFINED: 'bg-blue-100 text-blue-700',
+  COMPENSATION_DEFINED: 'bg-indigo-100 text-indigo-700',
+  RULES_DEFINED: 'bg-violet-100 text-violet-700',
+  READY: 'bg-amber-100 text-amber-700',
+  LIVE: 'bg-green-100 text-green-700',
+};
+
+const PAYROLL_COLORS: Record<PayrollRunStatus, string> = {
+  DRAFT: 'bg-slate-100 text-slate-600',
+  CALCULATING: 'bg-blue-100 text-blue-700',
+  CALCULATED: 'bg-indigo-100 text-indigo-700',
+  PARTIAL: 'bg-amber-100 text-amber-700',
+  APPROVED: 'bg-violet-100 text-violet-700',
+  LOCKED: 'bg-orange-100 text-orange-700',
+  PAID: 'bg-emerald-100 text-emerald-700',
+};
+
+interface Props {
+  status: string;
+  type?: 'workspace' | 'payroll';
+}
+
+export function StatusBadge({ status, type = 'workspace' }: Props) {
+  const colors =
+    type === 'payroll'
+      ? PAYROLL_COLORS[status as PayrollRunStatus]
+      : WORKSPACE_COLORS[status as WorkspaceStatus];
+
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide ${colors ?? 'bg-slate-100 text-slate-500'}`}
+    >
+      {status.replace(/_/g, ' ')}
+    </span>
+  );
+}
+
+=== zero occurrences of payroll_run.error_message anywhere in frontend/src (the only error_message hit is ExecutionTraceStep, a different field) ===
+frontend/src/types/payroll.ts:112:  error_message: string | null;
+frontend/src/components/payroll/PayrollTimeline.tsx:99:        {step.error_message && (
+frontend/src/components/payroll/PayrollTimeline.tsx:103:            {step.error_message}
+frontend/src/pages/PayrollResults.tsx:848:          description={phWarnings.slice(0, 2).map((w) => w.step_name + (w.error_message ? ': ' + w.error_message : '')).join(' · ') + (phWarnings.length > 2 ? ` +${phWarnings.length - 2} more — see Timeline tab` : '')}
+
+=== api client's getRun is typed <PayrollRun>, which lacks error_message ===
+export const payrollApi = {
+  createRun: (
+    workspaceId: string,
+    payload: {
+      period_start: string;
+      period_end: string;
+      pay_date: string;
+      run_type?: string;
+      period_type?: 'MONTHLY' | 'FORTNIGHTLY' | 'CUSTOM';
+      working_days?: number;
+      retry_strategy?: 'PER_EMPLOYEE' | 'FULL_RUN';
+    }
+  ) => api.post<{ run_id: string; status: string }>(`/${workspaceId}/payroll/run`, payload),
+
+  getRuns: (workspaceId: string) =>
+    api.get<PayrollRun[]>(`/${workspaceId}/payroll/runs`),
+
+  getRun: (workspaceId: string, runId: string) =>
+    api.get<PayrollRun>(`/${workspaceId}/payroll/runs/${runId}`),
+
+  getResults: (workspaceId: string, runId: string) =>

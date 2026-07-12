@@ -1,0 +1,91 @@
+=== pay_cycle.definition_json: written at onboarding ===
+
+        # ----------------------------
+        # INSERT STRUCTURE: PAY CYCLE
+        # Accepts flat {frequency, run_day, ...} or definition_json
+        # {execution_window: {run_day, ...}} format.
+        # ----------------------------
+        structure = payload.get("structure", {})
+        pay_cycle_data = structure.get("pay_cycle", {}) if isinstance(structure, dict) else {}
+        if pay_cycle_data and isinstance(pay_cycle_data, dict):
+            definition_json = pay_cycle_data.get("definition_json") or {}
+            execution_window = (
+                pay_cycle_data.get("execution_window")
+                or definition_json.get("execution_window")
+                or {}
+            )
+            frequency   = pay_cycle_data.get("frequency") or "monthly"
+            run_day     = int(pay_cycle_data.get("run_day")     or execution_window.get("run_day", 1))
+            cutoff_day  = int(pay_cycle_data.get("cutoff_day")  or execution_window.get("adjustment_cutoff_day", 1))
+            payment_day = int(pay_cycle_data.get("payment_day") or execution_window.get("payment_day", 1))
+            definition_json = definition_json or pay_cycle_data
+            db.execute(
+                text("""
+                    INSERT INTO pay_cycle (
+                        pay_cycle_id, workspace_id, frequency,
+                        run_day, cutoff_day, payment_day, is_active, definition_json
+                    )
+                    VALUES (
+                        :id, :workspace_id, :frequency,
+                        :run_day, :cutoff_day, :payment_day, TRUE, :definition_json
+                    )
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "id": str(uuid4()),
+                    "workspace_id": workspace_id,
+                    "frequency": frequency,
+                    "run_day": run_day,
+                    "cutoff_day": cutoff_day,
+                    "payment_day": payment_day,
+                    "definition_json": Json(definition_json),
+                },
+
+=== GET /configuration never selects definition_json (only frequency/run_day/cutoff_day/payment_day) ===
+17:from backend.api.schemas.pay_cycle import PayCycleCreateSchema
+856:def create_pay_cycle_endpoint(workspace_id: str, payload: PayCycleCreateSchema):
+859:        pc = onboarding_service.create_pay_cycle(
+870:            "pay_cycle_id": str(pc.pay_cycle_id),
+882:        _log.error("create_pay_cycle failed: %s", exc)
+1145:                FROM pay_cycle
+1223:            "pay_cycle": {
+1378:def patch_pay_cycle(workspace_id: str, payload: dict):
+1403:                text("SELECT frequency FROM pay_cycle WHERE workspace_id = :wid AND is_active = TRUE LIMIT 1"),
+1439:            text(f"UPDATE pay_cycle SET {set_clause}, updated_at = NOW() WHERE workspace_id = :wid AND is_active = TRUE"),
+
+        # Pay cycle
+        pc = db.execute(
+            text("""
+                SELECT frequency, run_day, cutoff_day, payment_day
+                FROM pay_cycle
+                WHERE workspace_id = :wid AND is_active = TRUE
+                LIMIT 1
+            """),
+            {"wid": workspace_id},
+        ).fetchone()
+
+=== PATCH /pay-cycle never accepts definition_json (only frequency/run_day/cutoff_day/payment_day) ===
+                        detail="Pay cycle frequency cannot be changed mid-year. A PAID run for this period exists.",
+                    )
+
+        fields = {}
+        if new_freq is not None:
+            fields["frequency"] = new_freq
+        if payload.get("run_day") is not None:
+            fields["run_day"] = int(payload["run_day"])
+        if payload.get("cutoff_day") is not None:
+            fields["cutoff_day"] = int(payload["cutoff_day"])
+        if payload.get("payment_day") is not None:
+            fields["payment_day"] = int(payload["payment_day"])
+
+
+=== zero frontend references to definition_json ===
+frontend/src/api/workspace.ts:58:      rule_definition_json: Record<string, unknown>;
+frontend/src/api/workspace.ts:102:      payroll_rules: { rule_id: string; name: string; rule_type: string; method: string; is_active: boolean; rule_definition_json: Record<string, unknown>; effective_from: string | null }[];
+frontend/src/pages/WorkspaceConfig.tsx:61:  rule_definition_json: Record<string, unknown>;
+frontend/src/pages/WorkspaceConfig.tsx:1061:        rule_definition_json: { calculation_method: 'fixed_amount', amount: amt },
+frontend/src/pages/WorkspaceConfig.tsx:1324:        rule_definition_json: buildDefinition(),
+frontend/src/pages/WorkspaceConfig.tsx:1425:      const def = rule.rule_definition_json ?? {};
+frontend/src/pages/WorkspaceConfig.tsx:1462:        rule_definition_json: buildDefinition(),
+frontend/src/pages/WorkspaceConfig.tsx:2398:                        const def = r.rule_definition_json ?? {};
+frontend/src/pages/WorkspaceConfig.tsx:2475:                        const def = r.rule_definition_json ?? {};
