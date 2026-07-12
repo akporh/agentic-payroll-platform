@@ -522,3 +522,58 @@ class TestRuleInjectedEarningInGrossPay:
         }
         out = run_sequential_payroll(SALARY, unified, context)
         assert out["results"]["GROSS_PAY"] == Decimal("500000.00")
+
+
+# ---------------------------------------------------------------------------
+# T4.2 — Flat-amount statutory deductions: Health Insurance & Development Levy
+#
+# INVARIANT PROTECTED (F1 bug class — money):
+#   Health Insurance reads context key `health_insurance_employee_amount`
+#   (sourced from rules_jsonb: health_insurance.employee_amount) and
+#   Development Levy reads `development_levy_amount` (sourced from
+#   rules_jsonb: development_levy.amount). A key mismatch anywhere in that
+#   chain silently produces a ₦0 deduction instead of an error. These tests
+#   pin the handler-side keys; the route-side extraction is pinned by
+#   tests/test_statutory_flat_amount_keys_e2e.py.
+# ---------------------------------------------------------------------------
+
+FLAT_STATUTORY_METADATA = COMPONENT_METADATA + [
+    {"component_code": "HEALTH_INSURANCE_EMPLOYEE", "component_class": "statutory_deduction", "calculation_method": "health_insurance_flat", "execution_priority": 420, "is_active": True, "metadata_json": {}},
+    {"component_code": "DEVELOPMENT_LEVY",          "component_class": "statutory_deduction", "calculation_method": "development_levy_flat", "execution_priority": 430, "is_active": True, "metadata_json": {}},
+]
+
+
+class TestFlatAmountStatutoryDeductions:
+
+    def _run_with(self, extra_ctx):
+        context = {**BASE_CONTEXT, **extra_ctx}
+        return run_sequential_payroll(
+            salary_components=SALARY,
+            component_metadata=FLAT_STATUTORY_METADATA,
+            context=context,
+        )
+
+    def test_health_insurance_uses_employee_amount_key(self):
+        out = self._run_with({"health_insurance_employee_amount": Decimal("5000")})
+        assert out["results"]["HEALTH_INSURANCE_EMPLOYEE"] == Decimal("5000")
+
+    def test_development_levy_uses_amount_key(self):
+        out = self._run_with({"development_levy_amount": Decimal("1000")})
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("1000")
+
+    def test_flat_deductions_reduce_net_pay(self):
+        out = self._run_with({
+            "health_insurance_employee_amount": Decimal("5000"),
+            "development_levy_amount":          Decimal("1000"),
+        })
+        # Baseline NET_PAY is 386,500 (see module docstring); both flat
+        # statutory deductions must be swept by net_formula.
+        assert out["results"]["NET_PAY"] == Decimal("380500.00")
+
+    def test_wrong_context_key_yields_zero_deduction(self):
+        # Documents the silent-zero failure mode this suite exists to catch:
+        # a misspelled/mismatched key does NOT error — it pays the employee
+        # more. If this test ever needs changing, the key contract moved.
+        out = self._run_with({"health_insurance_amount": Decimal("5000")})  # wrong key
+        assert out["results"]["HEALTH_INSURANCE_EMPLOYEE"] == Decimal("0")
+        assert out["results"]["NET_PAY"] == Decimal("386500.00")

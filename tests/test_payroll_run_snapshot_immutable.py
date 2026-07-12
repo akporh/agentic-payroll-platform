@@ -33,6 +33,7 @@ from sqlalchemy.exc import InternalError
 
 from backend.api.main import app
 from backend.infra.db.models import Account, Workspace
+from tests.registry_state import pin_registry_state, restore_registry_state
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -49,6 +50,11 @@ def test_run_snapshot_is_immutable():
     component_metadata_id = uuid.uuid4()
 
     db = SessionLocal()
+    # Expected amounts assume neither NHF nor rent relief deducts — declare
+    # that registry state rather than assume it (fresh migrated DBs ship both active).
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
 
     try:
         # -------------------------------------------------------------------
@@ -69,7 +75,7 @@ def test_run_snapshot_is_immutable():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-03-15')
+                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-05-14')
             """),
             {"id": statutory_rule_id},
         )
@@ -211,6 +217,7 @@ def test_run_snapshot_is_immutable():
 
     finally:
         db.rollback()
+        restore_registry_state(db, registry_prior)
         # Bypass immutability triggers so teardown succeeds at any lifecycle state.
         db.execute(text("SET LOCAL session_replication_role = replica"))
 

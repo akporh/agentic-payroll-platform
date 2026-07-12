@@ -47,6 +47,7 @@ from backend.api.main import app
 from backend.infra.db.models import Account, Workspace
 from backend.infra.db.session import SessionLocal, engine
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
+from tests.registry_state import pin_registry_state, restore_registry_state
 
 client = TestClient(app)
 
@@ -59,7 +60,10 @@ client = TestClient(app)
 # existing convention of fully self-contained test files.
 # ---------------------------------------------------------------------------
 
-def _setup_partial_run(rule_a_rate: Decimal, statutory_effective_from: str = "2026-05-01"):
+def _setup_partial_run(rule_a_rate: Decimal, statutory_effective_from: str = "2026-05-20"):
+    # 2026-05-20 must be LATER than any migration-seeded statutory_rule
+    # effective_from (currently 2026-05-01) so this fixture wins the
+    # effective_from DESC selection on a fresh migrated DB.
     account_id = uuid.uuid4()
     workspace_id = uuid.uuid4()
     statutory_rule_a_id = uuid.uuid4()
@@ -67,6 +71,26 @@ def _setup_partial_run(rule_a_rate: Decimal, statutory_effective_from: str = "20
     employee_b_id = uuid.uuid4()
 
     db = SessionLocal()
+    # Expected amounts assume neither NHF nor rent relief applies — declare
+    # that instead of assuming the registry happens to have them inactive.
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
+
+    # Self-heal: this setup runs before the test's try/finally, so a crash
+    # here strands rows that collide with uq_statutory_rule_country_effective
+    # on every subsequent run. Clear any prior test artifact (version >= 9000)
+    # at this date before inserting. Never touches migration-seeded rows.
+    db.execute(text("""
+        DELETE FROM tax_band WHERE statutory_rule_id IN (
+            SELECT statutory_rule_id FROM statutory_rule
+            WHERE country_code = 'NG' AND effective_from = :eff AND version >= 9000)
+    """), {"eff": statutory_effective_from})
+    db.execute(text("""
+        DELETE FROM statutory_rule
+        WHERE country_code = 'NG' AND effective_from = :eff AND version >= 9000
+    """), {"eff": statutory_effective_from})
+    db.commit()
 
     db.add(Account(account_id=account_id, name="SnapshotFirst Test Corp"))
     db.add(Workspace(
@@ -122,8 +146,8 @@ def _setup_partial_run(rule_a_rate: Decimal, statutory_effective_from: str = "20
         VALUES (:id, :wid, 'BROKEN', 'BROKEN', :components)
     """), {"id": broken_sal_def_id, "wid": workspace_id, "components": Json({"BASIC": {"amount": "INVALID"}})})
     db.execute(text("""
-        INSERT INTO employee (employee_id, workspace_id, full_name, status)
-        VALUES (:eid, :wid, 'SnapshotFirst Employee B (broken)', 'ACTIVE')
+        INSERT INTO employee (employee_id, workspace_id, employee_number, full_name, status)
+        VALUES (:eid, :wid, 'SF002', 'SnapshotFirst Employee B (broken)', 'ACTIVE')
     """), {"eid": employee_b_id, "wid": workspace_id})
     db.execute(text("""
         INSERT INTO employee_contract (contract_id, employee_id, salary_definition_id, start_date)
@@ -157,6 +181,7 @@ def _setup_partial_run(rule_a_rate: Decimal, statutory_effective_from: str = "20
         "employee_a_id": employee_a_id,
         "employee_b_id": employee_b_id,
         "payroll_run_id": payroll_run_id,
+        "_registry_prior": registry_prior,
     }
 
 
@@ -164,6 +189,8 @@ def _teardown(ctx: dict, extra_statutory_rule_ids: list | None = None):
     db = ctx["db"]
     workspace_id = ctx["workspace_id"]
     db.rollback()
+    if "_registry_prior" in ctx:
+        restore_registry_state(db, ctx["_registry_prior"])
     db.execute(text("SET LOCAL session_replication_role = replica"))
     db.execute(text("""
         DELETE FROM payroll_result WHERE payroll_run_id IN (
@@ -218,7 +245,7 @@ def test_retry_uses_frozen_statutory_snapshot_not_intervening_live_rule():
     effective_from that the OLD (pre-fix) retry logic would have selected.
     Retry must use rule A — the frozen snapshot content — not rule B.
     """
-    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"), statutory_effective_from="2026-05-01")
+    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"), statutory_effective_from="2026-05-18")
     statutory_rule_b_id = uuid.uuid4()
     try:
         db = ctx["db"]
@@ -236,7 +263,7 @@ def test_retry_uses_frozen_statutory_snapshot_not_intervening_live_rule():
                 (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
             VALUES (:id, 'NATIONAL', 9701,
                     '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}',
-                    'NG', '2026-05-15')
+                    'NG', '2026-05-25')
         """), {"id": statutory_rule_b_id})
         db.execute(text("""
             INSERT INTO tax_band (tax_band_id, statutory_rule_id, lower_limit, upper_limit, rate)
@@ -321,8 +348,8 @@ def test_retry_hard_fails_on_legacy_v1_statutory_snapshot():
             VALUES (:id, :wid, 'STANDARD', 'STANDARD', :components)
         """), {"id": sal_def_id, "wid": workspace_id, "components": Json({"BASIC": {"amount": 500_000}})})
         db.execute(text("""
-            INSERT INTO employee (employee_id, workspace_id, full_name, status)
-            VALUES (:eid, :wid, 'LegacySnap Employee', 'ACTIVE')
+            INSERT INTO employee (employee_id, workspace_id, employee_number, full_name, status)
+            VALUES (:eid, :wid, 'LSNAP001', 'LegacySnap Employee', 'ACTIVE')
         """), {"eid": employee_id, "wid": workspace_id})
         db.execute(text("""
             INSERT INTO employee_contract (contract_id, employee_id, salary_definition_id, start_date)
@@ -429,7 +456,7 @@ def test_v2_retry_issues_no_live_statutory_rule_or_tax_band_query():
     Spies on every SQL statement executed during a valid v2 retry and
     asserts none of them target the live statutory_rule/tax_band tables.
     """
-    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"))
+    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"), statutory_effective_from="2026-05-19")
     try:
         db = ctx["db"]
         payroll_run_id = ctx["payroll_run_id"]
@@ -582,7 +609,7 @@ def test_successful_snapshot_creation_still_calculates_normally():
     results exactly as before — the 05-001 fix only changes the failure
     path.
     """
-    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"))
+    ctx = _setup_partial_run(rule_a_rate=Decimal("0.10"), statutory_effective_from="2026-05-21")
     try:
         db = ctx["db"]
         payroll_run_id = ctx["payroll_run_id"]

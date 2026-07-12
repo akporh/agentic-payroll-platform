@@ -34,6 +34,7 @@ from sqlalchemy import text
 from backend.api.main import app
 from backend.infra.db.session import SessionLocal
 from backend.infra.db.models import Account, Workspace
+from tests.registry_state import pin_registry_state, restore_registry_state
 
 client = TestClient(app)
 
@@ -76,6 +77,12 @@ def test_full_payroll_pipeline_e2e():
     component_metadata_id = uuid.uuid4()
 
     db = SessionLocal()
+    # The worked example above assumes neither NHF nor rent relief deducts —
+    # declare that registry state rather than assume it (fresh migrated DBs
+    # ship both components active).
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
 
     try:
         # -------------------------------------------------------------------
@@ -105,7 +112,7 @@ def test_full_payroll_pipeline_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9999, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-02-01')
+                VALUES (:id, 'NATIONAL', 9999, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-05-10')
             """),
             {"id": statutory_rule_id},
         )
@@ -471,6 +478,8 @@ def test_full_payroll_pipeline_e2e():
         assert float(gross_comp["TRANSPORT"]["amount"]) == float(TRANSPORT)
 
     finally:
+        db.rollback()
+        restore_registry_state(db, registry_prior)
         # -------------------------------------------------------------------
         # Cleanup — delete in reverse FK dependency order.
         # Each statement scoped to the workspace or IDs created above so that

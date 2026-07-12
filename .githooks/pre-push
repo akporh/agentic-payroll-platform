@@ -1,0 +1,33 @@
+#!/bin/sh
+# Pre-push gate: backend suite + frontend typecheck.
+# Installed via: git config core.hooksPath .githooks
+# Bypass in an emergency with: git push --no-verify
+
+set -e
+
+# Hooks run in a minimal shell without the user profile: Homebrew/user bins
+# are missing from PATH, and the bare system python3 has no pytest. Prepend
+# the common install locations, then pick the first interpreter that can
+# actually import pytest.
+PATH="/opt/homebrew/bin:/opt/homebrew/opt/python@3.10/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+export PATH
+
+PY=""
+for cand in python3.10 python3 python; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -m pytest --version >/dev/null 2>&1; then
+    PY="$cand"
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "pre-push: no python interpreter with pytest found on PATH" >&2
+  exit 1
+fi
+
+echo "pre-push: running backend test suite..."
+"$PY" -m pytest -q --tb=short
+
+echo "pre-push: running frontend typecheck..."
+cd frontend && npx tsc --noEmit
+
+echo "pre-push: all checks passed."

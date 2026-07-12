@@ -471,3 +471,81 @@ def test_db_constraints_mismatch_requires_unequal_totals():
     finally:
         db.rollback()
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# T4.4 — RESOLVED invariant (RC5 lesson)
+#
+# INVARIANT PROTECTED:
+#   status = 'MATCHED'  ⇒ actual_total == expected_total — always.
+#   status = 'RESOLVED' ⇒ operator closed a MISMATCH — totals MAY differ.
+#   Operator resolution must move MISMATCH → RESOLVED, never back to MATCHED
+#   (overloading MATCHED to include operator-resolved mismatches was the RC5
+#   data-contract break). Only MISMATCH records are resolvable.
+# ---------------------------------------------------------------------------
+
+def test_resolve_mismatch_sets_resolved_not_matched():
+    account_id            = uuid.uuid4()
+    workspace_id          = uuid.uuid4()
+    statutory_rule_id     = uuid.uuid4()
+    component_metadata_id = uuid.uuid4()
+
+    db = SessionLocal()
+    try:
+        _create_prerequisites(db, account_id, workspace_id,
+                               statutory_rule_id, component_metadata_id, 9056)
+        run_id = _onboard_and_run(workspace_id)
+        client.post(f"/api/v1/payroll/run/{run_id}/approve")
+        client.post(f"/api/v1/payroll/run/{run_id}/lock")
+
+        engine_net = db.execute(
+            text("SELECT total_net_pay FROM payroll_run WHERE payroll_run_id = :rid"),
+            {"rid": run_id},
+        ).scalar()
+        wrong_amount = float(engine_net) + 1000.00
+
+        resp = client.post(
+            f"/api/v1/payroll/run/{run_id}/reconcile",
+            json={"actual_total": wrong_amount},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["reconciliation"]["status"] == "MISMATCH"
+
+        # Operator resolves the mismatch via the workspace-scoped PATCH.
+        resolve_resp = client.patch(
+            f"/api/v1/{workspace_id}/payroll/runs/{run_id}/reconciliation",
+            json={"notes": "Bank charged a transfer fee", "resolved_by": "ops@test"},
+        )
+        assert resolve_resp.status_code == 200, resolve_resp.text
+        record = resolve_resp.json()
+
+        assert record["status"] == "RESOLVED", (
+            f"Operator resolution must produce RESOLVED, never MATCHED: {record}"
+        )
+        assert record["resolved_by"] == "ops@test"
+        assert record["resolved_at"] is not None
+        assert record["notes"] == "Bank charged a transfer fee"
+
+        # Totals still differ — RESOLVED is the only status where that's legal.
+        row = db.execute(
+            text("""
+                SELECT status, expected_total, actual_total
+                FROM payroll_reconciliation
+                WHERE payroll_run_id = :rid
+            """),
+            {"rid": run_id},
+        ).fetchone()
+        assert row[0] == "RESOLVED"
+        assert row[1] != row[2], "RESOLVED must preserve the differing totals"
+
+        # A RESOLVED record cannot be resolved again (only MISMATCH can).
+        second = client.patch(
+            f"/api/v1/{workspace_id}/payroll/runs/{run_id}/reconciliation",
+            json={"notes": "again", "resolved_by": "ops@test"},
+        )
+        assert second.status_code == 400, (
+            f"Re-resolving a RESOLVED record must fail: {second.status_code} {second.text}"
+        )
+
+    finally:
+        _cleanup(db, workspace_id, statutory_rule_id, component_metadata_id, account_id)

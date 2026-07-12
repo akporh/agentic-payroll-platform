@@ -44,6 +44,7 @@ from sqlalchemy import text
 
 from backend.api.main import app
 from backend.infra.db.models import Account, Workspace
+from tests.registry_state import pin_registry_state, restore_registry_state
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -93,6 +94,11 @@ def test_partial_payroll_run_e2e():
     employee_b_id         = uuid.uuid4()
 
     db = SessionLocal()
+    # Expected amounts assume neither NHF nor rent relief deducts — declare
+    # that registry state rather than assume it (fresh migrated DBs ship both active).
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
 
     try:
         # -------------------------------------------------------------------
@@ -121,7 +127,7 @@ def test_partial_payroll_run_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9998, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-03-01')
+                VALUES (:id, 'NATIONAL', 9998, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-05-11')
             """),
             {"id": statutory_rule_id},
         )
@@ -255,8 +261,8 @@ def test_partial_payroll_run_e2e():
 
         db.execute(
             text("""
-                INSERT INTO employee (employee_id, workspace_id, full_name, status)
-                VALUES (:eid, :wid, 'Broken Employee', 'ACTIVE')
+                INSERT INTO employee (employee_id, workspace_id, employee_number, full_name, status)
+                VALUES (:eid, :wid, 'EMPBROKEN2', 'Broken Employee', 'ACTIVE')
             """),
             {"eid": employee_b_id, "wid": workspace_id},
         )
@@ -306,30 +312,48 @@ def test_partial_payroll_run_e2e():
             f"Payroll HTTP status: {payroll_resp.status_code}\n{payroll_resp.text}"
         )
         payroll_body = payroll_resp.json()
-        assert payroll_body["status"] == "success", (
-            f"Payroll run failed: {payroll_body}"
+        # Async contract: run trigger returns DRAFT immediately; calculation
+        # runs in a BackgroundTask that TestClient completes before returning.
+        assert payroll_body["status"] == "DRAFT", (
+            f"Unexpected run-trigger response: {payroll_body}"
         )
 
         payroll_run_id = payroll_body["payroll_run_id"]
         assert payroll_run_id is not None
 
         # -------------------------------------------------------------------
-        # STEP 7 — Validate summary counts
+        # STEP 7 — Validate persisted counts and totals
+        #
+        # The per-run summary is no longer in the HTTP response — verify from
+        # persisted state instead.
         # -------------------------------------------------------------------
-        summary = payroll_body["summary"]
-        assert summary["success_count"] == 1, (
-            f"Expected 1 success, got: {summary}"
-        )
-        assert summary["failure_count"] == 1, (
-            f"Expected 1 failure, got: {summary}"
-        )
+        counts = db.execute(
+            text("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'SUCCESS'),
+                    COUNT(*) FILTER (WHERE status <> 'SUCCESS')
+                FROM payroll_result
+                WHERE payroll_run_id = :run_id
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+        assert counts[0] == 1, f"Expected 1 success result, got: {counts}"
+        assert counts[1] == 1, f"Expected 1 failed result, got: {counts}"
 
         # Totals reflect only the successful employee
-        assert float(summary["total_gross_pay"]) == float(GROSS), (
-            f"total_gross_pay mismatch: {summary}"
+        totals = db.execute(
+            text("""
+                SELECT total_gross_pay, total_net_pay
+                FROM payroll_run
+                WHERE payroll_run_id = :run_id
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+        assert float(totals[0]) == float(GROSS), (
+            f"total_gross_pay mismatch: {totals}"
         )
-        assert float(summary["total_net_pay"]) == float(EXPECTED_NET), (
-            f"total_net_pay mismatch: {summary}"
+        assert float(totals[1]) == float(EXPECTED_NET), (
+            f"total_net_pay mismatch: {totals}"
         )
 
         # -------------------------------------------------------------------
@@ -397,6 +421,8 @@ def test_partial_payroll_run_e2e():
         )
 
     finally:
+        db.rollback()
+        restore_registry_state(db, registry_prior)
         # -------------------------------------------------------------------
         # Cleanup — delete in reverse FK dependency order.
         # Each statement is scoped to this test's workspace/IDs only.
