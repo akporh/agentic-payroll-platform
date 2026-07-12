@@ -6,14 +6,31 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 03 (configuration integrity) has produced its
-configuration catalogue, precedence map, duplicate-representation and
-dead-configuration registers, and `findings.md` (03-001–03-005) but is
-**not yet marked complete** — awaiting explicit review/approval, same
-pattern as Stage 02. Flagship finding: 03-002 (retry re-resolves the
-statutory rule/tax bands live instead of reading the frozen snapshot —
-plausible silent original-run/retry divergence risk). Seven human
-decisions remain pending — see below.
+**Next action:** Stage 03 (configuration integrity) closed 2026-07-12.
+Review and open Stage 04 (original-run and retry parity). Stage 04 has
+not been started — its primary input is finding 03-002 (retry re-resolves
+the statutory rule/tax bands live instead of reading the frozen snapshot),
+which Stage 04 must attempt to reproduce with a controlled non-production
+test before it can move past `plausible`.
+
+## Stage 03 handoff summary
+
+- **03-002** is the primary Stage 04 input — Stage 04 should reproduce the
+  statutory-rule original-run/retry divergence using controlled
+  non-production execution (insert a test `statutory_rule` row with an
+  intervening `effective_from`, run, retry, compare). Status remains
+  `plausible` until reproduced.
+- **03-003** (dead `employee_contract_snapshot.components_jsonb` column)
+  passes to Stage 05 (snapshot integrity — is the snapshot itself complete
+  and correct independent of consumption?) and Stage 12 (simplification —
+  removal candidate).
+- **03-004** (statutory-deduction components can be disabled per workspace;
+  D-ARCH-2 guard present but explicitly unenforced) passes to Stage 08
+  (data integrity — any live workspace currently doing this?) and Stage 09
+  (security/tenant isolation).
+- UI coverage gaps, including `pay_cycle.definition_json` (not traced to a
+  specific UI control in Stage 03), pass to Stage 06 (UI/API/backend
+  wiring).
 
 ## Stage status
 
@@ -21,7 +38,7 @@ decisions remain pending — see below.
 |---|---|---|---|---|---|
 | 01 | System inventory | complete | 2026-07-11 | 2026-07-11 | — |
 | 02 | Execution trace & diagnostic-script baseline | complete | 2026-07-11 | 2026-07-12 | — |
-| 03 | Configuration integrity | in-progress | 2026-07-12 | — | — |
+| 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 04 | Original-run and retry parity | not-created | — | — | — |
 | 05 | Snapshot integrity | not-created | — | — | — |
 | 06 | UI/API/backend wiring | not-created | — | — | — |
