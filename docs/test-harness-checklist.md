@@ -57,7 +57,7 @@ says "Sets status to MATCHED" but the SQL correctly sets RESOLVED — stale pre-
 - [ ] Each test comments the invariant it protects
 - [ ] `/auditor` pass on statutory-calculation tests
 
-## 5. Automation
+## 5. Automation ✅
 
 - [x] Decision: both — pre-push hook (fast local gate) + GitHub Actions (safety net)
 - [x] Suite made **environment-independent**: fresh-DB validation exposed 10 tests
@@ -71,7 +71,15 @@ says "Sets status to MATCHED" but the SQL correctly sets RESOLVED — stale pre-
       typecheck job (`npm ci` + `tsc --noEmit`)
 - [x] `.githooks/pre-push` — pytest + tsc before every push
       (`git config core.hooksPath .githooks`; bypass with `--no-verify`)
-- [ ] Verify live: push triggers the Action and it goes green
+- [x] Verified live (2026-07-12): pre-push hook ran the full gate locally
+      (306 passed + tsc) before the push; the push triggered GitHub Actions run
+      #29204759931 — both jobs green (backend 39s, frontend 19s)
+
+## 5a. Automation ✅ — summary
+
+The harness is live: every push to uat/main now runs the full suite twice —
+once locally before the push leaves the machine, once in CI against a fresh
+migrated database. A regression cannot reach the remote silently.
 
 ### Follow-up (added by decision 2026-07-12)
 
@@ -82,8 +90,13 @@ says "Sets status to MATCHED" but the SQL correctly sets RESOLVED — stale pre-
       CRA + TOTAL_DEDUCTIONS rows, missing `employee_number` NOT NULL, missing
       2026-05-01 statutory seed row). Production state unknown — read-only check.
 
-## 6. Documentation & workflow
+## 6. Documentation & workflow ✅
 
-- [ ] "Test Harness" section added to `agentic-payroll-platform/CLAUDE.md`
-- [ ] `/tester` skill checklist updated: suite must be green before sprint close
-- [ ] Rule adopted: every bug fix ships with a regression test
+- [x] "Test Harness" section added to `agentic-payroll-platform/CLAUDE.md` (run command, gates, fixture rules for new e2e tests)
+- [x] `/tester` skill checklist updated (user-home SKILL.md): full suite green required before sprint close, environment-independence rules for new fixtures, CI-red = sprint not closed
+- [x] Rule adopted (in both CLAUDE.md and /tester): every bug fix ships with a regression test named for the invariant it protects
+- [x] `docs/ROADMAP.md` Known Test Failures table updated: TF-3–TF-7 marked resolved (2026-07-12), suite-green banner added
+
+---
+
+**Workstream complete** except the two parked follow-ups: T4.5 (frontend `grade_code` rule — needs a frontend-harness decision) and the production drift investigation (compare Neon against migration truth before uat→main).
