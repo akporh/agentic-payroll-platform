@@ -31,22 +31,34 @@ memory `feedback_terse_audit_reporting`.
 
 ## Log
 
-| Stage | Style | Report chars | Est. tokens (÷4) | Notes |
+| Report | Style | Report chars | Est. tokens (÷4) | Notes |
 |---|---|---|---|---|
-| 02 | old (full recap) | 3,870 | ~968 | Baseline — measured retroactively from the actual message text |
-| 03 | old (full recap) | 5,382 | ~1,346 | Baseline — measured retroactively from the actual message text |
-| 04 | — | — | — | First stage under the new terse format — to be filled in on close |
+| Stage 02 close | old (full recap) | 3,870 | ~968 | Baseline — measured retroactively from the actual message text |
+| Stage 03 in-progress report | old (full recap) | 5,382 | ~1,346 | Baseline — measured retroactively from the actual message text |
+| Stage 03 close-out (Casper prompt execution) | new (terse) | 240 | ~60 | First report under the new format — status/file/commit/next-stage only, no findings recap |
+| Stage 04 | — | — | — | To be filled in on close |
 
-**Old-style baseline (Stages 02–03 average):** ~1,157 tokens per stage closing report.
+**Old-style baseline (2 measured reports):** ~1,157 tokens per report.
+**New-style (1 measured report):** ~60 tokens.
+**Per-report saving so far:** ~1,097 tokens (~95% reduction), based on one
+new-style sample — treat as directional until more Stage 04+ reports land,
+since a single sample is not a reliable average.
 
 ## Running totals
 
-- Stages measured under old style: 2 (Stages 02, 03)
+- Reports measured under old style: 2
 - Total old-style tokens (measured): ~2,314
-- Total new-style tokens (from Stage 04 on): _pending_
-- Estimated cumulative savings: _pending — will be computed as
-  `(old-style average × stages remaining) − (actual new-style total)`
-  once Stage 04+ figures are in._
+- Reports measured under new style: 1
+- Total new-style tokens (measured): ~60
+- Estimated cumulative savings so far: ~1,097 tokens (one report only)
+- Full-programme estimate: if every remaining stage (04–13, 10 stages ×
+  2 reports each — in-progress + close, per the two formats in
+  `feedback_terse_audit_reporting`) had instead used the old style, the
+  programme would have spent roughly 10 × 2 × 1,157 ≈ 23,140 tokens on
+  closing reports alone; at the new style's ~60–150 tokens per report
+  (~100 avg estimate) that's ≈ 2,000 tokens — a projected saving on the
+  order of 21,000 tokens by the end of the programme. This projection will
+  be replaced with actual measured figures as each stage closes.
 
 Update this table at the end of every stage: append a row with the new
 report's character count and token estimate, then recompute the running
