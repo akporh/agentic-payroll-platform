@@ -6,20 +6,22 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 06 closed 2026-07-12. Open **Stage 07 — Silent
-failures and observability** (not started). Headline Stage 06 result: the
-`05-001` remediation (payroll_run `FAILED` status + `error_message`)
-reached the backend/API correctly but was never surfaced in the
-frontend — the `PayrollRunStatus` type, `StatusBadge`, and `ActionPanel`
-were not updated, so a `FAILED` run shows a generic-gray badge and a blank
-action panel (06-001, 06-004, both confirmed, carried to Stage 13).
-`RunPayroll.tsx` also offers a `FULL_RUN` retry-strategy option the
-backend always rejects (06-003, confirmed, Stage 13). `pay_cycle.
-definition_json` confirmed write-once-then-unreachable (06-002, Stage
-08/13). `06-006` (timesheet per-employee audit endpoint) resolved at close
-review as a missing UI feature, not intentionally API-only — carried to
-Stage 13. `04-001`/`05-001` remain remediated (not reopened); `05-004`
-deferred to Stage 13; `04-002` open for Stages 07/10.
+**Next action:** Stage 07 (silent failures and observability) has produced
+`findings.md` (07-001–07-005) but is **not yet marked complete** —
+awaiting explicit review. Headline result: **07-001** — a systemic,
+confirmed violation of `CLAUDE.md`'s own standing "never return `str(e)`"
+rule, 21 occurrences across `payroll.py`/`workspace.py` (S1, the largest
+recurrence of this already-twice-documented defect class). Also confirmed:
+07-002 (reconciliation transitions write no `audit_log`/`event_store`
+entry), 07-003 (background-task outer exception handler still silent
+outside the 05-001-remediated snapshot step), 07-004 (stray `print()` in
+`paye.py`). Produced bounded recommendations for `04-002` (reusing Stage
+05 §10 unchanged) and `02-002` (full parity assessment; intended
+trace-parity level for retry is undocumented — human decision required,
+07-005). Formally mapped `06-001`/`06-004`'s signal path end to end,
+confirming observability stops exactly at the frontend type boundary and
+that `04-001`/`05-001` remain sound. `04-001`/`05-001` remain remediated
+(not reopened); `05-004` deferred to Stage 13; `04-002` open for Stage 10.
 
 ## Stage 06 handoff summary
 
@@ -164,7 +166,7 @@ deferred to Stage 13; `04-002` open for Stages 07/10.
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
 | 05 | Snapshot integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
-| 07 | Silent failures and observability | not-created | — | — | — |
+| 07 | Silent failures and observability | in-progress | 2026-07-12 | — | — |
 | 08 | Data integrity | not-created | — | — | — |
 | 09 | Security and tenant isolation | not-created | — | — | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
@@ -174,7 +176,7 @@ deferred to Stage 13; `04-002` open for Stages 07/10.
 
 ## Open human decisions
 
-Five genuinely open (no decision made yet); the rest below are resolved,
+Seven genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
@@ -185,6 +187,8 @@ several this session — see [`_core/human-decisions.md`](_core/human-decisions.
 - Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003) — effectively resolved via 05-002: no, confirmed safe to remove in Stage 12
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
 - ~~Is `timesheet/audit/{employee_id}` intentionally operator/API-only, or a missing UI feature?~~ — **resolved 2026-07-12**: missing UI feature, backend route retained, carried to Stage 13.
+- Should the systemic `str(e)`-leak pattern (07-001) be a dedicated priority fix, flow through Stage 13 normally, or bundle with Stage 09's security review? (finding 07-001)
+- What is the intended `execution_trace` parity level for retry (full, a defined subset, or none)? (finding 07-005 — blocks Stage 10's 02-002 design)
 - ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; remediation specification approved, ahead of Stage 13, before any live payroll processing or production release.
 - ~~Should 05-001/05-004 be bundled with the 04-001 sprint?~~ — **resolved 2026-07-12**: 05-001 bundled in; 05-004 deferred to Stage 13 (immutability of the run must be preserved/strengthened, never weakened, by whatever the sprint touches).
 

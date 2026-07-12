@@ -1,0 +1,56 @@
+=== deliberate, documented silent failures (intentional, per their own docstrings) ===
+1. execution_trace_repo.py:39-41 save_trace_step()
+def save_trace_step(
+    *,
+    run_id: str,
+    step_name: str,
+    status: str,
+    duration_ms: int | None,
+    error_message: str | None = None,
+) -> None:
+    """Insert one execution_trace row.  Silently swallows all errors so
+    that a trace write failure never interrupts the payroll run."""
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("""
+                INSERT INTO execution_trace
+                    (run_id, step_name, status, duration_ms, error_message)
+                VALUES
+                    (:run_id, :step_name, :status, :duration_ms, :error_message)
+            """),
+            {
+                "run_id":        run_id,
+                "step_name":     step_name,
+                "status":        status,
+                "duration_ms":   duration_ms,
+                "error_message": error_message,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+2. execution_tracer.py:74-93 ExecutionTracer._persist()
+    def _persist(
+        self,
+        step_name: str,
+        status: str,
+        duration_ms: int,
+        error_message: str | None,
+    ) -> None:
+        """Write one trace row to the DB.  Never raises — a DB failure
+        must never interrupt the payroll run."""
+        try:
+            from backend.infra.repositories.execution_trace_repo import save_trace_step
+            save_trace_step(
+                run_id=self.run_id,
+                step_name=step_name,
+                status=status,
+                duration_ms=duration_ms,
+                error_message=error_message,
+            )
+        except Exception:
+            pass
