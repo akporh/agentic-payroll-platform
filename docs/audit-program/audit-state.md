@@ -6,32 +6,30 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 09 opened 2026-07-12, in-progress, awaiting human
-review. Headline Stage 09 result: **`09-000` confirmed S0 — no
-authentication mechanism exists anywhere in the application.** No route,
-including payroll approval/lock/pay and the `/admin*` operator dashboards,
-has any auth dependency; `workspace_id` is a plain client-supplied string,
-not a verified claim. This reframes nearly every other finding this stage.
-Also confirmed: `09-001` (S0, `GET /workspaces` enumerates every tenant
-unauthenticated — the practical enabler of the rest), `09-002` (S0,
-extends/finalizes `06-007` — retry/approve/lock/pay/legacy-reconcile take
-no `workspace_id` at all and the service layer never verifies tenant
-ownership), `09-004`/`09-005` (S1, nominally-scoped reconciliation and
-timeline routes accept `workspace_id` in the path but never use it),
-`09-006` (S1, legacy-executor-stats route returns global cross-tenant data
-regardless of `workspace_id`), `09-007` (S1, unauthenticated admin
-dashboards at predictable paths), `09-008` (S2, CSV/formula injection risk
-in payroll exports). `07-001`'s 21 sites classified: 10 structurally
-disclosure-capable (broad `except Exception` wrapping writes), 11
-currently safe (developer-controlled `ValueError`/custom exceptions).
-`06-007` given final classification: insecure/tenant-bypass risk, not
-secure-but-obsolete. No new cross-workspace relational-schema defect found
-beyond Stage 08's existing register. Two new human decisions raised:
-whether app-level auth is out of scope by design (e.g. network-level
-control assumed) or an unrecognized gap, and what the intended role model
-is. Stage 09 is **not self-closed** — awaiting Michael's review.
+**Next action:** Stage 09 closed 2026-07-12. Open **Stage 10 — Execution-trace
+remediation design** (not started). Headline Stage 09 result: **`09-000`
+confirmed S0 — no authentication mechanism exists anywhere in the
+application**, and resolved at close as an **unrecognized S0 production
+blocker** (not intentional network-only architecture) — application-level
+authentication and authorization are mandatory before any live/production
+use. Intended tenancy/role model also resolved at close: one bureau
+account manages multiple client workspaces via explicit membership, with
+five minimum roles (platform administrator, bureau administrator, payroll
+operator, payroll approver, read-only auditor/viewer); direct client
+self-service users deferred but the model must remain extensible to them.
+`09-000`, `09-001`, and `09-002` are recorded as S0 production blockers for
+Stage 13. `09-004`, `09-005`, `09-006`, `09-007`, and `07-001` carry to
+Stage 13; `09-005` additionally carries into Stage 10's trace-route design;
+`09-008` carries to Stages 11/13; `06-007` (finalized: insecure/
+tenant-bypass risk) carries to Stages 12/13. `03-004` remains open,
+unchanged. Stage 13 must sequence security remediation as a 9-step
+programme (auth/membership → RBAC → mandatory ownership checks → route
+cleanup → admin/diagnostic restriction → exception sanitization → audit
+events → CSV-injection fix → regression scenarios) — see findings.md for
+the full sequence; individual tenant predicates on some routes do not by
+themselves authorize production/live-data use.
 
-## Stage 09 handoff summary (in-progress, awaiting review)
+## Stage 09 handoff summary (complete)
 
 - **`09-000` (confirmed, S0).** No authentication mechanism anywhere in
   `backend/` or `frontend/`: no token/session, no `current_user`, no auth
@@ -73,10 +71,16 @@ is. Stage 09 is **not self-closed** — awaiting Michael's review.
 - **§14 cross-workspace relational consistency — rejected.** No new
   schema/FK-level cross-workspace defect found; the operative risk this
   stage is uniformly at the route/service layer, not the data model.
-- **New human decisions raised:** (1) is app-level authentication out of
-  scope by design, or an unrecognized gap that must close before
-  production/live-data use; (2) what is the intended role model.
-- **Stage 09 is NOT closed.** Awaiting Michael's review before closure.
+- **Human decisions — resolved at close.** (1) `09-000` is an unrecognized
+  S0 production blocker; app-level authentication and server-side
+  authorization are mandatory before any live/production-data use; network
+  controls remain defence-in-depth only. (2) Intended model: one bureau
+  account manages multiple client workspaces via explicit membership;
+  minimum roles are platform administrator, bureau administrator, payroll
+  operator, payroll approver, and read-only auditor/viewer; direct
+  client-workspace users are deferred but the model must remain extensible
+  to them.
+- **Stage 09 is complete**, closed 2026-07-12.
 
 ## Stage 08 handoff summary
 
@@ -293,7 +297,7 @@ is. Stage 09 is **not self-closed** — awaiting Michael's review.
 | 06 | UI/API/backend wiring | complete | 2026-07-12 | 2026-07-12 | — |
 | 07 | Silent failures and observability | complete | 2026-07-12 | 2026-07-12 | — |
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
-| 09 | Security and tenant isolation | in-progress | 2026-07-12 | — | awaiting human review |
+| 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | not-created | — | — | — |
 | 11 | Scenario testing | not-created | — | — | — |
 | 12 | Code simplification | not-created | — | — | — |
@@ -301,10 +305,10 @@ is. Stage 09 is **not self-closed** — awaiting Michael's review.
 
 ## Open human decisions
 
-Seven genuinely open (no decision made yet); the rest below are resolved,
+Five genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
-- Is application-level authentication out of scope by design (e.g. network-level access control assumed to exist outside this repository), or is `09-000` an unrecognized gap that must close before production/live-data use? (finding 09-000)
-- What is the intended role model — single bureau operator, multiple workspace-scoped client users, or something else? (finding 09-000/10)
+- ~~Is application-level authentication out of scope by design, or an unrecognized gap?~~ — **resolved 2026-07-12 (as 09-000)**: unrecognized S0 production blocker; app-level auth/authorization mandatory before any live/production-data use.
+- ~~What is the intended role model?~~ — **resolved 2026-07-12**: one bureau account manages multiple client workspaces via explicit membership; five minimum roles (platform admin, bureau admin, payroll operator, payroll approver, read-only auditor/viewer); direct client users deferred but the model must remain extensible.
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative

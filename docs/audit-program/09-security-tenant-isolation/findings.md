@@ -1,7 +1,8 @@
 # Stage 09 — Security and Tenant Isolation: Findings
 
-**Status:** in-progress, awaiting review
+**Status:** complete
 **Opened:** 2026-07-12
+**Closed:** 2026-07-12
 **Evidence:** `docs/audit-program/09-security-tenant-isolation/evidence/01-auth-and-tenant-scoping.txt`
 
 ---
@@ -290,9 +291,73 @@ Stage 08 found no schema-permitted cross-workspace referential defect in its tar
 - **Stage 12** (code simplification): the "path declares `workspace_id`, handler ignores it" pattern (`09-004`/`09-005`/`09-006`) is exactly the kind of latent defect a simplification/consistency pass should catch by convention (e.g. a lint rule or code-review checklist item: every `{workspace_id}` path param must be threaded into the query), independent of whether authentication (`09-000`) is fixed first.
 - **Stage 13** (consolidated backlog): `09-000` (no authentication) is the dominant, backlog-topping item — nearly every other finding in this audit programme's tenant-isolation dimension is downstream of it. `07-001`'s Group A (10 sites) should be prioritized for the `str(e)` fix ahead of Groups B/C. `09-008` (CSV injection) is a low-cost, independent fix candidate. The still-open `03-004` product-policy decision and `09-007`'s admin-dashboard reachability both need input from Michael that is outside this repository's visibility (deployment/infra facts, and the intended access-control model going forward).
 
-## Human decisions required (new this stage)
+## Human decisions — resolved at Stage 09 close (2026-07-12)
 
-1. **Is application-level authentication currently out of scope by design** (e.g., because network-level access control exists outside this repository), **or is `09-000` an unrecognized gap that must be closed before any production/live-data use?** This determines whether every other finding in this stage is "defense-in-depth missing" or "the only defense missing."
-2. **What is the intended role model, if any** (single bureau operator vs. multiple workspace-scoped client users vs. something else)? `CLAUDE.md`'s "workspace scoping enforced at the query level" rule implies a multi-tenant intent; nothing in this codebase currently implements the "who is asking" half of that sentence.
+### Decision 1 — application authentication
 
-These are logged to `_core/human-decisions.md` and `audit-state.md`'s open-decisions list.
+`09-000` is confirmed an **unrecognized S0 production blocker**, not an intentionally accepted network-only architecture.
+
+- Application-level authentication and server-side authorization are mandatory before any live or production-data use.
+- Network, VPN, reverse-proxy, firewall, or private-subnet controls may be retained as defence in depth, but they do not replace application identity, membership, and authorization checks.
+- Development environments may support an explicit, disabled-by-default local bypass, but production must fail closed when authentication configuration is absent.
+
+### Decision 2 — tenancy and role model
+
+The intended operating model:
+
+- one **bureau account** can manage multiple client **workspaces**;
+- every user is authenticated and belongs to an account;
+- access to workspaces is explicit through membership, not inferred from a caller-supplied UUID;
+- the current product scope is bureau-operated, not direct client self-service;
+- the model must remain extensible to workspace-scoped client users later without redesigning tenancy.
+
+Minimum roles for backlog/design purposes:
+
+1. **Platform administrator** — platform-wide operational administration; not an ordinary payroll user.
+2. **Bureau administrator** — account/workspace membership, configuration, and user administration across permitted workspaces.
+3. **Payroll operator** — employee/input maintenance, run creation, retry, reconciliation preparation, and exports for assigned workspaces.
+4. **Payroll approver** — approve, lock, resolve reconciliation where permitted, and authorize payment-state transitions; separation from preparation should be supported.
+5. **Read-only auditor/viewer** — results, traces, audit history, and reports without mutations.
+
+A single person may hold multiple roles in the initial client deployment, but the system must enforce permissions as roles rather than hard-code a single-operator assumption. Direct client-workspace users are out of the current MVP scope, but future membership must be constrainable to one or more explicit workspaces.
+
+Both decisions are also recorded in `_core/human-decisions.md`, marked resolved.
+
+---
+
+## Stage 09 close — final review conclusions and remediation-sequencing handoff
+
+All findings raised during the initial investigation are reaffirmed at closure, with no severity or status changes:
+
+- `09-000` confirmed S0 — no application authentication or caller identity exists.
+- `09-001` confirmed S0 — unauthenticated `GET /workspaces` enumerates all tenants and enables downstream attacks.
+- `09-002` confirmed S0 — retry, approve, lock, pay, and legacy reconcile use a global `run_id` with no caller/workspace authorization.
+- `09-004` confirmed S1 — scoped reconciliation routes accept but discard `workspace_id`.
+- `09-005` confirmed S1 — timeline/trace accepts but discards `workspace_id`.
+- `09-006` confirmed S1 — legacy executor stats returns global cross-workspace data.
+- `09-007` confirmed S1 — predictable admin dashboards are unauthenticated; infrastructure reachability may affect real-world exposure but not the code-level finding.
+- `09-008` confirmed S2 — employee-controlled text reaches CSV exports without spreadsheet-formula sanitization.
+- `06-007` finalized: **insecure/tenant-bypass risk**, a Stage 12 removal candidate once secure replacement paths exist.
+- `07-001` remains S1: 10 of 21 sites structurally capable of raw DB/schema disclosure (Group A); 11 currently catch only controlled developer-authored exceptions (Groups B+C).
+- Positive controls reaffirmed: no committed secrets; correctly scoped employee-record and export guards (`employee_repo`, `_guard_locked_or_paid`).
+- `03-004` remains an open product-policy decision, unchanged by this stage — Stage 09 confirms only that currently anyone reaching the API can modify the statutory-component control, and that no role model or audit trail protects it.
+
+### Required backlog/design handoff (Stage 13, sequenced)
+
+Stage 13 must treat security remediation as a sequenced programme, not isolated route patches:
+
+1. Introduce authentication and account/workspace membership.
+2. Introduce centralized authorization dependencies/policies and the role model above.
+3. Make workspace ownership checks mandatory for every child resource and lifecycle operation.
+4. Replace or remove unscoped/decoratively scoped routes.
+5. Restrict `/admin*` and diagnostics to platform-admin/operator roles and deployment controls.
+6. Sanitize Group A raw exceptions and log full details server-side.
+7. Add security audit events for privileged changes and lifecycle transitions.
+8. Add CSV-injection protection.
+9. Add regression scenarios for cross-workspace enumeration, reads, mutations, exports, and lifecycle transitions.
+
+Do not authorize production/live-data use merely because individual tenant predicates exist on some routes. The platform remains unsafe until caller identity, membership, and authorization are enforced consistently.
+
+### Handoff to Stage 10 (updated at close)
+
+Stage 10 (execution-trace remediation design) must additionally treat `09-005` as a required input: any redesigned trace-read route must include a real `workspace_id` ownership check as part of its design, not merely carry the parameter forward decoratively.
