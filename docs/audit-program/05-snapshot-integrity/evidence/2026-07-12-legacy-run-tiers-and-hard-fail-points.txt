@@ -1,0 +1,66 @@
+=== validate_snapshot_complete: hard-fail if employee_contract_snapshot or component_metadata_snapshot is empty for the run — called only during retry, not during the original run ===
+def validate_snapshot_complete(db, payroll_run_id: str) -> None:
+    """Raise ValueError if snapshot is absent or incomplete.
+
+    D6: callers must hard-fail (raise), not silently skip, when this raises.
+    Called in _build_shared_context() before any retry calculation begins.
+
+    Checks employee_contract_snapshot and component_metadata_snapshot only.
+    client_component_metadata_snapshot is intentionally excluded: a workspace
+    with zero component overrides is valid, so an empty override table is not
+    an error signal.
+    """
+    from sqlalchemy import text
+    row = db.execute(
+        text("""
+            SELECT
+                COUNT(*) FILTER (WHERE src = 'emp')  AS emp_count,
+                COUNT(*) FILTER (WHERE src = 'comp') AS comp_count
+            FROM (
+                SELECT 'emp'  AS src FROM employee_contract_snapshot  WHERE payroll_run_id = :run_id
+                UNION ALL
+                SELECT 'comp' AS src FROM component_metadata_snapshot WHERE payroll_run_id = :run_id
+            ) t
+        """),
+        {"run_id": payroll_run_id},
+    ).fetchone()
+
+    emp_count  = row[0]
+    comp_count = row[1]
+
+    if emp_count == 0 or comp_count == 0:
+        raise ValueError(
+            f"Run {payroll_run_id} predates snapshot engine — open a correction run"
+        )
+
+    _log.debug(
+        "Snapshot validated for run %s: %d employee rows, %d component rows",
+        payroll_run_id,
+        emp_count,
+        comp_count,
+    )
+
+=== retry's statutory_effective_date absence check — the other legacy hard-fail tier ===
+    # ── Statutory rule — temporal selection ──────────────────────────────────
+    # Use statutory_effective_date from the original run so that retry picks the
+    # same statutory rule as the run that created the snapshot.  Fall back to
+    # latest-version query for legacy runs without the column.
+    if statutory_effective_date:
+        stat_row = db.execute(
+            text("""
+                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+                FROM   statutory_rule sr
+                WHERE  sr.country_code    = :cc
+                  AND  sr.effective_from <= :as_of_date
+                ORDER  BY sr.effective_from DESC, sr.version DESC
+                LIMIT  1
+            """),
+            {"cc": country_code, "as_of_date": statutory_effective_date},
+        ).fetchone()
+    else:
+        raise ValueError(
+            f"Run {payroll_run_id} predates snapshot engine — open a correction run."
+        )
+
+=== no dedicated statutory-snapshot backfill script exists (grep across scripts/ and backend/scripts/) ===
+scripts/run_first_payroll_emp001.py

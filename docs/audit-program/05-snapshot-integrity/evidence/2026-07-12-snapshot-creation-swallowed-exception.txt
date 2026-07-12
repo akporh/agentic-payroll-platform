@@ -1,0 +1,103 @@
+=== component_metadata_snapshot / client_component_metadata_snapshot / employee_contract_snapshot are written in a BACKGROUND TASK, AFTER the DRAFT row + HTTP response ===
+    # Build override-rows dict once (pure Python, in-memory — no DB) for snapshot.
+    _override_rows_dicts = [
+        {"component_code": r[0], "overrides_json": r[1], "proration_strategy": r[2], "is_active": r[3]}
+        for r in override_rows
+    ]
+
+    # Snapshot creation moved into the background task so the HTTP response returns
+    # immediately after DRAFT creation.  Previously it blocked here for ~25 s because
+    # SQLAlchemy executemany sends one Neon round-trip per employee row (~100 ms each).
+    background_tasks.add_task(
+        _calculate_and_persist,
+        payroll_run_id            = payroll_run_id,
+        workspace_id              = workspace_id,
+        employees                 = employees,
+        tax_bands                 = tax_bands,
+        statutory_rule_id         = statutory_rule_id,
+        statutory_version         = statutory_version,
+        payroll_rule_ids          = payroll_rule_ids,
+        idempotency_key           = idempotency_key,
+        period_start              = period_start,
+        period_end                = period_end,
+        pay_cycle_definition      = pay_cycle_definition,
+        retry_strategy            = retry_strategy,
+        component_metadata        = component_metadata or None,
+        client_override_rows      = _override_rows_dicts,
+        context                   = context,
+        rules_ctx_snapshot        = rules_ctx_snapshot,
+        rule_set_id               = rule_set_id,
+        statutory_effective_date  = str(statutory_effective_date),
+        run_type                  = run_type,
+        pre_warnings              = _ph_pre_warnings or None,
+        public_holiday_dates      = public_holiday_dates,
+        salary_inputs_by_employee = salary_inputs_by_employee,
+        period_ctx                = period_ctx,
+    )
+    return {
+        "status":         "DRAFT",
+        "payroll_run_id": payroll_run_id,
+    }
+
+
+@router.post("/{workspace_id}/payroll/run")
+def run_payroll_scoped(
+    workspace_id: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    idempotency_key: str | None = Header(default=None),
+):
+    """Workspace-scoped payroll run trigger. Returns immediately with run_id; calculation runs in background."""
+    payload["workspace_id"] = workspace_id
+    result = run_payroll(payload, background_tasks, idempotency_key)
+    return {
+        "run_id": result.get("payroll_run_id", result.get("run_id")),
+        "status": result.get("status"),
+    }
+
+
+def _calculate_and_persist(
+    payroll_run_id: str,
+    workspace_id: str,
+    employees: list,
+    tax_bands: list,
+    statutory_rule_id: str,
+    statutory_version,
+    payroll_rule_ids: list,
+    idempotency_key,
+    period_start: str,
+    period_end: str,
+    pay_cycle_definition,
+    retry_strategy: str,
+    component_metadata,
+    client_override_rows: list,
+    context: dict,
+    rules_ctx_snapshot: dict,
+    rule_set_id,
+    statutory_effective_date: str,
+    run_type: str,
+    pre_warnings,
+    public_holiday_dates: set,
+    salary_inputs_by_employee: dict,
+    period_ctx,
+) -> None:
+    """Background task: snapshot + calculate + persist results for an existing DRAFT run."""
+    try:
+        # Create snapshot here (not in the sync route) so the HTTP response returns
+        # immediately after DRAFT creation.
+        try:
+            create_payroll_snapshot(
+                payroll_run_id=payroll_run_id,
+                workspace_id=workspace_id,
+                component_metadata_rows=component_metadata or [],
+                client_override_rows=client_override_rows,
+                employees_data=employees,
+            )
+        except Exception as exc:
+            logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+
+        execute_and_persist(
+
+=== create_payroll_snapshot() failure is caught and only logged — execution proceeds to calculate/persist regardless ===
+193:        except Exception as exc:
+937:        except Exception as exc:

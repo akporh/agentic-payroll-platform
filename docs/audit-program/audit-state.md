@@ -6,15 +6,15 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 04 closed 2026-07-12. Open Stage 05 (snapshot
-integrity). **`04-001` is a confirmed S0 release blocker** — retry can
-silently calculate PAYE under a different statutory-rule version than the
-original run within the same `payroll_run` (reproduced by controlled
-non-production test). Stage 05 must validate the snapshot contract and
-define the canonical fix; remediation for `04-001` then proceeds
-immediately after Stage 05's design work — **before any live payroll
-processing or production release** — as an explicit exception to the
-"wait for Stage 13" rule below. See Stage 04 handoff summary.
+**Next action:** Stage 05 (snapshot integrity) has produced its full
+inventory, immutability/timing analysis, and `findings.md` (05-001–05-005)
+but is **not yet marked complete** — awaiting explicit review. Key result:
+the v2 statutory snapshot is **already sufficient** — 04-001 was always a
+retry-read-path gap, never a snapshot-completeness gap, which bounds the
+remediation to a narrow read-path change (§9's canonical contract). Two new
+findings: 05-001 (snapshot creation can fail silently, S2) and 05-004
+(immutability enforcement inconsistent across snapshot tables, S2). **`04-001`
+remains a confirmed S0 release blocker**, unchanged and not re-litigated.
 
 ## Stage 04 handoff summary
 
@@ -67,7 +67,7 @@ processing or production release** — as an explicit exception to the
 | 02 | Execution trace & diagnostic-script baseline | complete | 2026-07-11 | 2026-07-12 | — |
 | 03 | Configuration integrity | complete | 2026-07-12 | 2026-07-12 | — |
 | 04 | Original-run and retry parity | complete | 2026-07-12 | 2026-07-12 | — |
-| 05 | Snapshot integrity | not-created | — | — | — |
+| 05 | Snapshot integrity | in-progress | 2026-07-12 | — | — |
 | 06 | UI/API/backend wiring | not-created | — | — | — |
 | 07 | Silent failures and observability | not-created | — | — | — |
 | 08 | Data integrity | not-created | — | — | — |
@@ -79,7 +79,7 @@ processing or production release** — as an explicit exception to the
 
 ## Open human decisions
 
-Eight pending, one resolved this session — see [`_core/human-decisions.md`](_core/human-decisions.md):
+Nine pending, one resolved this session — see [`_core/human-decisions.md`](_core/human-decisions.md):
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
 - Second, ORM-based repository directory `backend/infra/db/repositories/` vs. documented single repository layer (finding 01-002)
 - Authority/currency of `docs/wrapper-command/` agent-instruction set ("Casper") relative to `CLAUDE.md` (finding 01-013) — resolved (c) treat as non-authoritative
@@ -88,6 +88,7 @@ Eight pending, one resolved this session — see [`_core/human-decisions.md`](_c
 - Should retry read the frozen statutory-rule snapshot instead of re-resolving live? (finding 03-002) — superseded by 04-001's resolution below, effectively decided: yes
 - Is `employee_contract_snapshot.components_jsonb` meant to ever be read? (finding 03-003)
 - Should workspaces be able to disable statutory-deduction components (D-ARCH-2 currently unenforced)? (finding 03-004)
+- Should 05-001 (silent snapshot-creation failure) and 05-004 (inconsistent immutability enforcement) be bundled into the 04-001 remediation sprint or deferred to Stage 13? (findings 05-001/05-004)
 - ~~S0 — 04-001 urgency and fix direction~~ — **resolved 2026-07-12**: confirmed S0 release blocker; Stage 05 validates and specifies the fix; remediation follows immediately after, ahead of Stage 13, before any live payroll processing or production release. Full decision text in `_core/human-decisions.md`.
 
 ## Notes
