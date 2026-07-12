@@ -1,6 +1,6 @@
 # Stage 08 — Data Integrity
 
-**Status:** not started (see [`../audit-state.md`](../audit-state.md))
+**Status:** in-progress (see [`../audit-state.md`](../audit-state.md))
 
 ## Purpose
 
@@ -23,7 +23,7 @@ The focus is persisted business integrity, not UI design, trace design, or full 
 
 - Stages 01–07 are complete.
 - `04-001` and `05-001` are remediated and must not be reopened without regression evidence.
-- `04-004` remains unconfirmed: reconciliation refresh after retry completion was not traced in Stage 04.
+- `04-004` entered this stage unconfirmed and is resolved by the findings as rejected.
 - `03-004` remains open: statutory-deduction components can be disabled per workspace while D-ARCH-2 is not enforced.
 - `06-002` is confirmed: `pay_cycle.definition_json` affects runtime but is unavailable for post-onboarding view or edit.
 - `07-002` is confirmed: reconciliation create/resolve writes no unified `audit_log`/`event_store` entry, though reconciliation-local fields exist.
@@ -99,238 +99,51 @@ For each invariant record:
 
 ### 2. Reconciliation integrity and retry parity (`04-004`)
 
-Trace reconciliation behaviour across:
-
-- original run calculation
-- creation of a reconciliation row
-- transition to `MATCHED` or `MISMATCH`
-- retry of failed employees
-- recomputation of payroll totals
-- refresh or non-refresh of `expected_total`, `actual_total`, difference, and status
-- resolution of mismatches
-- approval/lock/payment after reconciliation
-
-Determine whether retry completion:
-
-- automatically recalculates reconciliation
-- leaves a stale reconciliation row
-- prevents approval until refreshed
-- allows approval against outdated totals
-- creates duplicates
-- updates resolved reconciliation incorrectly
-
-Use controlled non-production execution if static tracing cannot prove the result.
-
-Classify `04-004` as confirmed, rejected, plausible, or unconfirmed with evidence.
+Trace reconciliation behaviour across original calculation, retry, approval, locking, reconciliation creation/resolution, and payment. Determine whether retry can coexist with an existing reconciliation row or create stale reconciliation totals.
 
 ### 3. Statutory-component enforcement (`03-004` / D-ARCH-2)
 
-Inspect whether required statutory deductions can be disabled or bypassed through:
-
-- `component_metadata.is_active`
-- `client_component_metadata.is_active`
-- component overrides
-- salary-definition composition
-- handler registration
-- rule-set eligibility
-- onboarding/configuration APIs
-- direct database state
-
-Determine:
-
-- which components are legally/architecturally mandatory
-- whether the engine skips disabled statutory components
-- whether any current workspace has them disabled
-- whether configuration save routes reject this
-- whether the UI prevents it
-- whether a run records that a statutory component was omitted
-
-Do not make a legal-compliance conclusion beyond documented product rules; record compliance-policy questions for Stage 13 where required.
+Inspect whether required statutory deductions can be disabled or bypassed through metadata, overrides, salary composition, handler registration, rule eligibility, APIs, UI, or direct persisted state. Determine whether omission is recorded anywhere.
 
 ### 4. `pay_cycle.definition_json` integrity (`06-002`)
 
-Determine whether existing persisted `definition_json` values are:
-
-- present where expected
-- schema-consistent
-- aligned with `frequency`, `run_day`, `cutoff_day`, and `payment_day`
-- consumed deterministically by the payroll engine
-- duplicated by dedicated columns with a defined precedence rule
-- stale or contradictory in any observed workspace
-
-Assess whether the inability to view/edit this field creates an actual integrity risk or only a configurability gap.
-
-If using local/non-production data, summarize counts and anomalies without treating test data as production evidence.
+Determine whether persisted values are present, schema-consistent, aligned with dedicated pay-cycle columns, deterministically consumed, and free from stale or contradictory states.
 
 ### 5. Employee and employment temporal integrity
 
-Revisit known contract risks and verify current implementation for:
-
-- unique employee number per workspace
-- nullable employee numbers
-- employee status vs active contract state
-- overlapping employment contracts
-- open-ended contracts
-- start/end date validation
-- multiple contracts effective in one pay period
-- contract selection precedence
-- terminated employees included/excluded correctly
-- joiner/leaver proration source dates
-
-Determine whether database constraints, application validation, and payroll selection logic agree.
+Verify employee-number uniqueness/nullability, overlapping and open-ended contracts, contract selection precedence, employment status alignment, and joiner/leaver date use.
 
 ### 6. Referential and tenant consistency
 
-Inspect foreign keys and query joins for records that carry both a direct workspace ID and a linked parent that also implies workspace ownership.
-
-Examples:
-
-- employee ↔ workspace
-- employee_contract ↔ employee/salary_definition/grade/designation
-- payroll_run ↔ workspace/pay_cycle/rule_set
-- payroll_result ↔ payroll_run/employee
-- payroll_input ↔ workspace/employee/payroll_run
-- reconciliation ↔ payroll_run/workspace
-- snapshot tables ↔ payroll_run/employee
-
-Identify whether the schema permits cross-workspace combinations even when API queries usually prevent them.
-
-This is relational data integrity; security exploitation analysis belongs to Stage 09.
+Inspect foreign keys and joins for schema-permitted cross-workspace combinations. Keep exploitation analysis for Stage 09.
 
 ### 7. Payroll-input integrity
 
-Verify:
-
-- uniqueness/idempotency of imported inputs
-- claimed/unclaimed transitions
-- whether an input can be linked to multiple runs
-- whether retry reuses the same claimed inputs
-- negative/invalid value guards
-- arrears/reference-period semantics
-- employee existence validation
-- duplicate upload handling
-- transaction behaviour if only part of a batch fails
-- orphaned claims after failed/aborted runs
-
-Pay special attention to the new `FAILED` run path and whether snapshot failure or outer background failure can leave inputs claimed or partially persisted.
+Verify uniqueness, claiming, retry reuse, invalid-value guards, duplicate uploads, batch transaction behaviour, and orphaned claims after failed runs.
 
 ### 8. Payroll-result integrity
 
-Inspect:
-
-- uniqueness of `(payroll_run_id, employee_id)`
-- retry DELETE+INSERT behaviour
-- status/result consistency
-- financial totals vs snapshot JSON
-- Decimal precision and rounding persistence
-- `gross_pay`, deductions, tax, and `net_pay` arithmetic invariants
-- failed-result rows containing partial financial values
-- run totals matching sum of successful employee results
-- stale aggregates after retry
-- result immutability after approval/lock/payment
-
-Use targeted SQL or controlled test scenarios where useful.
+Inspect result uniqueness, retry replacement, arithmetic, precision, run-total derivation, failed-result values, stale aggregates, and immutability.
 
 ### 9. Run lifecycle and partial-commit integrity
 
-For each major transition, determine whether all related writes are atomic:
-
-- run creation and initial snapshots
-- DRAFT → CALCULATING
-- employee result persistence
-- run total/status update
-- audit/event writes
-- input claiming
-- retry result replacement
-- reconciliation update
-- approval
-- locking
-- payment
-
-Identify transactions that can leave:
-
-- status advanced without results
-- results written without totals
-- inputs claimed without results
-- audit/event missing while state changed
-- reconciliation stale while run changed
-- partial success hidden as complete
+Map transaction boundaries across snapshots, status transitions, results, totals, inputs, audit/events, retry, reconciliation, approval, lock, and payment.
 
 ### 10. Immutability after approval, lock, and payment
 
-Verify database and application protections for:
-
-- payroll_run totals and period fields
-- payroll_result financial fields and snapshots
-- payroll inputs linked to the run
-- reconciliation rows
-- snapshot tables
-- approval/lock/payment metadata
-
-Determine whether any route, repository method, or direct SQL path can mutate financially relevant data after the lifecycle should make it immutable.
-
-Carry broad snapshot-trigger harmonisation (`05-004`) to Stage 13 unless this stage finds an active mutation path.
+Verify protections for run totals/periods, result fields, inputs, reconciliation, snapshots, and lifecycle metadata. Keep broad snapshot-trigger harmonisation (`05-004`) deferred unless an active mutation path is found.
 
 ### 11. Duplicate source-of-truth and precedence audit
 
-Search for fields represented in multiple places, including:
-
-- `proration_strategy` column vs override JSON
-- `is_active` column vs override JSON
-- pay-cycle dedicated columns vs `definition_json`
-- salary-definition live content vs snapshot content
-- run-level totals vs sum of result rows
-- statutory identity in run snapshot vs missing per-result identity
-- reconciliation totals vs payroll-run/result totals
-
-For each duplication, classify:
-
-- intentional with enforced precedence
-- intentional but unenforced
-- stale-risk
-- dead storage
-- ambiguous source of truth
+Classify duplicated representations as intentional/enforced, intentional/unenforced, stale-risk, dead storage, or ambiguous.
 
 ### 12. Historical reproducibility
 
-Determine whether an auditor can reconstruct a past run using persisted data only.
-
-Assess availability and sufficiency of:
-
-- frozen period
-- employee/contract snapshot
-- salary input snapshot
-- component metadata snapshots
-- client override snapshots
-- rule-set snapshot
-- statutory snapshot
-- public holiday snapshot
-- payroll inputs
-- calculation/component trace
-- result totals
-- reconciliation history
-
-List any mutable live dependency still required to explain a historical run.
+Determine whether past runs can be reconstructed using persisted state only, and list any remaining mutable live dependencies.
 
 ### 13. Controlled verification
 
-Use local/non-production data only where static analysis is insufficient.
-
-Candidate scenarios:
-
-- retry a `PARTIAL` run with an existing reconciliation and compare before/after reconciliation values
-- attempt to disable a statutory component and trace calculation outcome
-- create overlapping contracts and observe validation/selection
-- force failure after input claiming and inspect residue
-- compare run totals to employee-result sums
-- test mutation attempts after `APPROVED`, `LOCKED`, or `PAID`
-
-Every controlled test must:
-
-- be self-cleaning
-- record preconditions and outputs
-- verify zero residue
-- avoid production/shared data
+Use self-cleaning local/non-production checks only where static analysis is insufficient. Verify zero residue.
 
 ## Required outputs
 
@@ -407,31 +220,87 @@ Stage 08 is ready for human review only when:
 
 ## Publication
 
-When the investigation is complete:
+When the investigation is complete, create `findings.md` and evidence, update audit state to `in-progress`, and leave the stage awaiting review.
 
-1. Create `findings.md` and the `evidence/` directory under this stage.
-2. Update `docs/audit-program/audit-state.md`:
-   - mark Stage 08 `in-progress`
-   - set opened date to today
-   - set next action to human review of Stage 08
-   - preserve all completed stages and remediation records
-3. Leave Stage 08 `in-progress, awaiting review`; do not self-close.
-4. Commit and push only Stage 08 audit documentation/evidence and the audit-state update to `uat`.
-5. Return only:
+---
+
+## Close-review instruction
+
+Use this section after the initial Stage 08 findings have been committed and presented for human review.
+
+### Review conclusion
+
+No new human decision is required to close Stage 08.
+
+Accept the following conclusions:
+
+- `04-004` is **rejected**. Retry is only available for `PARTIAL` runs; reconciliation is only available for `LOCKED` runs reached through `CALCULATED → APPROVED → LOCKED`. The two operations cannot overlap for the same run, so retry cannot leave an existing reconciliation stale.
+- `08-001` is confirmed S2: `employee.employee_number` remains nullable because migration `c9d0e1f2a3b4` swallows any `SET NOT NULL` failure with `EXCEPTION WHEN others THEN NULL`. The local development rows demonstrate the schema-permitted state, not production prevalence.
+- `08-002` is confirmed S2: `payroll_run` totals and period fields lack DB-level immutability until `PAID`; no active application mutation path was found for `APPROVED` or `LOCKED`, so this is a defence-in-depth gap.
+- `08-003` is confirmed S2: disabled statutory components are removed before execution with no class-aware guard and no trace/audit signal that a mandatory component was omitted. The underlying policy question from `03-004` remains open; do not resolve it in Stage 08.
+- No financial miscalculation, stale aggregate, reconciliation corruption, contract-overlap gap, or new historical-reproducibility defect was found.
+
+### Review requirements
+
+Before closing Stage 08, verify that:
+
+1. the `04-004` rejection cites the complete lifecycle chain and all redundant guards;
+2. `08-001` clearly distinguishes a confirmed schema defect from local-development prevalence;
+3. `08-002` does not claim an active exploit or application mutation path that was not found;
+4. `08-003` distinguishes correct mechanical engine behaviour from the missing compliance/observability guard;
+5. the positive controls remain recorded: contract overlap, active-contract uniqueness, result uniqueness/immutability, reconciliation checks, and payroll-input constraints;
+6. `03-004` remains an open human decision for later policy/backlog resolution;
+7. `04-001` and `05-001` remain remediated and are not reopened;
+8. all completion criteria are satisfied and each finding uses one valid status.
+
+### Close the stage
+
+Update:
+
+- `docs/audit-program/08-data-integrity/findings.md`
+  - change Stage 08 status to `complete`
+  - preserve `04-004` as `rejected`
+  - add a final review/closure summary
+- `docs/audit-program/audit-state.md`
+  - mark Stage 08 `complete`
+  - set the closed date to today
+  - set next action to open Stage 09 — Security and tenant isolation
+  - leave Stage 09 not started
+  - mark `04-004` closed/rejected with no remediation required
+  - carry `08-001` and `08-002` to Stages 11/13
+  - carry `08-003` to Stages 09/10/13 and preserve the open `03-004` policy decision
+  - carry `07-002` to Stage 13 as an audit-consistency issue; do not reinterpret it as reconciliation data corruption
+  - preserve `04-002` and the minimal retry-trace design for Stage 10
+  - preserve `05-004` for Stage 13
+  - preserve all prior completed stages and remediation records
+
+### Constraints during close review
+
+- Do not modify backend/frontend code, migrations, tests, scripts, or data.
+- Do not implement the `employee_number` correction migration.
+- Do not add immutability triggers.
+- Do not enforce or remove statutory-component disablement.
+- Do not begin Stage 09.
+- Do not create a separate close-review prompt file; this `CONTEXT.md` is the executable instruction.
+
+### Publish
+
+Commit and push the Stage 08 closure documentation to `uat`.
+
+Return only:
 
 ```text
 Stage: 08 — Data integrity
-Status: in-progress, awaiting review
+Status: complete
 Primary file: docs/audit-program/08-data-integrity/findings.md
 Audit state: docs/audit-program/audit-state.md
 Commit: <SHA>
 
-Important decisions required:
-- <decision or none>
+Result:
+- 04-004 rejected: retry and reconciliation cannot overlap by lifecycle construction.
+- Confirmed gaps: 08-001 nullable employee_number; 08-002 payroll_run immutability window; 08-003 statutory-component omission without guard/trace.
+- Financial/data corruption found: none.
 
-Headline integrity gaps:
-- Confirmed financial/data-integrity defects: <count>
-- Reconciliation gaps: <count>
-- Temporal/referential gaps: <count>
-- Historical-reproducibility gaps: <count>
+Next stage:
+09 — Security and tenant isolation
 ```
