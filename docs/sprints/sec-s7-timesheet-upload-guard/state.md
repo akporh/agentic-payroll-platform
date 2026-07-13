@@ -4,7 +4,7 @@ Authoritative per-stage status, per `WORKFLOW.md`. Stage IDs and dependency shap
 
 ```yaml
 sprint: sec-s7-timesheet-upload-guard
-status: active
+status: complete
 
 stages:
   roadmap:
@@ -118,9 +118,20 @@ stages:
       (docs/test-reports/2026-07-13-sec-s7-timesheet-upload-guard.md).
 
   retro:
-    status: eligible
+    status: complete
     depends_on: [test]
-    note: test reached complete — retro is now the only remaining non-terminal stage.
+    evidence: retrospective.md
+    note: >
+      Sprint-close gate run (Part A lint PASS, 0 defects; Part B — every
+      other stage terminal). Product fix verdict: PASS, 0 regressions.
+      Cumulative ICM §9 scoreboard (with aud-q1-trace-source):
+      5 of 6 scenarios validated per the plan's original literal bar —
+      skipped stage and two-parallel-stages now validated on real data
+      for the first time this sprint. Scenario 4 (rework loop) proven
+      only via the synthetic rework-loop fixture (no genuine defect
+      arose in this sprint's clean, first-attempt execution) — see
+      retrospective.md / docs/retro-reports/2026-07-13-sec-s7-timesheet-upload-guard.md
+      for the full, unrounded scoring.
 ```
 
 ## Reading this file
@@ -128,4 +139,4 @@ stages:
 - `architecture` is `skipped` (not `not-applicable`) — the first real exercise of this distinction in this workflow's history. See `decisions.md`.
 - `implementation`, `verification`, and `security` are all `complete`. `verification` and `security` were committed `active` together in `d69233f`, before either had an `evidence:` field populated — the durable proof they were genuinely concurrent, not an artifact of batching convenience (the gap the `aud-q1-trace-source` retro found in its own `audit`/`test` transitions).
 - `audit` is `not-applicable` — this determination never depended on any other stage's outcome.
-- `test` is now `eligible` — all four of its dependencies are terminal. `retro` remains `blocked` behind it.
+- `test` and `retro` are both `complete` — the sprint is closed. See `retrospective.md` for the full retro and updated cumulative ICM §9 scoreboard.
