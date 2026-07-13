@@ -62,29 +62,27 @@ stages:
       skip, 0 failed. Frontend tsc --noEmit clean.
 
   verification:
-    status: eligible
+    status: active
     depends_on: [implementation]
     may_run_with: [security]
     note: >
-      implementation reached complete — dependency now terminal. Entry
-      condition holds (this sprint touches both
-      backend/api/routes/payroll.py and
-      frontend/src/pages/TimesheetUpload.tsx). Not yet activated — per
-      this sprint's evidence/commit strategy, the eligible->active
-      transition for verification and security is committed as its own
-      dedicated commit, before either stage's review work begins, to
-      make concurrent activation provable from git history (the gap
-      the aud-q1-trace-source retro found).
+      implementation is complete — dependency terminal. Entry condition
+      holds (this sprint touches both backend/api/routes/payroll.py and
+      frontend/src/pages/TimesheetUpload.tsx). Activated in this commit
+      together with security, deliberately before either stage's review
+      work has begun (no evidence: field populated yet) — this commit
+      is the durable proof both stages were genuinely concurrent, not
+      an artifact of batching convenience (the gap the
+      aud-q1-trace-source retro found in its own audit/test transitions).
 
   security:
-    status: eligible
+    status: active
     depends_on: [implementation]
     may_run_with: [verification]
     note: >
-      implementation reached complete — dependency now terminal. Entry
-      condition holds (backend/api/routes/payroll.py modified). Not yet
-      activated — see verification's note; both transition to active
-      together in the next commit.
+      implementation is complete — dependency terminal. Entry condition
+      holds (backend/api/routes/payroll.py modified). Activated in this
+      same commit as verification — see its note.
 
   audit:
     status: not-applicable
