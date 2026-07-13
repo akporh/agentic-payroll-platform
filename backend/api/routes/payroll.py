@@ -1676,6 +1676,12 @@ def _require_timesheet_enabled(workspace_id: str) -> None:
         raise HTTPException(status_code=400, detail="Timesheet is not enabled for this workspace.")
 
 
+# Authoritative server-side limit (SEC-S7). A matching advisory constant
+# exists in frontend/src/pages/TimesheetUpload.tsx for early user feedback —
+# that copy is UX-only and never replaces this check.
+MAX_TIMESHEET_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/workspaces/{workspace_id}/timesheet/upload")
 async def upload_timesheet(
     workspace_id: str,
@@ -1685,7 +1691,9 @@ async def upload_timesheet(
 ):
     """Upload a timesheet Excel file for a pay period. TM-2."""
     _require_timesheet_enabled(workspace_id)
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_TIMESHEET_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_TIMESHEET_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large — max 10 MB per upload.")
     ps = date.fromisoformat(period_start)
     pe = date.fromisoformat(period_end)
     result = timesheet_derivation_service.upload_timesheet(workspace_id, ps, pe, file_bytes)
