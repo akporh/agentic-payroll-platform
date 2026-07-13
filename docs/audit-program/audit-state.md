@@ -6,43 +6,48 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 12 opened 2026-07-13, in-progress, awaiting human
-review. Read-only code-simplification design stage — no code/migration/
-test/script modified. Re-verified `01-002` (ORM repository layer):
+**Next action:** Stage 12 closed 2026-07-13. Open **Stage 13 —
+Consolidated remediation backlog** (not started). Read-only
+code-simplification design stage — no code/migration/test/script
+modified throughout. Re-verified `01-002` (ORM repository layer):
 genuinely distinct responsibility, recommend rename+document, not
-consolidation. Re-verified `01-004` (legacy executor fallback): confirmed
-reachable from the **live production route**, not merely "old CLI
-callers" as the code's own stale comment claims — dev-DB firing rate
-(9.3%) not confirmed representative of production given known dev-DB
-drift; **new human decision raised** (4 bounded options, no option
-chosen). Re-verified `05-002` (dead snapshot column, safe to remove) and
-`05-005` (duplicated statutory-extraction logic — confirmed **still
+consolidation. `01-004` (legacy executor fallback): confirmed reachable
+from the **live production route**, not merely "old CLI callers" as the
+code's own stale comment claims — **resolved at close as a phased
+migrate-then-remove programme** (8 steps: telemetry → production
+inventory → classify occurrences → migrate/repair configuration → prove
+zero fallback usage over an observation window → hard-fail new runs →
+remove default path), with 7 Stage 13 acceptance criteria, explicitly
+not an immediate hard-fail and explicitly not backed by the dev-DB 9.3%
+figure alone. Re-verified `05-002` (dead snapshot column, safe to remove)
+and `05-005` (duplicated statutory-extraction logic — confirmed **still
 fully live** even after the `04-001` remediation shipped, since that fix
 changed *where* the data comes from but not the duplicated parsing
-logic). **New finding this stage:** `PayrollRunStatus` is defined twice
-in the frontend, in two different modules, each wrong in a different way
-— `types/payroll.ts` (used to type the real API field) is missing
-`FAILED` entirely, while `design-system/components/Status.tsx` uses
-`'PENDING'` instead of `'DRAFT'`. This sharpens `06-001`/`06-004`'s root
-cause with a precise citation. `06-007`'s legacy reconciliation route
-identified as the one genuine "just delete it" candidate in the whole
-unscoped-route family (zero callers, fully-shipped replacement) — every
-other unscoped lifecycle/admin route is load-bearing and blocked by
-Stage 09's security architecture, not a simplification candidate.
-Migration hygiene: swallow-all `EXCEPTION WHEN others` pattern confirmed
-bounded to exactly the two already-known migrations, no others found.
-Full dependency-aware sequencing produced across 4 categories:
-independently-safe, bundle-with-remediation, blocked-by-architecture,
-retain-intentionally.
+logic). **New finding:** `PayrollRunStatus` is defined twice in the
+frontend, in two different modules, each wrong in a different way —
+`types/payroll.ts` (used to type the real API field) is missing `FAILED`
+entirely, while `design-system/components/Status.tsx` uses `'PENDING'`
+instead of `'DRAFT'`. This sharpens `06-001`/`06-004`'s root cause with a
+precise citation. `06-007`'s legacy reconciliation route identified as
+the one genuine "just delete it" candidate in the whole unscoped-route
+family (zero callers, fully-shipped replacement) — every other unscoped
+lifecycle/admin route is load-bearing and blocked by Stage 09's security
+architecture, not a simplification candidate. Migration hygiene:
+swallow-all `EXCEPTION WHEN others` pattern confirmed bounded to exactly
+the two already-known migrations, no others found. All findings carried
+to Stage 13 exactly as classified — independently-safe,
+bundle-with-remediation, blocked-by-architecture, retain-intentionally,
+plus the resolved legacy-fallback programme.
 
-## Stage 12 handoff summary (in-progress, awaiting review)
+## Stage 12 handoff summary (complete)
 
 - **Repository-layer duplication (§2).** Retain both, rename/document —
   not consolidation; zero functional overlap confirmed.
-- **Legacy executor fallback (§3).** Human decision required — 4 options
-  (retain+telemetry / hard-fail / migrate-then-remove / historical-replay
-  only), none chosen; dev-DB 9.3% firing rate explicitly caveated as not
-  confirmed production-representative.
+- **Legacy executor fallback (§3) — resolved at close.** Phased
+  migrate-then-remove programme (8 steps, 7 Stage 13 acceptance criteria);
+  immediate hard-fail, permanent retain, and replay-only were each
+  explicitly rejected with stated rationale; dev-DB 9.3% firing rate must
+  not be cited as production evidence for the observation-window step.
 - **Snapshot cleanup (§4).** `05-002` safe to remove; `05-003` retain
   intentionally (stated future audit purpose); `05-005` still fully live
   post-`04-001`, recommend extracting one shared pure-function helper.
@@ -52,10 +57,10 @@ retain-intentionally.
   architecture, NOT a deletion candidate (still load-bearing).
 - **Trace literal consolidation (§6).** Blocked by Stage 10's unimplemented
   migration; consolidation approach specified for when it lands.
-- **Enum/contract duplication (§7) — new finding.** `PayrollRunStatus`
-  duplicated across two frontend modules, both incorrect relative to the
-  8-value backend enum, in different ways. Confirmed S2, bundled with
-  `06-001`/`06-004`'s remediation.
+- **Enum/contract duplication (§7).** `PayrollRunStatus` duplicated across
+  two frontend modules, both incorrect relative to the 8-value backend
+  enum, in different ways. Confirmed S2, bundled with `06-001`/`06-004`'s
+  remediation.
 - **Business-rule duplication (§8).** `05-005` (see §4); error-to-HTTP
   helper recommended alongside `07-001`'s fix; retry/original-run context
   construction correctly NOT consolidated (different lifecycle semantics).
@@ -64,8 +69,9 @@ retain-intentionally.
   deletion (superseded by the 306-test suite but retain ad hoc value).
 - **Migration hygiene (§11).** Swallow-all pattern confirmed bounded to
   exactly 2 files, no new instances found.
-- **No human decision required beyond §3's new one.**
-- **Stage 12 is NOT closed.** Awaiting Michael's review before closure.
+- **No human decision remains open** — the one raised during investigation
+  was resolved at close.
+- **Stage 12 is complete**, closed 2026-07-13.
 
 ## Stage 11 handoff summary (complete)
 
@@ -421,14 +427,14 @@ retain-intentionally.
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
 | 11 | Scenario testing | complete | 2026-07-12 | 2026-07-13 | — |
-| 12 | Code simplification | in-progress | 2026-07-13 | — | awaiting human review |
+| 12 | Code simplification | complete | 2026-07-13 | 2026-07-13 | — |
 | 13 | Consolidated backlog | not-created | — | — | — |
 
 ## Open human decisions
 
-Six genuinely open (no decision made yet); the rest below are resolved,
+Five genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
-- Should the legacy executor fallback be retained with telemetry, hard-failed, migrated-then-removed, or restricted to historical replay only? (Stage 12 §3, extends finding 01-004)
+- ~~Should the legacy executor fallback be retained with telemetry, hard-failed, migrated-then-removed, or restricted to historical replay only?~~ — **resolved 2026-07-13 at Stage 12 close**: migrate-then-remove, phased 8-step programme (see finding 01-004 / Stage 12 §3).
 - ~~Is application-level authentication out of scope by design, or an unrecognized gap?~~ — **resolved 2026-07-12 (as 09-000)**: unrecognized S0 production blocker; app-level auth/authorization mandatory before any live/production-data use.
 - ~~What is the intended role model?~~ — **resolved 2026-07-12**: one bureau account manages multiple client workspaces via explicit membership; five minimum roles (platform admin, bureau admin, payroll operator, payroll approver, read-only auditor/viewer); direct client users deferred but the model must remain extensible.
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)

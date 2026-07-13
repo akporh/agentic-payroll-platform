@@ -1,7 +1,8 @@
 # Stage 12 — Code Simplification: Findings
 
-**Status:** in-progress, awaiting review
+**Status:** complete
 **Opened:** 2026-07-13
+**Closed:** 2026-07-13
 **Evidence:** `docs/audit-program/12-code-simplification/evidence/01-key-greps.txt`
 
 This is a read-only audit/design stage. No backend, frontend, migration, test, or script file was modified. Findings below re-verify prior-stage handoffs (`01-002`, `01-004`, `05-002`, `05-003`, `05-005`, `06-007`, `07-004`, `08-001`) against the current codebase state and add new simplification candidates discovered this stage, most notably a frontend status-type duplication/drift finding that sharpens `06-001`/`06-004`.
@@ -13,7 +14,7 @@ This is a read-only audit/design stage. No backend, frontend, migration, test, o
 | # | Candidate | Location | Evidence of non-use/duplication | Classification |
 |---|---|---|---|---|
 | C1 | ORM-based `backend/infra/db/repositories/workspace_repo.py` | see §2 | Used only by 3 onboarding modules for read-only boolean checks | intentionally-separate, recommend rename+document |
-| C2 | Legacy executor fallback (`component_metadata or None`) | `payroll.py:871`, `executor.py:95-120` | Fires on the live production route, 9.3% of dev-DB runs (caveat: dev DB confirmed drifted) | human decision required, see §3 |
+| C2 | Legacy executor fallback (`component_metadata or None`) | `payroll.py:871`, `executor.py:95-120` | Fires on the live production route, 9.3% of dev-DB runs (caveat: dev DB confirmed drifted) | resolved at close: phased migrate-then-remove programme, see §3 |
 | C3 | `employee_contract_snapshot.components_jsonb` | migration `b5c6d7e8f9a0` | Zero readers, confirmed 3 stages running (03/05/12) | independently safe cleanup |
 | C4 | `payroll_result.salary_inputs_snapshot` | same migration | Write-only, but has a stated future audit-surface purpose | retain intentionally |
 | C5 | Duplicated statutory-rate extraction logic | `payroll.py:263-280` vs `payroll_retry_service.py:184-197` | Verbatim-identical parsing/Decimal-conversion logic, confirmed still live post-`04-001` | independently safe cleanup (low risk, pure-function extraction) |
@@ -61,9 +62,31 @@ Stage 11's live query found this fallback firing on 9.3% of runs in the dev data
 | (c) Migrate legacy configuration then remove | Requires first confirming which workspaces (if any) in production actually depend on empty `component_metadata`, and populating their configuration before removing the fallback. Highest effort, cleanest end state. |
 | (d) Retain only for historical replay, not new runs | Preserves the ability to recompute/audit old runs that used this path historically, while forcing all new runs through the sequential executor. Requires a way to distinguish "new run" from "historical replay" at the call site, which does not currently exist. |
 
-**This stage does not choose an option** — per the CONTEXT.md's explicit instruction and this stage's own finding rules, product intent here is genuinely ambiguous without production-environment visibility this audit programme does not have. **Recorded as a human decision for Stage 13.**
+**Resolved at Stage 12 close: option (c), migrate legacy configuration then remove — as a phased disposition, not an immediate hard-fail:**
 
-**Dependency classification:** human decision required (Stage 13).
+1. Retain the fallback temporarily.
+2. Add explicit telemetry using Stage 10's stable event-code design.
+3. Inventory every environment/workspace that reaches the fallback.
+4. Classify each occurrence as missing seed/configuration, deliberately disabled metadata, or a legitimate historical dependency.
+5. Migrate/repair configuration for every active workspace.
+6. Prove new-run fallback usage is zero over an agreed observation window.
+7. Change new payroll runs to hard-fail on empty active component metadata with an actionable configuration error.
+8. Remove the default fallback path after verification.
+
+Historical-replay support must not keep the fallback active for new runs — if a genuine historical-replay requirement is confirmed, it must be isolated behind an explicit replay-only path or compatibility mode with its own telemetry, not the default run-creation path.
+
+**Rationale:** immediate hard-fail (option b) is unsafe because actual production dependency is unknown; permanent retain-and-telemetry (option a) leaves a silent-degradation path in place indefinitely and continues masking invalid configuration; replay-only (option d) is not currently implementable because no new-run/historical-run distinction exists; migration-then-removal gives the cleanest target state while allowing dependency discovery and a controlled transition.
+
+**Stage 13 acceptance criteria for this programme:**
+1. The misleading "old CLI callers" comment is corrected immediately, independent of the rest of the phasing.
+2. Fallback invocations use a stable event code and include workspace/run/country context.
+3. A production-environment inventory is completed before any behaviour change ships.
+4. Every active workspace has non-empty effective component metadata after migration.
+5. Automated tests cover: correctly-configured workspaces using the sequential executor; empty metadata producing an actionable hard failure for new runs post-cutover; historical-replay compatibility only if explicitly retained; fallback telemetry during the transition period.
+6. The removal/hard-fail cutover has a rollback plan.
+7. No claim of removal readiness is made from dev-database percentages alone — Stage 11's 9.3% figure must not be cited as production evidence for step 6's observation window.
+
+**Dependency classification:** resolved — phased programme carried to Stage 13, not a simple independently-safe cleanup item (spans telemetry, inventory, migration, and a behavioural cutover).
 
 ---
 
@@ -206,7 +229,7 @@ Stage 10 already specified the target taxonomy (`event_code` values like `RUN_ST
 | Rename `backend/scripts/test_*.py` | independently safe cleanup |
 | Correct `executor.py`'s stale "old CLI callers" comment | independently safe cleanup (bundle with §3's decision) |
 | Legacy unscoped reconciliation route removal (`06-007`) | independently safe cleanup, pending a final external-integration check — the one genuine quick-win in the security-adjacent route family |
-| Legacy executor fallback disposition (§3) | human decision required (Stage 13) |
+| Legacy executor fallback disposition (§3) | resolved — phased migrate-then-remove programme, carried to Stage 13 |
 | Fix `PayrollRunStatus` duplication/drift (§7) | cleanup bundled with remediation (`06-001`/`06-004`) |
 | Error-to-HTTP shared helper | cleanup bundled with remediation (`07-001`) |
 | Correct `c9d0e1f2a3b4` docstring | cleanup bundled with remediation (`08-001`) |
@@ -235,11 +258,35 @@ Stage 13 should sequence this stage's output as follows, using the dependency cl
 
 1. **Immediate, independently-safe items** (no remediation dependency): rename/document the ORM repository layer; remove the dead snapshot column; extract the shared statutory-extraction helper; remove the stray `print()`; rename the misleadingly-named scripts; correct the two stale comments/docstrings; remove the legacy unscoped reconciliation route pair (pending a final external-integration check).
 2. **Bundle with existing remediation items:** the `PayrollRunStatus` frontend fix bundles with `06-001`/`06-004`'s Stage 13 entry; the error-to-HTTP helper bundles with `07-001`'s fix; the `c9d0e1f2a3b4` docstring correction bundles with `08-001`'s corrective migration.
-3. **New human decision for Stage 13:** the legacy-executor fallback disposition (§3) — four bounded options presented, no option chosen by this stage, with an explicit caveat that the dev-DB 9.3% firing rate may not represent production.
+3. **Resolved legacy-executor fallback programme (§3):** migrate-then-remove, phased across 8 steps with 7 Stage 13 acceptance criteria — not a simple independently-safe item, spans telemetry, production inventory, configuration migration, and a behavioural cutover with a rollback plan.
 4. **Structurally blocked, not simplification candidates:** the unscoped retry/approve/lock/pay/admin/legacy-stats routes (blocked by Stage 09's security architecture) and the trace event-code consolidation (blocked by Stage 10's unimplemented migration) — Stage 13 should not schedule these as "simplification" work; they are security/observability remediation that happens to also simplify code as a side effect.
 5. **Retained intentionally, no action:** `05-003`, `03-004`'s mechanism, the operational diagnostic scripts, the retry/original-run context construction, `docs/wrapper-command/`.
 6. **Not yet classified, needs further investigation:** export row construction duplication across the four export types.
 
-## Human decisions required
+## Human decisions
 
-One new human decision, raised in §3: **should the legacy executor fallback be retained with better observability, hard-failed, migrated-then-removed, or restricted to historical replay only?** Four bounded options are presented with consequences; this stage explicitly does not choose, given genuine product-intent ambiguity and unconfirmed production-representativeness of the dev-DB firing rate. Logged to `_core/human-decisions.md` and `audit-state.md`'s open-decisions list.
+No decision remains open at close. The one human decision raised during the initial investigation (§3 — legacy executor fallback disposition) was resolved at Stage 12 close: **migrate legacy configuration, then remove the fallback for new payroll runs**, as an 8-step phased programme (§3), not an immediate hard-fail. Recorded as resolved in `_core/human-decisions.md`.
+
+---
+
+## Stage 12 close — final review and closure summary
+
+No new human decision was required to close Stage 12 beyond resolving the one raised during the initial investigation. All review conclusions in the CONTEXT.md close-review instruction are confirmed against this document's own evidence, with no revision:
+
+- Repository layers are intentionally distinct — rename/document the ORM onboarding-readiness layer (§2), not consolidation.
+- `employee_contract_snapshot.components_jsonb` is a safe dead-column removal candidate (§4, `05-002`).
+- `payroll_result.salary_inputs_snapshot` is retained intentionally (§4, `05-003`).
+- Statutory-rate extraction should become one shared pure helper (§4, `05-005`) — confirmed still fully live post-`04-001`.
+- The stray `paye.py` module-level `print()` should be removed (§10, `07-004`).
+- The six `backend/scripts/test_*.py` utilities should be renamed/manually labeled, not silently deleted (§10).
+- The legacy unscoped reconciliation GET/POST pair is a removal quick-win after a final undocumented-external-integration check (§5, `06-007`).
+- Unscoped retry/approve/lock/pay routes and admin/diagnostic surfaces require security redesign, not deletion (§5).
+- Frontend `PayrollRunStatus` duplication/drift is confirmed and should be fixed alongside `06-001`/`06-004` (§7).
+- Error-to-HTTP consolidation belongs with `07-001`'s remediation (§8).
+- Trace literal consolidation belongs with Stage 10's implementation (§6).
+- Migration comment/docstring cleanup belongs with `08-001`'s remediation (§11).
+- `03-004` remains open and unchanged — not resolved by this stage, per its own constraint.
+
+### Carried to Stage 13
+
+All independently-safe cleanup items, bundled-cleanup items, blocked items, retained-intentionally items, and the phased legacy-fallback programme (§3, with its 7 acceptance criteria) carry to Stage 13 exactly as classified in §13 and the Handoff section above. No item's classification changed at close review.
