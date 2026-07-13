@@ -39,8 +39,8 @@ _None — every observation below reached a confirmed disposition, an explicitly
 - **Risk/harmful incentive**: false-positive fatigue leading to reflexive dismissal — track dismiss-without-review rate as an early warning
 - **Confidence**: High that this is genuinely undecidable from evidence; not an evasion of a decision this stage could make
 - **Recommendation**: record as a required human decision (below), not resolved here
-- **Required human decision**: which calibration approach (or combination) to pursue for C7 — logged in `decisions.md`
-- **Downstream dependency**: Stage 08 (mechanism design once the approach is chosen)
+- **Required human decision**: ~~which calibration approach (or combination) to pursue for C7~~ **Resolved (D-04-01, HD-7, 2026-07-13)**: a layered combination approved — absolute thresholds at launch, period-on-period variance as a second layer, peer-pattern comparison deferred; C7 gated on the exception-resolution workflow existing first; shadow-mode rollout and versioned/auditable thresholds required. Final formulas/thresholds/history-window left to Stage 08.
+- **Downstream dependency**: Stage 08 (mechanism design within the now-approved layered approach — see `03-agent-portfolio/outputs/stage-08-handoff.md`)
 
 ### F-04-03: C13/C14's onboarding outcomes have no quantified baseline anywhere in the current product
 - **User/business problem**: claims of "reduced onboarding friction" would have no real comparison point without a baseline
@@ -142,7 +142,7 @@ _None — every lead investigated in this stage reached a confirmed finding, an 
 
 Per the same finding-discipline principle Stage 03 applied ("do not create artificial human decisions where evidence and inherited principles already resolve the issue"), this stage identified exactly **one** genuine open decision requiring human adjudication:
 
-- **HD-04-1** (F-04-02): which calibration approach — absolute threshold, period-on-period variance, peer-pattern comparison, or some combination — should C7's anomaly detection use? This cannot be resolved from repository evidence; it requires product/statistical judgment about the client base's actual data patterns. Logged in `decisions.md`.
+- **HD-04-1** (F-04-02) — **resolved 2026-07-13 (D-04-01)**: a layered combination (absolute thresholds → period-on-period variance → peer-pattern comparison deferred), gated on the exception-resolution workflow, with shadow-mode/versioning/governance requirements. See `decisions.md` for full detail.
 
 Everything else in this stage (the C11/C12 boundary question, the structural-configuration research item, etc.) is recorded as a forwarded design/research question for a later stage, not a decision this reviewer needs to make now.
 

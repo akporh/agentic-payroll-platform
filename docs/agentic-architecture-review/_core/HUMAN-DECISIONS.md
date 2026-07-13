@@ -86,6 +86,22 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 - **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes.
 - **Affects**: Stage 03 status (`review-state.md`), Stage 04 eligibility to begin
 
+### HD-7: C7 anomaly-detection calibration approach — layered, staged combination approved
+- **Date**: 2026-07-13
+- **Stage**: cross-cutting (raised Stage 04, binds Stage 08)
+- **Decision**: A layered combination for C7 (Input Anomaly Detection): (1) launch baseline of configurable, explainable absolute thresholds, never LLM-generated/adjusted; (2) period-on-period variance as a second, additive layer, gated on a minimum employee-history window, alerting with current value/baseline/variance shown; (3) peer-pattern comparison explicitly deferred, never cross-tenant if reconsidered later; (4) C7 must not ship without the exception-resolution workflow (`04-outcome-discovery/outputs/exception-resolution-outcome.md`); (5) shadow-mode rollout, versioned/auditable threshold changes, and LLM restricted to optional narration only. Final formulas, numeric thresholds, and the minimum-history-window value are explicitly deferred to Stage 08/product calibration, not invented at this stage.
+- **Made by**: Michael Emedo, via `04-outcome-discovery/stage-04-review-decision-prompt.md` (D-04-01)
+- **Context**: The specific calibration approach depends on the client base's real data patterns and an acceptable false-positive/false-negative tradeoff — not derivable from repository evidence, which is why Stage 04 raised it rather than resolving it.
+- **Affects**: F-04-02; `04-outcome-discovery/outputs/anomaly-detection-outcome-policy.md`, `outcome-prioritisation.md`, `measurement-framework.md`; Stage 08 (mechanism design within this decided approach)
+
+### HD-GATE-04: Stage 04 (Outcome Discovery) gate approved
+- **Date**: 2026-07-13
+- **Stage**: 04 — Outcome Discovery
+- **Decision**: Approved closing Stage 04's gate following HD-7/D-04-01. 8 confirmed findings (0 draft, 0 parked) are now citable by Stage 05 onward.
+- **Made by**: Michael Emedo, via `stage-04-review-decision-prompt.md`
+- **Context**: `WORKFLOW.md` requires explicit human approval before a stage gate closes.
+- **Affects**: Stage 04 status (`review-state.md`), Stage 05 eligibility to begin
+
 ## Next action
 
-**Stage 03 is complete. Await approval to begin Stage 04 — Outcome Discovery.**
+**Stage 04 is complete. Await approval to begin Stage 05 — Platform Readiness.**

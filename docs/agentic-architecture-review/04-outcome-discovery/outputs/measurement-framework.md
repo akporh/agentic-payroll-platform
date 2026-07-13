@@ -29,8 +29,9 @@ Per `CONTEXT.md`'s explicit constraint, chat/agent usage volume is never itself 
 - **Harmful incentive to avoid**: presenting the readiness panel as an exhaustive pre-flight check when it only covers 3 conditions — must not imply broader completeness than it has
 
 ### C7 — Input Anomaly Detection
-- **Success**: precision/recall against a labelled historical-anomaly test set (needs to be built — no such set currently exists); anomalies caught pre-run vs. today's baseline (caught only if a human notices, unquantified)
-- **Safety**: if an LLM narration layer is added, a separate hallucination check on the narration text (the underlying flagged values must remain deterministic)
+- **Calibration approach approved 2026-07-13 (D-04-01)**: layered combination — absolute thresholds at launch, period-on-period variance as an additive second layer (gated on a minimum history window), peer-pattern comparison deferred. LLM restricted to optional narration only.
+- **Success**: confirmed-error capture rate, confirmed-correct-dismissal rate, and later-discovered-unflagged-error rate — the three governance metrics named in D-04-01, tracked from shadow-mode rollout onward, not just at general availability; anomalies caught pre-run vs. today's baseline (caught only if a human notices, unquantified)
+- **Safety**: if an LLM narration layer is added, a separate hallucination check on the narration text (the underlying flagged values must remain deterministic); threshold changes must be versioned and auditable per D-04-01
 - **Harmful incentive to avoid**: false-positive fatigue leading operators to reflexively dismiss flags without checking — track dismiss-without-review rate as an early-warning signal, not just flag volume
 
 ### C8 — Reconciliation Investigation (blocked)

@@ -16,7 +16,7 @@
 
 4. **`get_enrollment_status` tool contract (C3's underlying tool)** — should return individual facts (status, enrollment state, contract window, salary-definition presence), not a pre-packaged "why" conclusion. Needs a concrete field-level contract definition. (F-03-08)
 
-5. **Input anomaly detection mechanism (C7)** — needs a concrete statistical method (threshold vs. z-score vs. something else) once Stage 04 supplies the calibration policy.
+5. **Input anomaly detection mechanism (C7)** — calibration approach approved by Stage 04 (D-04-01, 2026-07-13): a layered combination — absolute thresholds at launch, period-on-period variance as a second layer (gated on a minimum history window), peer-pattern comparison deferred. Design the concrete statistical formulas, numeric thresholds, and minimum-history-window value within this approved shape; do not re-open the layering decision itself. C7 must not ship without the exception-resolution workflow (`04-outcome-discovery/outputs/exception-resolution-outcome.md`) — a binding condition of D-04-01, not optional sequencing.
 
 6. **Reconciliation causal-diff computation (C8, once unblocked)** — needs a concrete deterministic algorithm design for identifying which employee/component/amount caused a MISMATCH, reading `component_trace_jsonb`/`payroll_reconciliation`. Do not design this until D-02-02/D-02-03 preconditions clear, but the algorithm itself should be specified in advance so it's ready to build once unblocked.
 

@@ -2,6 +2,8 @@
 
 This is an outcome and calibration-approach framing, not a final production algorithm — that belongs to Stage 08, per `CONTEXT.md`'s explicit instruction.
 
+**Calibration approach approved 2026-07-13 (D-04-01, `_core/HUMAN-DECISIONS.md` HD-7)**: a layered combination, introduced in stages — (1) absolute thresholds at launch, configurable and explainable, never LLM-generated/adjusted; (2) period-on-period variance as a second, additive layer once a minimum history window exists, alerting with current value/baseline/variance shown, never replacing the hard limits; (3) peer-pattern comparison explicitly deferred, reconsidered only with sufficient comparable employee volume and reliable grade/role grouping, and never cross-tenant; (4) C7 must not ship without the exception-resolution workflow; (5) shadow-mode rollout where practical, with confirmed-error-capture / confirmed-correct-dismissal / later-discovered-unflagged-error measurement, versioned and auditable threshold changes, and LLM use restricted to optional narration only. Final statistical formulas, numeric thresholds, and the minimum-history-window value remain for Stage 08 design and later product calibration — not invented here.
+
 ## The user outcome, defined before any threshold
 
 The outcome is: **an operator is warned about a payroll input that looks like a data-entry error, before it reaches a run, with enough context to decide in seconds whether it's real.** This is deliberately not framed as "detect anomalies" in the abstract — anomaly detection is the mechanism, not the outcome. The outcome is *catching entry errors early enough that they never become a payroll mistake*, which reframes the success metric away from "how many anomalies were flagged" and toward "how many entry errors reached a run undetected" (ideally zero, measured as a negative/absence metric — see `measurement-framework.md`).
@@ -22,7 +24,7 @@ Based on the payroll domain (Stage 01's confirmed `payroll_input` model — quan
 | **Period-on-period variance** (e.g. "flag if > 3x the employee's own trailing average") | Errors relative to the individual's own pattern | Needs a minimum history window (a new employee has no baseline); more sensitive to genuine, legitimate changes (a one-off large OT period) |
 | **Peer-pattern comparison** (e.g. "flag if far outside the range for this employee's grade/role") | Errors an individual-history approach would miss for a new employee | Requires enough peer volume per grade/role to be statistically meaningful — likely not viable for small client workspaces |
 
-**No decision is made here on which approach (or combination) to use.** This is exactly the kind of threshold/calibration question `CONTEXT.md` requires to be recorded as a human decision, not resolved by evidence review — logged in `decisions.md`.
+**Resolved (D-04-01, 2026-07-13)**: a layered combination of (1) absolute threshold at launch and (2) period-on-period variance as a second layer, with (3) peer-pattern comparison explicitly deferred — see the approval note above and `decisions.md` for full detail. This was exactly the kind of threshold/calibration question that could not be resolved by evidence review alone.
 
 ## False positives and false negatives — how to measure, not yet how to tune
 
@@ -37,5 +39,6 @@ This is the single most important open question, and it is *not* a Stage 04 or S
 ## Summary for Stage 08
 
 - Build deterministic/statistical detection first (Principle 9); LLM narration is optional and secondary, never the detector.
-- Do not choose a calibration approach without an explicit human decision (logged below) — this stage deliberately does not pre-select one.
-- Do not build C7 in isolation from the exception-resolution-workflow — sequence them together or C7's output has nowhere to go, the same coherence gap Stage 03 flagged for C11→C12.
+- The calibration approach is decided (D-04-01): absolute thresholds at launch, period-on-period variance as a second layer once a minimum history window exists, peer-pattern comparison deferred. Stage 08 designs the mechanism within this approved shape — final formulas, numeric thresholds, and the minimum-history-window value are Stage 08's/product calibration's to set, not re-open the approach itself.
+- Do not build C7 in isolation from the exception-resolution-workflow — sequence them together (now a binding condition of D-04-01, not just a recommendation) or C7's output has nowhere to go, the same coherence gap Stage 03 flagged for C11→C12.
+- Shadow-mode rollout, versioned/auditable threshold changes, and the three named calibration-governance metrics (confirmed-error capture, confirmed-correct-dismissal rate, later-discovered unflagged errors) are binding per D-04-01, not optional refinements.
