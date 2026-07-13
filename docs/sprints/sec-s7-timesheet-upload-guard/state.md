@@ -62,27 +62,39 @@ stages:
       skip, 0 failed. Frontend tsc --noEmit clean.
 
   verification:
-    status: active
+    status: complete
     depends_on: [implementation]
     may_run_with: [security]
+    evidence: evidence/verification/live_run.md
     note: >
-      implementation is complete — dependency terminal. Entry condition
-      holds (this sprint touches both backend/api/routes/payroll.py and
-      frontend/src/pages/TimesheetUpload.tsx). Activated in this commit
-      together with security, deliberately before either stage's review
-      work has begun (no evidence: field populated yet) — this commit
-      is the durable proof both stages were genuinely concurrent, not
-      an artifact of batching convenience (the gap the
-      aud-q1-trace-source retro found in its own audit/test transitions).
+      Activated together with security in commit d69233f, before either
+      stage's review work began. Live HTTP checks against a running
+      backend (uvicorn) + a real workspace: oversized (11 MB) upload ->
+      413 with the expected message; small in-limit file passes the
+      size guard and reaches the derivation service (confirmed via a
+      pre-existing, unrelated parse-error crash further downstream —
+      proves the guard let it through, not that the file was valid).
+      Frontend advisory check confirmed by code review + clean
+      tsc --noEmit (no browser automation available this session for
+      an actual toast click-through — labeled CODE REVIEW, not PASS,
+      per this project's own LIVE/STATIC/CODE-REVIEW taxonomy).
 
   security:
-    status: active
+    status: complete
     depends_on: [implementation]
     may_run_with: [verification]
+    evidence: evidence/security/review.md
     note: >
-      implementation is complete — dependency terminal. Entry condition
-      holds (backend/api/routes/payroll.py modified). Activated in this
-      same commit as verification — see its note.
+      Activated together with verification in commit d69233f. Review:
+      PASS. SEC-S7 closed correctly (matches this skill's own File
+      Upload Security checklist item #7 — explicit byte limit before
+      the file is read into memory). No str(e) leak, no float-for-money
+      issue, no secrets, no new dependency. One pre-existing, unrelated
+      Observation flagged (no content-type/malformed-file validation —
+      confirmed live during verification's own check) — recommended as
+      a new Track S backlog item, explicitly not bundled into this
+      sprint. Existing docs/security/ output written
+      (docs/security/2026-07-13-sec-s7-timesheet-upload-guard-security-review.md).
 
   audit:
     status: not-applicable
@@ -92,11 +104,11 @@ stages:
     date: 2026-07-13
 
   test:
-    status: blocked
+    status: eligible
     depends_on: [implementation, verification, security, audit]
-    waiting_for:
-      - verification
-      - security
+    note: >
+      All four dependencies now terminal (implementation: complete,
+      verification: complete, security: complete, audit: not-applicable).
 
   retro:
     status: blocked
@@ -108,7 +120,6 @@ stages:
 ## Reading this file
 
 - `architecture` is `skipped` (not `not-applicable`) — the first real exercise of this distinction in this workflow's history. See `decisions.md`.
-- `implementation` is `eligible` — both its dependencies (`pm`, `arch-council`) are terminal.
-- `verification` and `security` are genuinely `blocked` pending `implementation` — once it completes, both become `eligible` together, and this sprint's evidence/commit strategy (per `docs/diagnostics/2026-07-13-icm-follow-up-validation-pilot-scope.md` §6/§8) will commit their `active` transition as its own dedicated commit, before either stage's actual review work begins — the specific gap the `aud-q1-trace-source` retro found (its `audit`/`test` transitions were squashed into one commit and never observed genuinely concurrent).
-- `audit` is `not-applicable` from the start — this determination doesn't depend on any other stage's outcome.
-- `test` and `retro` remain genuinely `blocked`, cascading behind `implementation`/`verification`/`security` actually reaching terminal status.
+- `implementation`, `verification`, and `security` are all `complete`. `verification` and `security` were committed `active` together in `d69233f`, before either had an `evidence:` field populated — the durable proof they were genuinely concurrent, not an artifact of batching convenience (the gap the `aud-q1-trace-source` retro found in its own `audit`/`test` transitions).
+- `audit` is `not-applicable` — this determination never depended on any other stage's outcome.
+- `test` is now `eligible` — all four of its dependencies are terminal. `retro` remains `blocked` behind it.
