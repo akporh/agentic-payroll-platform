@@ -1,7 +1,8 @@
 # Stage 13 — Consolidated Remediation Backlog
 
-**Status:** in-progress, awaiting review
+**Status:** complete
 **Opened:** 2026-07-13
+**Closed:** 2026-07-13
 
 This is a backlog/design stage. No application code, migration, test, script, or data was changed. Every item below is a synthesis of Stages 01–12's already-committed findings — no new investigation was performed; where this document states a fact, it is sourced from a specific prior-stage finding ID, cited inline.
 
@@ -129,18 +130,19 @@ Consolidation notes applied per this stage's own principles:
 - **Sprint/package:** Programme 1, second item, immediately after B-1A.
 - **Effort:** M.
 
-### B-1C — RBAC (role-based access control)
+### B-1C — RBAC (role-based access control) — includes Decision D4 RESOLVED
 
 - **Source findings:** `09-000` (role model, resolved 2026-07-12)
 - **Severity / release gate:** S0 / must complete before any live/production-data use
-- **Scope:** Implement the 5 approved minimum roles (platform administrator, bureau administrator, payroll operator, payroll approver, read-only auditor/viewer) with a role matrix covering: workspace discovery, employee/contract/configuration changes, payroll creation/retry, approval, lock, mark-paid, reconciliation create/resolve, exports, traces/audit-log access, admin/diagnostic access. Where separation of duties between payroll operator and approver is required, see Decision D4 (§9) — this item implements whatever D4 resolves to, it does not itself decide separation-of-duties policy.
-- **Explicit non-scope:** the specific separation-of-duties enforcement strictness (hard vs. soft) — that is Decision D4.
+- **Scope:** Implement the 5 approved minimum roles (platform administrator, bureau administrator, payroll operator, payroll approver, read-only auditor/viewer) with a role matrix covering: workspace discovery, employee/contract/configuration changes, payroll creation/retry, approval, lock, mark-paid, reconciliation create/resolve, exports, traces/audit-log access, admin/diagnostic access.
+- **Decision D4 (approved at Stage 13 close): soft separation of duties with explicit audit flagging**, between payroll operator and approver. A user may hold both roles. Same-person approval of a run they created or last retried is **permitted but must be visibly flagged**: the approval action writes a distinct audit/event record containing creator/retrier identity, approver identity, timestamps, and a `same_actor_approval` boolean indicator; the UI displays a warning before confirmation when the approver is also the run's creator/last-retrier, and this flag is surfaced in the run's audit history, not only at the moment of approval; reporting/audit views must allow these same-actor approvals to be filtered and reviewed as a distinct category. The role model must be built so a later upgrade to hard separation (rejecting same-actor approval outright) requires only a policy-check change, not a schema/role redesign — this decision does not foreclose that future option.
+- **Explicit non-scope:** this item does not implement hard separation — D4 explicitly rejected it for now, given Sandy's small-team operational reality; the door is left open architecturally, not built now.
 - **Dependencies:** requires B-1A, B-1B.
-- **Migration/API/UI impact:** new role/permission tables or an equivalent in-code policy table; every mutating route gains a role check in addition to the ownership check (B-1D); frontend gains role-aware UI (hide/disable actions the current role cannot perform, backed by server-side enforcement — never UI-only, per Stage 09's explicit rule that UI hiding is not authorization).
-- **Acceptance criteria:** each of the 10 listed operation categories has a defined, server-enforced role requirement; a caller with a role lacking permission for an action receives a `403` (not merely a hidden button); platform-administrator access is logged/audited distinctly from ordinary role-based access.
-- **Required tests:** lifecycle-actions-denied-for-wrong-role test; platform-admin-access-explicit/audited test (Stage 11 recs).
+- **Migration/API/UI impact:** new role/permission tables or an equivalent in-code policy table, plus a `same_actor_approval` field on the approval audit record; every mutating route gains a role check in addition to the ownership check (B-1D); frontend gains role-aware UI (hide/disable actions the current role cannot perform, backed by server-side enforcement — never UI-only, per Stage 09's explicit rule that UI hiding is not authorization) plus the D4 same-actor warning UI.
+- **Acceptance criteria:** each of the 10 listed operation categories has a defined, server-enforced role requirement; a caller with a role lacking permission for an action receives a `403` (not merely a hidden button); platform-administrator access is logged/audited distinctly from ordinary role-based access; a same-actor approval succeeds (not blocked) but produces a `same_actor_approval=true` audit record and a UI warning at confirmation time; a different-actor approval produces `same_actor_approval=false` with no warning.
+- **Required tests:** lifecycle-actions-denied-for-wrong-role test; platform-admin-access-explicit/audited test (Stage 11 recs); same-actor-approval-flagged test (new, per D4).
 - **Rollback:** standard migration downgrade.
-- **Owner/discipline:** backend + product input on the role matrix.
+- **Owner/discipline:** backend + frontend (D4's warning UI) + product input on the role matrix.
 - **Sprint/package:** Programme 1, third item.
 - **Effort:** M.
 
@@ -294,15 +296,16 @@ Consolidation notes applied per this stage's own principles:
 - **Sprint/package:** Programme 4.
 - **Effort:** S–M depending on pre-check findings.
 
-### B-4B — `payroll_run` immutability window (`08-002`)
+### B-4B — `payroll_run` immutability window (`08-002`) — Decision D2 RESOLVED
 
 - **Source findings:** `08-002`
 - **Severity / release gate:** S2 / post-foundation hardening
-- **Scope:** DB-level (trigger) protection for `payroll_run.total_gross_pay`/`total_deduction`/`total_net_pay`/`total_tax`/`period_start`/`period_end` at the lifecycle point specified in Decision D2 (§9 below — recommended: `APPROVED`, matching `CLAUDE.md`'s already-documented invariant "`payroll_run.status = 'APPROVED'` — immutable — no employee results can be modified," which this item extends from results to the run-level totals/period fields themselves, closing a gap in the *existing* documented invariant rather than inventing a new one). Allowed system-owned transitions (e.g. the retry-driven totals recomputation that legitimately occurs while still `PARTIAL`, which must remain permitted) must be explicitly excluded from the new trigger's guard, mirroring the existing `payroll_result` trigger's `PARTIAL`-exclusion pattern Stage 08 already confirmed as the correct precedent.
+- **Decision (approved at Stage 13 close):** financially relevant run totals and period fields become DB-immutable at **`APPROVED`**, aligned with the existing approved-run/result invariant already documented in `CLAUDE.md`. `LOCKED` was rejected as one lifecycle stage too late — permitting run totals/period identity to change between `APPROVED` and `LOCKED` would make the approved result set and its own run header inconsistent.
+- **Scope:** DB-level (trigger) protection for the exact columns `payroll_run.total_gross_pay`, `total_deduction`, `total_net_pay`, `total_tax`, `period_start`, `period_end`, applied from `APPROVED` onward. Allowed system-owned transitions (the retry-driven totals recomputation that legitimately occurs while still `PARTIAL`) are explicitly excluded from the new trigger's guard, mirroring the existing `payroll_result` trigger's `PARTIAL`-exclusion pattern Stage 08 already confirmed as the correct precedent. Lock, reconciliation, and payment must consume the `APPROVED` values as read-only facts, never rewrite them — verify each of those three lifecycle stages' code paths only reads these columns from this point forward, as part of implementation.
 - **Dependencies:** independent of Programme 1; benefits from B-4A's precise-guard discipline as a direct pattern to follow.
 - **Migration/API/UI impact:** one migration adding the trigger; no API/UI impact (this is a defence-in-depth DB-level protection — Stage 08 already confirmed no *application* code path currently attempts this mutation, so no functional behaviour changes for any legitimate caller).
-- **Acceptance criteria:** a direct SQL `UPDATE` attempt against the protected columns on an `APPROVED` or later run is rejected by the trigger; the same `UPDATE` against a `PARTIAL` run (retry's legitimate recomputation) succeeds.
-- **Required tests:** direct-SQL immutability regression test (Stage 11 rec #3, applied here).
+- **Acceptance criteria:** a direct SQL `UPDATE` attempt against any of the six protected columns on an `APPROVED`, `LOCKED`, or `PAID` run is rejected by the trigger; the same `UPDATE` against a `PARTIAL` run (retry's legitimate recomputation) succeeds; migration downgrade cleanly removes the trigger.
+- **Required tests:** direct-SQL immutability regression tests at `APPROVED`, `LOCKED`, and `PAID` (Stage 11 rec #3, applied here, now with all three post-approval states explicitly covered per D2's review requirement).
 - **Rollback:** standard trigger-drop downgrade.
 - **Owner/discipline:** backend + migration author.
 - **Sprint/package:** Programme 4.
@@ -338,18 +341,22 @@ Consolidation notes applied per this stage's own principles:
 
 ---
 
-## 9. Statutory-policy decision pack (Programme 6) — Decision D1 (`03-004`)
+## 9. Statutory-policy decision pack (Programme 6) — Decision D1 (`03-004`) — RESOLVED
 
-**Bounded options:**
+**Decision (approved at Stage 13 close): forbid disablement of mandatory statutory components entirely.** Re-enable the currently-commented-out `D-ARCH-2` guard in `patch_component_override`.
 
-- **(a) Forbid disablement of mandatory statutory components entirely.** Re-enable the currently-commented-out `D-ARCH-2` guard in `patch_component_override`. Simplest, most conservative, matches Nigerian statutory-compliance expectations (PAYE, pension, NHF are legally mandatory deductions, not optional business choices) — the strongest argument for this option is that "an ordinary user can silently disable statutory withholding with no guard and no trace" is a compliance risk regardless of who the user is.
-- **(b) Allow disablement only through privileged, audited, explicitly justified controls.** Requires: a defined list of which component classes/codes count as "mandatory by jurisdiction" (today, effectively PAYE/pension/NHF/health-insurance/development-levy for NG); a role requirement (e.g. `bureau_administrator` or higher, tied to B-1C); a mandatory audit/event entry with a justification field (ties to B-1G); the run-time guard becomes "block unless privileged+justified+audited," not "block always"; the Stage 10 omission-trace (already design-ready, policy-neutral) applies either way.
+**Implementation requirements:**
+- Define mandatory statutory component codes/classes by supported jurisdiction (today: PAYE, pension, NHF, health insurance, development levy for NG).
+- Reject attempts to set them inactive through every supported path — API, UI, onboarding, override, or any other direct configuration route.
+- Retain and rely on eligibility/applicability rules (already a first-class mechanism in this codebase's rule-evaluation engine) for legitimate employee-level exemptions or zero liability — e.g. an expatriate employee genuinely exempt from a specific Nigerian statutory scheme is modeled as an eligibility condition evaluating false, not as a workspace-level disable switch.
+- Distinguish "not applicable under the statutory rule" (an eligibility outcome, `skipped_eligibility` per Stage 10's `component_trace_jsonb` discriminator) from "disabled by configuration" (now rejected outright) — these remain two different, both-visible states, not conflated.
+- Audit rejected configuration attempts where appropriate — an operator's *attempt* to disable a mandatory component is itself worth logging, even though the attempt is rejected.
+- Preserve Stage 10's omitted-component visibility design unchanged for non-mandatory components and for legacy evidence (runs that predate this guard's re-enablement).
+- Add server-side, DB/configuration, and UI regression tests confirming the guard rejects every disablement path.
 
-**Recommendation: (a), forbid disablement of statutory components entirely**, with the following reasoning offered for Michael's confirmation rather than assumed: statutory deductions in this domain are not a business configuration choice, they are a legal withholding obligation — the only scenario where disabling one is legitimate is a genuine jurisdiction/component-eligibility edge case (e.g. an expatriate employee exempt from a specific Nigerian statutory scheme), which is better modeled as an *eligibility rule* (already a first-class mechanism in this codebase per the rule-evaluation engine) than as a blanket per-workspace on/off switch with no guard. If a real, narrower exemption need exists, option (b) restricted to that specific narrow case is the fallback; this stage does not have visibility into whether such a narrow need currently exists in Sandy's actual client base, which is why this remains a decision for Michael rather than a unilateral choice.
+**Rationale (approved):** mandatory legal obligations should be controlled by statutory applicability logic, not by a workspace-level off switch. A privileged-disable option (the rejected option (b)) would create unnecessary compliance risk and make configuration authority responsible for overriding law. If a future jurisdiction has a genuine exemption, it is modeled explicitly in the statutory rule/eligibility layer rather than permitted as blanket disablement.
 
-**For whichever option is chosen, define:** which component classes/codes are mandatory by supported jurisdiction (NG today); server-side validation enforcing the choice; RBAC requirement (option b only); audit/event entry (either option, since even *attempting* to disable a forbidden component under option (a) is worth logging); run-time guard; the omitted-component trace per Stage 10 (unchanged either way); UI behavior (hide the disable control entirely under option (a); show it gated by role/justification under option (b)); migration/configuration impact (re-enabling the commented-out guard under option (a) is a small code change, no migration; option (b) requires the mandatory-component-list to live somewhere queryable, likely a small new configuration table or a code constant, depending on how often the list needs to change without a deployment).
-
-**Explicit note:** this item is kept separate from `08-003`'s visibility work (B-2) per this stage's own instruction not to conflate visibility with permission policy — the trace/visibility mechanism ships regardless of which policy option is chosen or when it's decided.
+**Explicit note, preserved unchanged:** this item is kept separate from `08-003`'s visibility work (B-2) — the trace/visibility mechanism (§6/§8 of Stage 10's design) ships unchanged by this decision and applies regardless.
 
 ---
 
@@ -364,7 +371,7 @@ This item is **already decided** (Stage 12 close) — this section converts that
 3. Inventory production/environment dependency — **requires production-data access this audit programme did not have; this is an operational task for whoever has that access, not something Stage 13 can execute.** Explicitly: do not use the Stage 11 dev-DB 9.3% figure as this inventory's answer.
 4. Classify each occurrence (missing seed/config, deliberately disabled metadata, or legitimate historical dependency) — depends on step 3's actual data.
 5. Migrate/repair active workspace metadata — depends on step 4's classification.
-6. Observe zero fallback usage for new runs over an agreed window — **Decision D3 (§9 below) sets this threshold.**
+6. Observe zero fallback usage for new runs over an agreed window — **Decision D3 (resolved, see below): two consecutive full production payroll cycles with zero firings, counted only once every active workspace's configuration is confirmed migrated and telemetry is live and reliable; any firing during the window resets the count.**
 7. Hard-fail new runs on empty metadata with an actionable configuration error — depends on step 6's observation window passing cleanly.
 8. Remove the default fallback path — depends on step 7 being live and stable.
 9. Isolate replay-only compatibility, only if a genuine historical-replay requirement is confirmed during step 3/4 — not built speculatively.
@@ -445,7 +452,7 @@ Reusing Stage 12's own dependency classification verbatim — no re-derivation:
 | Centralize trace event-code constants | bundled with B-2 | (included in B-2's effort) |
 | Optional shared error-to-HTTP helper | bundled with B-1F | (included in B-1F's effort) |
 
-**Intentional retentions, preserved unchanged, no action:** `payroll_result.salary_inputs_snapshot` (`05-003`); the differing retry/original-run context-construction code paths (different lifecycle semantics, correctly not merged); the operational load/simulation/backfill scripts (`load_*.py`, `simulate_payroll.py`, `backfill_rule_set_snapshots.py`); `docs/wrapper-command/` (reference-only history, decision 01-013); `03-004`'s underlying mechanism (until Decision D1 resolves it).
+**Intentional retentions, preserved unchanged, no action:** `payroll_result.salary_inputs_snapshot` (`05-003`); the differing retry/original-run context-construction code paths (different lifecycle semantics, correctly not merged); the operational load/simulation/backfill scripts (`load_*.py`, `simulate_payroll.py`, `backfill_rule_set_snapshots.py`); `docs/wrapper-command/` (reference-only history, decision 01-013). `03-004`'s underlying mechanism is now implemented per Decision D1 (forbid disablement) rather than retained pending a decision — see §9.
 
 ---
 
@@ -518,7 +525,7 @@ The CONTEXT.md's suggested Programme 0–8 order is **adopted as-is**, with one 
 - **Programme 3 (error/export/audit hardening):** B-1F, B-1G, B-1H, B-3 — **can run in parallel with Programme 1**, since none of these four items depends on authentication existing. This is the one point worth calling out explicitly: **Programmes 1 and 3 are independent and should be scheduled concurrently if team capacity allows**, rather than strictly serially, since Programme 3's items are release-gate-adjacent (G6, G7) and there is no reason to delay them behind the (larger, riskier) authentication work.
 - **Programme 4 (data-integrity corrections):** B-4A, B-4B, B-4C, B-4D — independent of Programmes 1–3, can also run concurrently.
 - **Programme 5 (execution trace):** B-2's schema/write-side/API portion — independent, can start as early as team capacity allows; its authorization-dependent portion folds into Programme 2's timeline of B-1D.
-- **Programme 6 (statutory policy + legacy-executor transition):** Decision D1 resolution, then B-5's implementation; B-6 steps 1 (immediate) and 2 (bundle with B-2), then steps 3-9 (operational, gated on production access) whenever that access is available — not necessarily blocking the rest of the programme's completion.
+- **Programme 6 (statutory policy + legacy-executor transition):** Decision D1 is resolved (forbid disablement) — implement B-5 directly against that decision, no further policy gate; B-6 steps 1 (immediate) and 2 (bundle with B-2), then steps 3-9 (operational, gated on production access) whenever that access is available, observing Decision D3's two-cycle threshold — not necessarily blocking the rest of the programme's completion.
 - **Programme 7 (frontend completeness):** B-7A first (highest confirmed-defect value), then B-7B, B-7C, B-7D — can start once the relevant backend contracts exist (B-2 for trace-related UI, B-1C for role-aware UI), independent of Programmes 1–2's completion for the non-role-dependent parts.
 - **Programme 8 (simplification):** distributed opportunistically — most items are XS/S and can be picked up alongside whichever programme happens to be touching the adjacent code, rather than scheduled as a dedicated late-stage sprint.
 
@@ -535,7 +542,7 @@ The CONTEXT.md's suggested Programme 0–8 order is **adopted as-is**, with one 
 | Snapshot immutability triggers (multiple tables) | B-4C | additive triggers |
 | `employee_contract_snapshot.components_jsonb` removal | Programme 8 | destructive (column drop), guarded, zero-reader-confirmed |
 | Auth/membership/RBAC tables | B-1A, B-1B, B-1C | new tables, additive |
-| Any statutory-policy config table (if option (b) chosen) | B-5 | new table, additive, conditional on Decision D1 |
+| Re-enabled `D-ARCH-2` guard in `patch_component_override` | B-5 | code-only change per Decision D1 (forbid disablement) — no new configuration table required |
 
 Every migration above must follow `CLAUDE.md`'s standing conventions: 12-hex revision ID, duplicate-ID check before writing, matching downgrade, `DO $$ ... EXCEPTION WHEN duplicate_column THEN NULL` guard for ADD COLUMN, precise (never swallow-all) guards for destructive steps, `jsonb_typeof()` cast where the column type is `json` not `jsonb`.
 
@@ -583,7 +590,7 @@ Every backlog item above states its own rollback path inline (§5–§11); the c
 | Retry/original-run context construction duplication | retained intentionally — different lifecycle semantics, correctly not consolidated |
 | Operational load/simulation/backfill scripts | retained intentionally — legitimate ad hoc tooling |
 | `docs/wrapper-command/` | retained as reference-only history, non-authoritative (decision 01-013) |
-| `03-004`'s underlying mechanism | retained until Decision D1 resolves the policy question |
+| `03-004`'s underlying mechanism | **resolved** — Decision D1: forbid disablement entirely, `D-ARCH-2` guard re-enabled (B-5) |
 | `06-005` (salary-definition edit UX) | deferred, optional polish, not elevated above confirmed defects |
 | `02-009` (`export_payroll_register_csv` shape mismatch) | deferred — zero production callers, low priority, not part of any release gate |
 
@@ -595,8 +602,8 @@ Even after every item in this backlog ships, the following residual risks remain
 
 - **Authentication mechanism choice is not specified by this audit programme** — the specific provider/protocol (e.g. session cookies vs. JWT vs. a managed identity service) is an implementation decision for whoever builds B-1A, not adjudicated here. Different choices carry different residual risks (token theft/replay, session fixation, etc.) that a future security review should assess once the mechanism is chosen.
 - **Production-environment inventory (B-6 step 3, and implicitly relevant to B-4A's pre-check) has not been performed by this audit programme** — every dev-DB figure cited throughout Stages 01–13 (the 9.3% legacy-fallback rate, the 11/4,673 nullable-employee-number ratio) is explicitly not confirmed representative of production. This is a genuine, named gap in this audit's own knowledge, not a risk this backlog can close on its own.
-- **Separation-of-duties enforcement strictness (Decision D4, §9) has a recommended default but is ultimately a business-process decision** about how Sandy's actual team operates day to day — implementing the wrong strictness level (too strict for a small team, or too permissive for actual internal-control needs) is a residual risk this audit cannot fully resolve without more visibility into Sandy's operational reality.
-- **The statutory-component policy decision (D1) recommends forbidding disablement**, but if a genuine, currently-unknown-to-this-audit business need for controlled disablement exists in Sandy's actual client base, choosing option (a) prematurely could create a different kind of problem (an operator who has no way to correctly configure a genuinely exempt employee). This is why the decision is presented for Michael's confirmation, not implemented unilaterally.
+- **Separation-of-duties enforcement (Decision D4: soft separation with flagging) is a business-process choice made for Sandy's current small-team reality** — if the team grows or internal-control requirements tighten, the flagging-only approach may need to become hard separation; the role model was deliberately built to allow that upgrade without redesign, but the upgrade itself is not implemented now and remains a future decision point, not a residual defect.
+- **The statutory-component policy decision (D1: forbid disablement entirely) assumes no genuine, currently-unknown-to-this-audit business need for controlled disablement exists in Sandy's actual client base.** If such a need surfaces later (e.g. a genuinely exempt employee category not well-modeled by the existing eligibility-rule mechanism), the correct response is to extend the eligibility/statutory-rule layer to model that case explicitly, not to reopen the disablement switch — this is stated so that a future request to "just let us disable it for this one client" is recognized as a request to revisit D1, not a small configuration tweak.
 - **This audit programme is a point-in-time review** — new code written during the implementation of this very backlog could reintroduce any of the defect classes found here (e.g. a new route added without the shared ownership-check dependency, a new `except Exception: str(e)` site). The permanent regression tests (B-1I, and each item's own acceptance tests) are the primary defence against this, but they only cover what this audit found, not future code by construction.
 
 ---
@@ -607,42 +614,32 @@ The consolidated remediation programme (all of Programmes 1–8) is complete onl
 
 - Every item in §4's S0/S1 release gate is implemented, tested, and green.
 - The full existing test suite (306 tests) plus every new permanent test added by this programme remains green on every merge (enforced by the existing pre-push hook / CI workflow).
-- `03-004` (Decision D1) has been explicitly resolved by Michael, not left open past the point where B-5's implementation would otherwise begin.
-- `08-002`'s exact lifecycle point (Decision D2, recommended `APPROVED`) is confirmed.
-- The legacy-executor observation-window threshold (Decision D3) is confirmed and B-6's steps 3–9 have real production evidence behind them, not dev-DB extrapolation.
-- Separation-of-duties strictness (Decision D4) is confirmed and reflected in B-1C's RBAC implementation.
+- `03-004` (Decision D1, resolved: forbid disablement entirely) is implemented in B-5 exactly as specified in §9 — the `D-ARCH-2` guard re-enabled, mandatory component codes/classes enumerated, rejection applied across every configuration path, eligibility-rule distinction preserved.
+- `08-002`'s immutability trigger (Decision D2, resolved: `APPROVED`) is implemented in B-4B exactly as specified — all six protected columns, `PARTIAL`-exclusion preserved, tested at `APPROVED`/`LOCKED`/`PAID`.
+- The legacy-executor transition (Decision D3, resolved: two consecutive clean production payroll cycles) has real production evidence behind B-6's steps 3–9, not dev-DB extrapolation — the observation window has actually run and passed before step 7's hard-fail cutover ships.
+- Separation-of-duties (Decision D4, resolved: soft separation with flagging) is implemented in B-1C exactly as specified — `same_actor_approval` audit field, UI warning, filterable reporting, and an architecture that permits a future hard-separation upgrade without redesign.
 - No item from §19's deferred/retained/rejected register has been silently implemented or silently dropped without an explicit decision to do so.
 - The residual-risk statement (§20) has been reviewed and, where any residual risk is judged unacceptable, converted into a new backlog item rather than left implicit.
 
 ---
 
-## Decision handling — required human decisions
+## Decision handling — all four decisions RESOLVED at Stage 13 close (2026-07-13)
 
-### D1 — `03-004`: statutory-component disablement policy
+### D1 — `03-004`: statutory-component disablement policy — RESOLVED
 
-See §9 in full. **Recommended: option (a), forbid disablement entirely**, with the reasoning stated there. Bounded options (a)/(b) presented; Michael's confirmation required before B-5 implementation begins.
+**Decision: forbid disablement of mandatory statutory components entirely.** Full implementation requirements and rationale in §9. Legitimate exemptions are modeled through statutory applicability/eligibility rules, never through a configuration disable switch.
 
-### D2 — `08-002`: exact lifecycle point for `payroll_run` DB immutability
+### D2 — `08-002`: exact lifecycle point for `payroll_run` DB immutability — RESOLVED
 
-**This is already substantially implied by existing documentation, not a genuinely open question:** `CLAUDE.md`'s Known Data Contract Rules table already states "`payroll_run.status = 'APPROVED'` — immutable — no employee results can be modified." **Recommendation: apply the same `APPROVED` threshold to the run-level totals/period fields themselves** (B-4B), extending an already-decided invariant to a currently-uncovered set of columns on the same row, rather than introducing a new, different threshold (e.g. `LOCKED`) that would create an inconsistency between when results become immutable and when the run's own totals do. Presented for confirmation, not as a genuinely unresolved question, since the existing documentation already points to one answer.
+**Decision: financially relevant run totals and period fields become DB-immutable at `APPROVED`**, aligned with the existing approved-run/result invariant already documented in `CLAUDE.md`. Exact protected columns, permitted system-owned transitions, and the lock/reconciliation/payment interaction are specified in B-4B (§8, updated below). `LOCKED` was rejected as one lifecycle stage too late — it would allow the approved result set and its run header to become inconsistent between `APPROVED` and `LOCKED`.
 
-### D3 — Legacy-executor observation-window/cutover evidence threshold
+### D3 — Legacy-executor observation-window/cutover evidence threshold — RESOLVED
 
-**Bounded options:**
-- (a) Zero fallback firings across **one** full production payroll cycle post-configuration-migration.
-- (b) Zero fallback firings across **two consecutive** full production payroll cycles post-configuration-migration (recommended — a single clean cycle could coincide with a temporary absence of the triggering condition rather than confirming it's genuinely resolved; two consecutive cycles is a modest additional cost given payroll cycles are typically monthly, and meaningfully increases confidence).
-- (c) A fixed calendar period (e.g. 60 or 90 days) regardless of how many payroll cycles that spans.
+**Decision: require zero new-run fallback firings across two consecutive full production payroll cycles after configuration migration is complete.** The observation window starts only once every active workspace has been inventoried, missing/invalid metadata has been repaired, and fallback telemetry is live and reliable. Any fallback firing during the window resets the two-cycle count and requires investigation/classification before the window restarts. Dev-database percentages (Stage 11's 9.3% figure) must never be used as cutover evidence — this was already stated in B-6's acceptance criteria and is reaffirmed, not altered, by this decision.
 
-**Recommendation: (b)** — two consecutive full production payroll cycles with zero new-run fallback firings, counted only after every active workspace's configuration has been confirmed migrated (B-6 step 5 complete). This directly operationalizes B-6 step 6 without inventing a production figure this audit programme doesn't have visibility into.
+### D4 — Separation of duties between payroll operator and approver — RESOLVED
 
-### D4 — Separation of duties between payroll operator and approver
-
-**Bounded options:**
-- (a) Hard separation, enforced by RBAC: the user who created or last retried a run cannot also approve it — requires at least two distinct people holding these roles for any workspace to progress runs past `CALCULATED`.
-- (b) Soft separation: the same person may hold both roles, but approving a run they also created/retried is explicitly flagged and produces a distinct audit entry, rather than being silently indistinguishable from a properly-separated approval.
-- (c) No separation requirement at current scale: any user with the `payroll_operator` role may also approve, with no special flagging.
-
-**Recommendation: (b), soft separation with flagging.** Sandy is described as a small, family-run bureau — hard separation (option a) risks being operationally impractical if the current team is too small to always have two distinct people available, which could create a perverse incentive to work around the control rather than honor it. Option (c) forgoes a genuine internal-control benefit at essentially no implementation cost, since the flagging itself is cheap once RBAC/audit logging (B-1C/B-1G) already exist. Option (b) preserves the audit trail's honesty (a same-person approval is visibly marked as such, not hidden) while not blocking legitimate small-team operation, and creates a natural upgrade path to option (a) later if the team grows. **This decision most directly needs Michael's input** on Sandy's actual current staffing, since this audit programme has no visibility into how many people currently operate the bureau's payroll function.
+**Decision: soft separation with explicit audit flagging.** A user may hold both operator and approver roles. Same-person approval of a run they created or last retried is permitted but must be visibly flagged: a distinct audit/event record records creator/retrier, approver, timestamps, and a `same_actor_approval` indicator; the UI displays the warning before confirmation and surfaces it in the run's audit history; reporting must allow these approvals to be filtered/reviewed. The role model (B-1C) must permit a later upgrade to hard separation without redesign — this decision does not foreclose that future option, it only avoids implementing it now given Sandy's small-team operational reality.
 
 ---
 
@@ -655,3 +652,26 @@ This document synthesizes, without re-deriving, the findings and evidence of:
 - `docs/audit-program/audit-state.md` (stage-by-stage handoff summaries).
 
 No new evidence-gathering (grep, `psql`, live execution) was performed in Stage 13 — every cited fact traces to a specific prior-stage finding ID, per this document's own crosswalk (§2).
+
+---
+
+## Stage 13 close — final review and closure summary, and audit-programme closure
+
+No new investigation or code/migration/test/data change occurred during close review, per this stage's own constraints. All four decisions (D1–D4) presented during the initial backlog were **approved exactly as recommended**, with no revision to their content — only their status changed, from "recommended, pending confirmation" to "approved, final." Every backlog item that referenced a pending decision (`B-5`/§9 for D1, `B-4B` for D2, `B-6` for D3, `B-1C` for D4) has been updated in place to reflect the approved decision as implementation-ready specification, not a restated recommendation.
+
+Review requirements verified at closure:
+
+1. Every Stage 01–12 finding retains exactly one canonical disposition in §2's crosswalk — none was left with two conflicting dispositions.
+2. Overlapping findings (`08-003` split across B-2/B-5; `09-005` split across B-1D/B-2; `06-007`/`09-002` merged into one item, B-1E) retain all source references without duplicate backlog items, unchanged from the initial submission.
+3. D1–D4 are now reflected consistently across the backlog items, dependency graph (§14 — unchanged, since none of the four decisions altered any dependency relationship, only resolved what was previously a branch point), release gates (§4 — unaffected, since none of D1–D4 are S0/S1 release-gate items), tests (each item's acceptance criteria and required-tests rows updated in place), the residual-risk statement (§20, updated to reflect resolved-but-still-worth-naming residual considerations rather than open questions), and programme completion criteria (§21, updated to require *implementation matching the approved decision*, not confirmation of the decision itself).
+4. D1 explicitly preserves legitimate statutory eligibility/exemption modelling via the existing eligibility-rule mechanism — confirmed unchanged in §9 and the residual-risk statement.
+5. D2 protects the exact six named run-level financial/period fields at `APPROVED`, not a vaguer "totals" description — confirmed in B-4B.
+6. D3 starts only after production configuration migration and reliable telemetry are confirmed live — confirmed in B-6 and the resolved decision text, with the reset-on-firing rule preserved.
+7. D4 creates an explicit, queryable audit signal (`same_actor_approval`) rather than a silent same-person approval — confirmed in B-1C.
+8. Every S0/S1 item retains its implementation scope, tests, rollback, and release gate from the initial submission — none were weakened or removed during close review.
+9. All eight Stage 11 permanent-test recommendations remain embedded in their related items (§13, unchanged).
+10. No implementation work or data change occurred in Stage 13, at either the initial submission or this close review — confirmed by `git status` showing only `docs/audit-program/` changes throughout.
+
+### The 13-stage audit programme is now complete
+
+Stages 01 through 13 are all `complete`. The programme's net position: the payroll calculation engine is sound and well-tested; the platform's readiness for live/production data is gated entirely on the security foundation (Programme 1) and its direct dependents (Programme 2), not on any financial-correctness defect; a fully sequenced, dependency-aware, test-embedded remediation backlog now exists covering every confirmed finding from Stages 01–12; and all four decisions this backlog surfaced as requiring Michael's judgment have been resolved. **Next action: implementation planning for Programme 1 — Authentication and tenancy foundation** — this happens outside `docs/audit-program/`'s read-only remit, under `CLAUDE.md`'s normal sprint workflow, exactly as this audit programme's own `WORKFLOW.md` anticipated for post-audit remediation.
