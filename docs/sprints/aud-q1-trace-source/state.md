@@ -4,7 +4,7 @@ Authoritative per-stage status, per `WORKFLOW.md`. Stage IDs and dependency shap
 
 ```yaml
 sprint: aud-q1-trace-source
-status: active
+status: complete
 
 stages:
   roadmap:
@@ -99,15 +99,24 @@ stages:
       sprint-local evidence/test/ pointer.
 
   retro:
-    status: eligible
+    status: complete
     depends_on: [test]
+    evidence: retrospective.md
     note: >
-      `test` reached `complete` in Changeset 5 — `retro` is now the only
-      remaining non-terminal stage and is eligible. Not activated in
-      this changeset: Changeset 5's scope is implementation +
-      audit/test persistence only; `retro` (sprint close, per
-      CLAUDE.md's "done"/"sprint complete" trigger) is a separate human
-      gate, tracked as Changeset 8 in the implementation plan.
+      Changeset 8: sprint-close gate run (Part A lint PASS, 0 defects;
+      Part B — every other stage terminal). Product fix verdict: PASS,
+      0 regressions. Retro's own §9 acceptance audit for the ICM
+      sprint-workflow pilot (docs/retro-reports/2026-07-13-aud-q1-trace-source.md)
+      found only 3 of 6 required test scenarios genuinely exercised by
+      this pilot (not-applicable stage, unresolved-dependency
+      resolution, invalid-decision_ref detection via fixture) —
+      skipped-stage, parallel-stage, and rework-loop scenarios were
+      never exercised, a structural consequence of deliberately
+      choosing a small, low-risk pilot (D1). This stage and the sprint
+      are `complete` per WORKFLOW.md's stage-terminality rule; the
+      ICM workflow-mechanics validation itself remains PARTIAL against
+      the plan's own §9 bar — the two are tracked separately, see
+      retrospective.md.
 ```
 
 ## Reading this file
