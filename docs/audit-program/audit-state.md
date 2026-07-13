@@ -6,32 +6,37 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 11 opened 2026-07-12, in-progress, awaiting human
-review. Full backend test suite re-run: **306 passed, 1 skipped**,
-deterministic. `04-001`/`05-001` regression suite re-executed directly:
-**6/6 passed**, both remain remediated, no drift. Headline result: **six
-of Stage 09's security findings were reaffirmed with LIVE execution
-against a running local instance**, not just code reading — most notably,
-`09-004` was proven with a real financial reconciliation record
-(`MISMATCH`, expected ₦196,231.72 / actual ₦196,230.00) returned
-byte-identical whether the correct or a deliberately wrong `workspace_id`
-was supplied in the path, and `09-005`'s timeline route was proven to
-return identical output regardless of path `workspace_id`. `09-008`
-(CSV/formula injection) was proven via a self-contained synthetic
-in-memory reproduction — confirmed a leading `=` reaches the CSV cell
-unescaped. No new distinct defect was found this stage — every scenario
-that surfaced a problem reproduces an already-confirmed finding from
-Stages 02–10; several had their evidence class upgraded from
-static-code-only to live-executed. `07-003` remains blocked by a missing
-test seam (documented, not executed). The single largest coverage gap
-identified: **zero automated regression tests exist for any tenant/
-security finding** — every Stage 09 finding was proven by manual/live
-investigation only. 8 permanent-test recommendations produced for Stage
-13. Stage 10's 12 scenarios classified: mostly `blocked-by-unimplemented-
-design` (expected, since Stage 10 is design-only) or `blocked-by-
-missing-auth`. No human decision required.
+**Next action:** Stage 11 closed 2026-07-13. Open **Stage 12 — Code
+simplification** (not started). Full backend test suite re-run: **306
+passed, 1 skipped**, deterministic. `04-001`/`05-001` regression suite
+re-executed directly: **6/6 passed**, both remain remediated, no drift.
+Headline result: **six of Stage 09's security findings were reaffirmed
+with LIVE execution against a running local instance**, not just code
+reading — most notably, `09-004` was proven with a real financial
+reconciliation record (`MISMATCH`, expected ₦196,231.72 / actual
+₦196,230.00) returned byte-identical whether the correct or a
+deliberately wrong `workspace_id` was supplied in the path, and
+`09-005`'s timeline route was proven to return identical output
+regardless of path `workspace_id`. `09-008` (CSV/formula injection) was
+proven via a self-contained synthetic in-memory reproduction — confirmed
+a leading `=` reaches the CSV cell unescaped. No new distinct defect was
+found this stage — every scenario that surfaced a problem reproduces an
+already-confirmed finding from Stages 02–10; several had their evidence
+class upgraded from static-code-only to live-executed. `07-003` remains
+blocked by a missing test seam (documented, not executed). The single
+largest coverage gap identified: **zero automated regression tests exist
+for any tenant/security finding** — every Stage 09 finding was proven by
+manual/live investigation only. 8 permanent-test recommendations carried
+to Stage 13, each scoped to a specific finding's remediation, not a
+generic testing backlog item. Stage 10's 12 scenarios classified: mostly
+`blocked-by-unimplemented-design` (expected, since Stage 10 is
+design-only) or `blocked-by-missing-auth`. No human decision was required
+or raised. `07-003`, `08-001`, `08-002`, `08-003`, `09-008`, the Stage 09
+security package, and the Stage 10 trace package all carry to Stage 13
+with this stage's live-test evidence attached; `04-004` carries forward
+rejected, no action required.
 
-## Stage 11 handoff summary (in-progress, awaiting review)
+## Stage 11 handoff summary (complete)
 
 - **Automated baseline (§1).** 306 passed, 1 skipped, deterministic, no
   dedicated tenant/security test file exists anywhere in `tests/`.
@@ -67,7 +72,12 @@ missing-auth`. No human decision required.
 - **No new distinct finding.** Every scenario result links to an existing
   finding; none contradicted.
 - **No human decision required.**
-- **Stage 11 is NOT closed.** Awaiting Michael's review before closure.
+- **Stage 11 is complete**, closed 2026-07-13. No new human decision was
+  raised or required. Carried to Stage 13: `07-003`, `08-001`, `08-002`,
+  `08-003`, `09-008`, the Stage 09 security package, the Stage 10 trace
+  package (all with this stage's live-test evidence attached), and the
+  eight permanent-test recommendations as remediation acceptance criteria.
+  `04-004` carries forward rejected, no action required.
 
 ## Stage 10 handoff summary (complete)
 
@@ -379,7 +389,7 @@ missing-auth`. No human decision required.
 | 08 | Data integrity | complete | 2026-07-12 | 2026-07-13 | — |
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
-| 11 | Scenario testing | in-progress | 2026-07-12 | — | awaiting human review |
+| 11 | Scenario testing | complete | 2026-07-12 | 2026-07-13 | — |
 | 12 | Code simplification | not-created | — | — | — |
 | 13 | Consolidated backlog | not-created | — | — | — |
 

@@ -1,7 +1,8 @@
 # Stage 11 — Scenario Testing: Findings
 
-**Status:** in-progress, awaiting review
+**Status:** complete
 **Opened:** 2026-07-12
+**Closed:** 2026-07-13
 **Evidence:** `docs/audit-program/11-scenario-testing/evidence/`
 
 This is an execution/testing stage. All scenarios below were run against local `payroll_dev` (non-production) via a locally-started `uvicorn backend.api.main:app` instance and the existing `pytest` suite. No production/client data was used. The local server was started and stopped cleanly within this stage; all live-server scenarios were read-only GETs against existing dev-fixture data — zero rows were created, modified, or deleted, so no cleanup step was required beyond stopping the server process (confirmed via `curl` returning connection-refused after shutdown, evidence file `06`). No production code, migration, test file, or data was modified.
@@ -258,3 +259,39 @@ No new distinct defect mechanism was discovered this stage. Every scenario that 
 ## Human decisions required
 
 None. This stage found no new defect mechanism requiring a policy or scope decision; all findings reaffirmed were already logged with their decisions resolved (where applicable) in prior stages.
+
+---
+
+## Stage 11 close — final review and closure summary
+
+No new human decision was required to close Stage 11. All conclusions in the CONTEXT.md close-review instruction are confirmed against this document's own evidence with no revision:
+
+1. **Full backend suite: 306 passed, 1 skipped** (§1) — reconfirmed.
+2. **`04-001`/`05-001` regressions: 6/6 passed** (§2, §3), both remain remediated — reconfirmed.
+3. **No new distinct defect mechanism discovered** — every scenario result in §2–§14 that surfaced a problem links to an existing finding (Stages 02–10); none revealed a materially distinct mechanism or severity.
+4. **`04-004` remains rejected**, not reopened — no contradictory evidence found in this stage's live scenarios or test run.
+5. **`07-003` remains untested** — no safe fault-injection seam exists without editing production source; the blocked-test specification in §4 is accepted as sufficient for this audit stage, per the CONTEXT.md's own review conclusion.
+6. **Current retry behaviour is correct** apart from the already-known zero-row `execution_trace` gap on retry (§5) — unchanged, not a new finding.
+7. **Financial, arithmetic, lifecycle, result-immutability, contract-overlap, and reconciliation controls remain green** through the existing suite (§6–§10) and the targeted live re-checks (GIST constraint, `08-001` count) performed this stage.
+8. **`08-001`'s nullable `employee_number`** reconfirmed live in the local schema (11/4,673) — no permanent regression test exists for it, carried to Stage 13 (§16, §18).
+9. **Live execution materially strengthened five Stage 09 findings** (§12): unauthenticated workspace enumeration (`09-001`); mismatched-workspace timeline and reconciliation requests returning identical data to correctly-scoped requests (`09-005`, `09-004` — the latter proven with a real financial `MISMATCH` record); the legacy unscoped reconciliation route reachable (`06-007`/`09-002`); global legacy-executor statistics ignoring workspace scope (`09-006`); unauthenticated admin dashboards reachable (`09-007`).
+10. **`09-008` CSV formula injection confirmed** by the synthetic, zero-residue in-memory reproduction (§14) — a leading `=` reaches the exported cell unescaped.
+11. **Stage 10's 12 scenarios correctly classified** (§15) as executable/partial/blocked-by-unimplemented-design/blocked-by-missing-auth/deferred, graded against current shipped behaviour, not the design's internal coherence.
+12. **The absence of any permanent authentication/tenant/security regression test is confirmed as the largest coverage gap** (§16) — zero such tests exist anywhere in `tests/`.
+
+Review requirements verified at closure:
+
+1. All live evidence (§12, §14, and the evidence files) used non-production dev-fixture data only — confirmed by the workspace names (`ACME`, `ACME Banking`, etc.) and the fully synthetic CSV-injection reproduction.
+2. The local `uvicorn` server was stopped cleanly after all live scenarios; zero residue was verified via a subsequent connection-refused check (`evidence/`, confirmed in-session).
+3. No Stage 10 acceptance criterion is represented as implemented — §15 explicitly grades every scenario against current behaviour, marking 9 of 12 as blocked/partial/deferred.
+4. No previous finding is duplicated as a new Stage 11 defect — the "Findings — new or materially extended this stage" section above explicitly links every result to its originating Stage 02–10 finding.
+5. `04-001` and `05-001` remain closed/remediated, reconfirmed via direct re-execution, not reopened.
+6. Every unexecuted scenario (§4, §6 partial, §8 partial, §9 partial, §11, §12 export row, §13) states its specific reason inline.
+7. The eight permanent-test recommendations (§16, §18) are each scoped to a named finding's eventual remediation (`08-001`, `08-002`, `08-003`, `07-003`, Stage 10's trace package, `09-008`, plus the general tenant-ownership and migration-smoke recommendations) — not a generic "add tests" backlog item.
+8. All completion criteria stated in the CONTEXT.md are satisfied by the sections above.
+
+### Carried to Stage 13
+
+- `07-003`, `08-001`, `08-002`, `08-003`, `09-008`, the full Stage 09 security package, and the Stage 10 trace package all carry to Stage 13 with this stage's live-test evidence and status attached — none reopened, none re-scoped.
+- The eight permanent-test recommendations (§16, §18) carry into their respective Stage 13 remediation entries as acceptance criteria, not as a separate generic testing item.
+- `04-004` carries forward as rejected, no action required.
