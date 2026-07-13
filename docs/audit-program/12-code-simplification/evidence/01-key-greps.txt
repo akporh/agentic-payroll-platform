@@ -1,0 +1,72 @@
+=== Repository layer duplication (01-002) ===
+backend/infra/repositories/ (raw SQL, 13 files): attendance_config_repo.py, audit_log_repo.py,
+  employee_repo.py, event_store_repo.py, execution_trace_repo.py, payroll_input_repo.py,
+  payroll_result_repo.py, payroll_run_repo.py, public_holiday_repo.py, rate_code_repo.py,
+  reconciliation_repo.py, timesheet_repo.py, workspace_config_repo.py
+backend/infra/db/repositories/ (ORM, 1 file): workspace_repo.py (44 lines)
+  - imported ONLY by: backend/domain/onboarding/hard_validator.py,
+    backend/domain/onboarding/onboarding_status.py, backend/domain/onboarding/state_inference.py
+  - all 6 functions are simple boolean "has_X" onboarding-readiness checks (has_pay_cycle,
+    has_grade, has_designation, has_salary_definition, has_active_payroll_rule,
+    has_component_metadata) — read-only, no writes, no overlap with raw-SQL repo responsibilities.
+
+=== Legacy executor fallback (01-004) ===
+backend/api/routes/payroll.py:871: component_metadata = component_metadata or None
+  -> feeds directly into the LIVE production route POST /{workspace_id}/payroll/run
+     (background_tasks.add_task(_calculate_and_persist, ...)), NOT merely "old CLI callers"
+     as executor.py's own docstring/comment claims (executor.py:109-111).
+backend/api/routes/payroll.py:415-455: component_metadata is built from the PLATFORM-level
+  component_metadata table (WHERE country_code=:cc AND is_active=TRUE), then optionally
+  emptied further by workspace-level disabled_codes filtering (client_component_metadata).
+  -> component_metadata is empty only if (a) the platform table has zero active rows for
+     that country, or (b) the workspace has disabled every single component via overrides.
+Stage 11 live query (dev DB): 290 of 3,130 runs (9.3%) hit legacy_executor_fallback historically.
+  Dev DB is independently confirmed drifted from migration truth (memory: test-harness workstream
+  discovery) — this 9.3% figure is dev-fixture-specific, not confirmed representative of production.
+
+=== Snapshot dead/duplicated logic (05-002/003/005), re-verified unchanged ===
+employee_contract_snapshot.components_jsonb: still written every run, zero readers (unchanged
+  since Stage 03/05).
+payroll_result.salary_inputs_snapshot: still write-only, zero readers (unchanged since Stage 05).
+05-005 duplication CONFIRMED STILL LIVE post-04-001-remediation:
+  backend/api/routes/payroll.py:263-280 (original run) and
+  backend/application/payroll_retry_service.py:184-197 (retry, now reading the frozen snapshot's
+  rules_jsonb instead of a live query) contain VERBATIM-IDENTICAL extraction logic:
+  pension_config = rules_jsonb.get("pension"); same guard messages; same Decimal(str(...))
+  conversions for nhf/health_insurance/development_levy/life_insurance/rent_relief.
+  The 04-001 remediation changed WHERE rules_jsonb comes from, but did not consolidate the
+  parsing logic itself into one shared helper, exactly as Stage 05 anticipated.
+
+=== 07-004, print() inventory ===
+backend/domain/rules/paye.py:11: print("Loaded PAYE from:", __file__)  <- still present, module-level,
+  fires on every import. Unchanged from Stage 07.
+backend/scripts/*.py: 10 print() calls across 6 files — all in standalone dev/CLI scripts,
+  excluded from pytest via norecursedirs = backend/scripts (pytest.ini), not production request-path
+  code. Distinct class from paye.py's finding (import-time side effect vs. intentional script output).
+
+=== Migration hygiene — EXCEPTION WHEN others swallow-all pattern, full inventory ===
+migrations/versions/c9d0e1f2a3b4_employee_number_not_null.py  <- 08-001's root cause (upgrade path)
+migrations/versions/f9a0b1c2d3e4_add_component_override_columns.py  <- downgrade-only, lower risk
+  (already noted, not re-classified, by Stage 08)
+No other migration uses this pattern — confirmed bounded to exactly these two files.
+
+=== Frontend status-type duplication and drift — NEW, sharper finding this stage ===
+frontend/src/types/payroll.ts:1-8
+  export type PayrollRunStatus = 'DRAFT'|'CALCULATING'|'CALCULATED'|'PARTIAL'|'APPROVED'|'LOCKED'|'PAID'
+  -- used to type PayrollRun.status (the actual API response field) -- MISSING 'FAILED' entirely.
+frontend/src/design-system/components/Status.tsx:27-35
+  export type PayrollRunStatus = 'PENDING'|'CALCULATING'|'PARTIAL'|'CALCULATED'|'APPROVED'|'LOCKED'|'PAID'|'FAILED'
+  -- a SECOND, differently-named-but-identical-purpose type in a different module --
+  uses 'PENDING' instead of 'DRAFT' (does not match the backend enum's DRAFT value at all),
+  but DOES include 'FAILED'.
+backend/domain/payroll/status.py: canonical 8-value enum: DRAFT, FAILED, CALCULATING, CALCULATED,
+  PARTIAL, APPROVED, LOCKED, PAID.
+Neither frontend type matches the backend enum exactly. StatusBadge (design-system/components/Status.tsx)
+  is rendered with the real PayrollRun.status value at frontend/src/pages/PayrollRuns.tsx:307;
+  its prop type is satisfied only because BadgeVariant is a wide union of multiple status types
+  (WorkspaceStatus already contributes a 'DRAFT' member), masking that its own PayrollRunStatus
+  sub-type uses the wrong 'PENDING' literal, which no real data ever sends -- so the drift has
+  never surfaced as a visible bug, only as dead/wrong type coverage.
+This directly extends and sharpens Stage 06's 06-001/06-004 (FAILED not surfaced in frontend):
+  the canonical status type frontend/src/types/payroll.ts even LACKS 'FAILED' as a valid literal,
+  so no code can correctly narrow on it today without a type-widening cast.

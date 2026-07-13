@@ -6,35 +6,66 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 11 closed 2026-07-13. Open **Stage 12 — Code
-simplification** (not started). Full backend test suite re-run: **306
-passed, 1 skipped**, deterministic. `04-001`/`05-001` regression suite
-re-executed directly: **6/6 passed**, both remain remediated, no drift.
-Headline result: **six of Stage 09's security findings were reaffirmed
-with LIVE execution against a running local instance**, not just code
-reading — most notably, `09-004` was proven with a real financial
-reconciliation record (`MISMATCH`, expected ₦196,231.72 / actual
-₦196,230.00) returned byte-identical whether the correct or a
-deliberately wrong `workspace_id` was supplied in the path, and
-`09-005`'s timeline route was proven to return identical output
-regardless of path `workspace_id`. `09-008` (CSV/formula injection) was
-proven via a self-contained synthetic in-memory reproduction — confirmed
-a leading `=` reaches the CSV cell unescaped. No new distinct defect was
-found this stage — every scenario that surfaced a problem reproduces an
-already-confirmed finding from Stages 02–10; several had their evidence
-class upgraded from static-code-only to live-executed. `07-003` remains
-blocked by a missing test seam (documented, not executed). The single
-largest coverage gap identified: **zero automated regression tests exist
-for any tenant/security finding** — every Stage 09 finding was proven by
-manual/live investigation only. 8 permanent-test recommendations carried
-to Stage 13, each scoped to a specific finding's remediation, not a
-generic testing backlog item. Stage 10's 12 scenarios classified: mostly
-`blocked-by-unimplemented-design` (expected, since Stage 10 is
-design-only) or `blocked-by-missing-auth`. No human decision was required
-or raised. `07-003`, `08-001`, `08-002`, `08-003`, `09-008`, the Stage 09
-security package, and the Stage 10 trace package all carry to Stage 13
-with this stage's live-test evidence attached; `04-004` carries forward
-rejected, no action required.
+**Next action:** Stage 12 opened 2026-07-13, in-progress, awaiting human
+review. Read-only code-simplification design stage — no code/migration/
+test/script modified. Re-verified `01-002` (ORM repository layer):
+genuinely distinct responsibility, recommend rename+document, not
+consolidation. Re-verified `01-004` (legacy executor fallback): confirmed
+reachable from the **live production route**, not merely "old CLI
+callers" as the code's own stale comment claims — dev-DB firing rate
+(9.3%) not confirmed representative of production given known dev-DB
+drift; **new human decision raised** (4 bounded options, no option
+chosen). Re-verified `05-002` (dead snapshot column, safe to remove) and
+`05-005` (duplicated statutory-extraction logic — confirmed **still
+fully live** even after the `04-001` remediation shipped, since that fix
+changed *where* the data comes from but not the duplicated parsing
+logic). **New finding this stage:** `PayrollRunStatus` is defined twice
+in the frontend, in two different modules, each wrong in a different way
+— `types/payroll.ts` (used to type the real API field) is missing
+`FAILED` entirely, while `design-system/components/Status.tsx` uses
+`'PENDING'` instead of `'DRAFT'`. This sharpens `06-001`/`06-004`'s root
+cause with a precise citation. `06-007`'s legacy reconciliation route
+identified as the one genuine "just delete it" candidate in the whole
+unscoped-route family (zero callers, fully-shipped replacement) — every
+other unscoped lifecycle/admin route is load-bearing and blocked by
+Stage 09's security architecture, not a simplification candidate.
+Migration hygiene: swallow-all `EXCEPTION WHEN others` pattern confirmed
+bounded to exactly the two already-known migrations, no others found.
+Full dependency-aware sequencing produced across 4 categories:
+independently-safe, bundle-with-remediation, blocked-by-architecture,
+retain-intentionally.
+
+## Stage 12 handoff summary (in-progress, awaiting review)
+
+- **Repository-layer duplication (§2).** Retain both, rename/document —
+  not consolidation; zero functional overlap confirmed.
+- **Legacy executor fallback (§3).** Human decision required — 4 options
+  (retain+telemetry / hard-fail / migrate-then-remove / historical-replay
+  only), none chosen; dev-DB 9.3% firing rate explicitly caveated as not
+  confirmed production-representative.
+- **Snapshot cleanup (§4).** `05-002` safe to remove; `05-003` retain
+  intentionally (stated future audit purpose); `05-005` still fully live
+  post-`04-001`, recommend extracting one shared pure-function helper.
+- **Route removal matrix (§5).** Legacy reconciliation pair — independently
+  safe cleanup (zero callers, shipped replacement); every other unscoped
+  route (retry/approve/lock/pay/admin/legacy-stats) — blocked by security
+  architecture, NOT a deletion candidate (still load-bearing).
+- **Trace literal consolidation (§6).** Blocked by Stage 10's unimplemented
+  migration; consolidation approach specified for when it lands.
+- **Enum/contract duplication (§7) — new finding.** `PayrollRunStatus`
+  duplicated across two frontend modules, both incorrect relative to the
+  8-value backend enum, in different ways. Confirmed S2, bundled with
+  `06-001`/`06-004`'s remediation.
+- **Business-rule duplication (§8).** `05-005` (see §4); error-to-HTTP
+  helper recommended alongside `07-001`'s fix; retry/original-run context
+  construction correctly NOT consolidated (different lifecycle semantics).
+- **Logging/diagnostics (§10).** `paye.py` print() removal; misleadingly-
+  named `backend/scripts/test_*.py` files recommended for rename, not
+  deletion (superseded by the 306-test suite but retain ad hoc value).
+- **Migration hygiene (§11).** Swallow-all pattern confirmed bounded to
+  exactly 2 files, no new instances found.
+- **No human decision required beyond §3's new one.**
+- **Stage 12 is NOT closed.** Awaiting Michael's review before closure.
 
 ## Stage 11 handoff summary (complete)
 
@@ -390,13 +421,14 @@ rejected, no action required.
 | 09 | Security and tenant isolation | complete | 2026-07-12 | 2026-07-12 | — |
 | 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
 | 11 | Scenario testing | complete | 2026-07-12 | 2026-07-13 | — |
-| 12 | Code simplification | not-created | — | — | — |
+| 12 | Code simplification | in-progress | 2026-07-13 | — | awaiting human review |
 | 13 | Consolidated backlog | not-created | — | — | — |
 
 ## Open human decisions
 
-Five genuinely open (no decision made yet); the rest below are resolved,
+Six genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
+- Should the legacy executor fallback be retained with telemetry, hard-failed, migrated-then-removed, or restricted to historical replay only? (Stage 12 §3, extends finding 01-004)
 - ~~Is application-level authentication out of scope by design, or an unrecognized gap?~~ — **resolved 2026-07-12 (as 09-000)**: unrecognized S0 production blocker; app-level auth/authorization mandatory before any live/production-data use.
 - ~~What is the intended role model?~~ — **resolved 2026-07-12**: one bureau account manages multiple client workspaces via explicit membership; five minimum roles (platform admin, bureau admin, payroll operator, payroll approver, read-only auditor/viewer); direct client users deferred but the model must remain extensible.
 - Empty `component_metadata` list silently triggering legacy executor fallback (finding 01-004)
