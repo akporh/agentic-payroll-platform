@@ -62,6 +62,20 @@ Stage 03 (Agent Portfolio) introduced no new sources — its evidence base is en
 
 Stage 04 (Outcome Discovery) introduced no new sources — its evidence base is S-01 (codebase, re-cited via Stage 01's confirmed findings), S-04 (the architecture document), and Stage 02/03's own confirmed findings and outputs. No new code exploration was performed; Stage 04 is an outcome-framing/prioritisation stage building on already-gathered evidence, per its own explicit "current code only where needed to verify that an outcome has a real current-state basis" instruction — no such verification was needed beyond what Stage 01 already established.
 
+### S-06: Repository codebase, re-verified at a later commit (Stage 05)
+- **Type**: code
+- **Location**: `backend/`, `frontend/src/`, `migrations/versions/`, `tests/` — same repository, later snapshot
+- **First consulted**: 2026-07-11 (Stage 01, commit `9644d91`); re-verified 2026-07-13, Stage 05
+- **Snapshot basis**: git commit `65e87aa3fd1df1ec90c7ea7e47a0c0af54805132`, branch `uat` — approximately 2 days and several commits after Stage 01's snapshot, including genuine remediation work (commit `68e9307`, "Remediate 04-001 (S0) + 05-001")
+- **Notes**: Stage 05's defining discipline is that it does NOT assume Stage 01's findings are still accurate — every cited Stage 01 finding relevant to this stage's scope (F-01-27, F-01-29, F-01-33, F-01-38, F-01-40) was independently re-read against this later commit via 5 parallel Explore sub-investigations, with explicit git-log checks for each relevant file to catch any intervening changes. Two findings were confirmed materially changed since Stage 01 (F-01-29 downgraded — confirmed unreachable in production; snapshot/retry integrity genuinely improved by commit `68e9307`); the rest were confirmed unchanged. Two new findings (F-05-11's tool-wrapping risks) were surfaced by this stage's different investigative lens, not present in Stage 01's original sweep.
+
+### S-07: docs/audit-program/ findings (cross-reference only, independently re-verified)
+- **Type**: documentation (a parallel, independent investigation workstream in the same repository)
+- **Location**: `docs/audit-program/03-configuration-integrity/findings.md`, `06-ui-api-backend-wiring/findings.md`, `07-silent-failures-observability/findings.md`, `09-security-tenant-isolation/findings.md`
+- **First consulted**: 2026-07-13, Stage 05
+- **Snapshot basis**: live read, 2026-07-13
+- **Notes**: This is a separate, independently-run audit workstream investigating much of the same codebase. Per `_core/EVIDENCE-STANDARD.md`, its findings were never cited as standalone evidence — every reference to it in this stage's outputs (findings 03-002, 06-003, 06-007, 07-002, 09-000, 09-002, 09-004) is used only as corroboration alongside this stage's own independent direct code re-read, never as a substitute for it. Where the two investigations' independently-derived conclusions matched exactly (e.g. the reconciliation workspace-scoping gap, the FULL_RUN UI mismatch, the absence of authentication), this is noted as cross-validation, not as this review outsourcing its evidence-gathering.
+
 ## Next action
 
-**Complete Stage 04 outcome discovery review.**
+**Complete Stage 05 platform readiness review.**

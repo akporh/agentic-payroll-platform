@@ -2,7 +2,7 @@
 
 ## Status
 
-not-started
+awaiting-review (investigation complete 2026-07-13 — 12 confirmed findings, 0 draft, 0 parked; 0 human decisions required at this stage's gate (2 design questions forwarded to Stage 08/09); 15 outputs produced, all findings independently re-verified against current committed code, not inferred from prior stages. Not marked `complete` per this CONTEXT.md's own completion procedure — Stage 06 not started.)
 
 ## Objective
 
@@ -353,4 +353,4 @@ When work is finished:
 
 ## Next action
 
-Execute Stage 05 from this `CONTEXT.md`, then stop at `awaiting-review`.
+**Human review of Stage 05 outputs; gate approval required before Stage 06.**
