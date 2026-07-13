@@ -6,38 +6,76 @@ type: project
 
 # Audit State
 
-**Next action:** Stage 12 closed 2026-07-13. Open **Stage 13 —
-Consolidated remediation backlog** (not started). Read-only
-code-simplification design stage — no code/migration/test/script
-modified throughout. Re-verified `01-002` (ORM repository layer):
-genuinely distinct responsibility, recommend rename+document, not
-consolidation. `01-004` (legacy executor fallback): confirmed reachable
-from the **live production route**, not merely "old CLI callers" as the
-code's own stale comment claims — **resolved at close as a phased
-migrate-then-remove programme** (8 steps: telemetry → production
-inventory → classify occurrences → migrate/repair configuration → prove
-zero fallback usage over an observation window → hard-fail new runs →
-remove default path), with 7 Stage 13 acceptance criteria, explicitly
-not an immediate hard-fail and explicitly not backed by the dev-DB 9.3%
-figure alone. Re-verified `05-002` (dead snapshot column, safe to remove)
-and `05-005` (duplicated statutory-extraction logic — confirmed **still
-fully live** even after the `04-001` remediation shipped, since that fix
-changed *where* the data comes from but not the duplicated parsing
-logic). **New finding:** `PayrollRunStatus` is defined twice in the
-frontend, in two different modules, each wrong in a different way —
-`types/payroll.ts` (used to type the real API field) is missing `FAILED`
-entirely, while `design-system/components/Status.tsx` uses `'PENDING'`
-instead of `'DRAFT'`. This sharpens `06-001`/`06-004`'s root cause with a
-precise citation. `06-007`'s legacy reconciliation route identified as
-the one genuine "just delete it" candidate in the whole unscoped-route
-family (zero callers, fully-shipped replacement) — every other unscoped
-lifecycle/admin route is load-bearing and blocked by Stage 09's security
-architecture, not a simplification candidate. Migration hygiene:
-swallow-all `EXCEPTION WHEN others` pattern confirmed bounded to exactly
-the two already-known migrations, no others found. All findings carried
-to Stage 13 exactly as classified — independently-safe,
-bundle-with-remediation, blocked-by-architecture, retain-intentionally,
-plus the resolved legacy-fallback programme.
+**Next action:** Stage 13 opened 2026-07-13, in-progress, awaiting human
+review. This is the final consolidation stage — no new investigation was
+performed; every fact synthesizes an already-committed Stages 01–12
+finding, crosswalked in the primary file's §2. **Headline: the platform
+cannot process live/production payroll data today for one dominant
+reason — `09-000` (no authentication anywhere).** Every other confirmed
+security finding is downstream of it. A full S0/S1 production-release
+gate (8 items) is defined, none of which the calculation engine itself
+fails — `04-001` is fixed, `04-004` is structurally rejected, every
+financial scenario in Stage 11 passed. The backlog is organized into 8
+sequenced programmes (auth/tenancy foundation → route-ownership closure →
+error/export/audit hardening → data-integrity corrections → execution
+trace → statutory policy/legacy-executor transition → frontend
+completeness → simplification), with Programmes 3 and 4 explicitly called
+out as independent of Programme 1 and schedulable concurrently. Four
+human decisions presented, each with bounded options and a recommendation
+Michael must confirm: D1 (`03-004` statutory-disablement policy —
+recommend forbid entirely), D2 (`08-002`'s immutability lifecycle point —
+recommend `APPROVED`, already implied by existing `CLAUDE.md` invariant
+text), D3 (legacy-executor observation-window threshold — recommend two
+consecutive production payroll cycles), D4 (payroll operator/approver
+separation of duties — recommend soft separation with audit flagging,
+given Sandy's small-team context). A residual-risk statement names what
+remains true even after full remediation (auth-mechanism choice
+unspecified, no production-environment inventory performed by this audit,
+D1/D4 depend on business context this audit doesn't have visibility
+into). Stage 13 is **not self-closed** — awaiting Michael's review.
+
+## Stage 13 handoff summary (in-progress, awaiting review)
+
+- **Executive summary.** Calculation engine is sound (306 tests passing,
+  `04-001`/`05-001` remediated, `04-004` rejected). The platform is unsafe
+  for live/production data solely due to `09-000` (no authentication) and
+  its downstream consequences — not due to any financial-correctness gap.
+- **S0/S1 release gate (8 items, §4 of the primary file):** authentication
+  foundation, membership/RBAC, mandatory ownership checks on 5 route
+  families, legacy-reconciliation route removal, admin-dashboard
+  protection, 10 Group A exception sites, CSV-injection sanitizer,
+  `employee_number` NOT NULL correction.
+- **8 sequenced programmes** with a full dependency graph and migration/
+  API/UI impact register: (1) auth/tenancy/RBAC foundation; (2) mandatory
+  route ownership + security closure; (3) error/export/audit hardening
+  — explicitly independent of Programme 1, can run concurrently; (4)
+  data-integrity corrections — also independent, concurrent-capable; (5)
+  execution-trace package (Stage 10's design, schema/write-side half
+  independent, query-authorization half folds into Programme 2); (6)
+  statutory policy + legacy-executor transition; (7) frontend
+  completeness; (8) simplification, distributed opportunistically.
+- **Four human decisions, each with bounded options + a stated
+  recommendation:** D1 (`03-004`, recommend forbid statutory-component
+  disablement entirely), D2 (`08-002`'s immutability point, recommend
+  `APPROVED` — already implied by existing `CLAUDE.md` text), D3
+  (legacy-executor observation window, recommend two consecutive
+  production payroll cycles), D4 (operator/approver separation of duties,
+  recommend soft separation with audit flagging given Sandy's small-team
+  context).
+- **Residual-risk statement** names what remains true even after full
+  remediation: auth-mechanism choice unspecified by this audit,
+  production-environment inventory never performed (every dev-DB
+  percentage cited across Stages 01–13 is explicitly non-representative),
+  D1/D4 depend on Sandy business context this audit has no visibility
+  into, future code can reintroduce any defect class this programme's
+  tests don't already cover.
+- **All Stage 01–12 findings crosswalked** to implement/defer/retain/
+  rejected/remediated (§2 of the primary file), with explicit
+  consolidation notes (e.g. `08-003` split across the visibility package
+  and the `03-004` policy package, deliberately not merged).
+- **No new investigation performed** — every cited fact traces to a
+  specific prior-stage finding ID.
+- **Stage 13 is NOT closed.** Awaiting Michael's review before closure.
 
 ## Stage 12 handoff summary (complete)
 
@@ -428,12 +466,16 @@ plus the resolved legacy-fallback programme.
 | 10 | Execution-trace remediation (findings + design only — no code changes) | complete | 2026-07-12 | 2026-07-12 | — |
 | 11 | Scenario testing | complete | 2026-07-12 | 2026-07-13 | — |
 | 12 | Code simplification | complete | 2026-07-13 | 2026-07-13 | — |
-| 13 | Consolidated backlog | not-created | — | — | — |
+| 13 | Consolidated backlog | in-progress | 2026-07-13 | — | awaiting human review |
 
 ## Open human decisions
 
-Five genuinely open (no decision made yet); the rest below are resolved,
+Nine genuinely open (no decision made yet); the rest below are resolved,
 several this session — see [`_core/human-decisions.md`](_core/human-decisions.md) for full decision text:
+- D1 — Should statutory-component disablement be forbidden entirely, or allowed only through privileged/audited controls? (Stage 13, extends `03-004`; recommend: forbid entirely)
+- D2 — Is `APPROVED` the correct lifecycle point for `payroll_run` DB-level immutability? (Stage 13, extends `08-002`; recommend: yes, matches existing documented invariant)
+- D3 — What observation-window threshold proves the legacy-executor fallback is safe to remove for new runs? (Stage 13, extends `01-004`/Stage 12's decision; recommend: two consecutive production payroll cycles)
+- D4 — Should payroll operator/approver separation of duties be hard-enforced, soft-flagged, or not required? (Stage 13, new; recommend: soft separation with audit flagging)
 - ~~Should the legacy executor fallback be retained with telemetry, hard-failed, migrated-then-removed, or restricted to historical replay only?~~ — **resolved 2026-07-13 at Stage 12 close**: migrate-then-remove, phased 8-step programme (see finding 01-004 / Stage 12 §3).
 - ~~Is application-level authentication out of scope by design, or an unrecognized gap?~~ — **resolved 2026-07-12 (as 09-000)**: unrecognized S0 production blocker; app-level auth/authorization mandatory before any live/production-data use.
 - ~~What is the intended role model?~~ — **resolved 2026-07-12**: one bureau account manages multiple client workspaces via explicit membership; five minimum roles (platform admin, bureau admin, payroll operator, payroll approver, read-only auditor/viewer); direct client users deferred but the model must remain extensible.
