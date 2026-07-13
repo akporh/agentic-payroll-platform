@@ -2,7 +2,7 @@
 
 ## Status
 
-not-started
+awaiting-review (investigation complete 2026-07-13 — 8 confirmed findings, 0 draft, 0 parked; 1 human decision required (HD-04-1, anomaly-detection calibration approach); 11 outputs produced. Not marked `complete` per this CONTEXT.md's own completion procedure — Stage 05 not started.)
 
 ## Objective
 
@@ -333,4 +333,4 @@ When the work is finished:
 
 ## Next action
 
-Execute Stage 04 from this `CONTEXT.md`, then stop at `awaiting-review`.
+**Human review of Stage 04 outputs and HD-04-1 (anomaly-detection calibration approach); gate approval required before Stage 05.**

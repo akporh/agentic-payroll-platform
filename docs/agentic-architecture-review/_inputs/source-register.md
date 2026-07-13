@@ -58,6 +58,10 @@ This gives the review a single place to check provenance — what was consulted,
 
 Stage 03 (Agent Portfolio) introduced no new sources — its evidence base is entirely S-01 (codebase, re-cited via Stage 01's confirmed findings), S-02/S-03 (already-reconciled memory/CLAUDE.md context), and S-04 (the architecture document, already registered). No new code exploration was performed; Stage 03 is a design/synthesis stage building on already-gathered evidence.
 
+## Stage 04 note
+
+Stage 04 (Outcome Discovery) introduced no new sources — its evidence base is S-01 (codebase, re-cited via Stage 01's confirmed findings), S-04 (the architecture document), and Stage 02/03's own confirmed findings and outputs. No new code exploration was performed; Stage 04 is an outcome-framing/prioritisation stage building on already-gathered evidence, per its own explicit "current code only where needed to verify that an outcome has a real current-state basis" instruction — no such verification was needed beyond what Stage 01 already established.
+
 ## Next action
 
-**Complete Stage 03 agent portfolio review.**
+**Complete Stage 04 outcome discovery review.**
