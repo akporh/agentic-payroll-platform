@@ -46,34 +46,45 @@ stages:
     date: 2026-07-13
 
   implementation:
-    status: eligible
+    status: complete
     depends_on: [pm, arch-council]
+    evidence: evidence/implementation/size_guard.md
     note: >
       Both graph dependencies are terminal (pm: complete, arch-council:
       not-applicable). Scope approval (D-VP-01/02) is the equivalent of
       a plan-approval gate here — this sprint's size did not warrant a
       separate formal plan-mode/ExitPlanMode pass; that is recorded
       honestly here rather than fabricating a plan.md that was never
-      produced through that mechanism.
+      produced through that mechanism. Code + tests committed (`be337aa`):
+      MAX_TIMESHEET_UPLOAD_BYTES guard in payroll.py, advisory client
+      check + toast in TimesheetUpload.tsx, 2 focused backend tests.
+      Full suite 308 passed (306 pre-existing + 2 new), 1 pre-existing
+      skip, 0 failed. Frontend tsc --noEmit clean.
 
   verification:
-    status: blocked
+    status: eligible
     depends_on: [implementation]
-    waiting_for:
-      - implementation
+    may_run_with: [security]
     note: >
-      Entry condition holds (this sprint touches both
-      backend/api/routes/payroll.py and frontend/src/pages/TimesheetUpload.tsx)
-      — genuinely pending, not not-applicable.
+      implementation reached complete — dependency now terminal. Entry
+      condition holds (this sprint touches both
+      backend/api/routes/payroll.py and
+      frontend/src/pages/TimesheetUpload.tsx). Not yet activated — per
+      this sprint's evidence/commit strategy, the eligible->active
+      transition for verification and security is committed as its own
+      dedicated commit, before either stage's review work begins, to
+      make concurrent activation provable from git history (the gap
+      the aud-q1-trace-source retro found).
 
   security:
-    status: blocked
+    status: eligible
     depends_on: [implementation]
-    waiting_for:
-      - implementation
+    may_run_with: [verification]
     note: >
-      Entry condition holds (backend/api/routes/payroll.py modified) —
-      genuinely pending, not not-applicable.
+      implementation reached complete — dependency now terminal. Entry
+      condition holds (backend/api/routes/payroll.py modified). Not yet
+      activated — see verification's note; both transition to active
+      together in the next commit.
 
   audit:
     status: not-applicable
@@ -86,7 +97,6 @@ stages:
     status: blocked
     depends_on: [implementation, verification, security, audit]
     waiting_for:
-      - implementation
       - verification
       - security
 
