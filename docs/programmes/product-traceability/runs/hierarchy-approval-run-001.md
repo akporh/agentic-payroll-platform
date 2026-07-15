@@ -65,7 +65,7 @@ None required. The critic's verdict was `approve` with no critical issues, guard
 
 ## Commit SHA(s)
 
-Not yet committed as of this run record's pre-commit write. Updated with the real SHA(s) immediately after the commit is made, per the triggering prompt's instruction not to request intermediate confirmation.
+`9f77532` — "docs: record product traceability hierarchy decisions", on branch `uat`. Scope: all of `docs/programmes/product-traceability/` (9 files changed). The pre-existing, unrelated uncommitted changes present throughout this run (`docs/ROADMAP.md` modification, `docs/test-harness-checklist.md` deletion, `docs/test-reports/test-harness/`, `docs/ux-design-brief/gate-6/ia-timesheet-discoverability.md`) were deliberately left unstaged and uncommitted — out of this programme's authorised scope.
 
 ## Outstanding follow-ups
 
