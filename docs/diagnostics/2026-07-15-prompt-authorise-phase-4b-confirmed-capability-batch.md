@@ -2,9 +2,9 @@
 
 ## Objective
 
-Authorise and execute a bounded Phase 4B historical-migration batch for **confirmed stories only**, limited to **one capability area** and a target size of approximately **10–20 stories**.
+Authorise and execute a bounded Phase 4B historical-migration batch for **confirmed stories only**, limited to **one capability area** and approximately **10–20 stories**.
 
-This phase exists to prove the Phase 4A model at a larger but still controlled scale before any wider historical migration is authorised.
+This phase must also improve registry readability before scale migration by adding human-readable parent names alongside stable parent IDs.
 
 Do not migrate strongly inferred, tentative, requires-human-classification, backlog, disputed, or unresolved-compliance items.
 
@@ -22,67 +22,116 @@ Read and obey:
 - `docs/programmes/product-traceability/critic-review-phase-4a-pilot.md`
 - `docs/programmes/product-traceability/runs/historical-migration-pilot-run-001.md`
 - `docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md`
-- `docs/product/README.md`
-- `docs/product/OUTCOMES.md`
-- `docs/product/CAPABILITIES.md`
-- `docs/product/FEATURES.md`
-- `docs/product/STORY-REGISTRY.md`
-- `docs/product/stories/TEMPLATE.md`
-- `docs/product/validate_registry.py`
+- all files under `docs/product/`
 
-The Phase 4A pilot conventions are authoritative unless this prompt explicitly changes them.
+The Phase 4A conventions remain authoritative unless this prompt explicitly changes them.
 
 ## Human authorisation
 
-This prompt constitutes explicit human authorisation for:
+This prompt authorises:
 
 - Phase 4B only;
 - one capability-area batch only;
 - confirmed stories only;
-- approximately 10–20 stories;
-- writes limited to the approved programme-control files and `docs/product/`;
+- approximately 10–20 stories, never more than 20;
+- the human-readable registry schema amendment defined below;
+- writes limited to `docs/product/` and approved programme-control files;
 - an independent critic gate;
-- stopping before any further batch.
+- stopping before any further migration batch.
 
 It does not authorise the remainder of Phase 4.
 
+## Mandatory human-readable registry amendment
+
+Stable IDs remain the authoritative machine references. Human-readable names are required as display fields so a reviewer can understand each relationship without opening another registry.
+
+Update the registry schemas and existing Phase 4A rows as follows.
+
+### `CAPABILITIES.md`
+
+Each capability row must contain at least:
+
+```text
+Capability ID | Capability name | Outcome ID | Outcome name | ...
+```
+
+### `FEATURES.md`
+
+Each feature row must contain at least:
+
+```text
+Feature ID | Feature name | Capability ID | Capability name | ...
+```
+
+### `STORY-REGISTRY.md`
+
+Each story row must contain at least:
+
+```text
+Story ID | Story title | Feature ID | Feature name | ...
+```
+
+Where useful and consistent with the current schema, the story registry may also display capability and outcome names, but this is optional. Do not duplicate long descriptions.
+
+### Authority rule
+
+- IDs are authoritative for identity and relationships.
+- Names are human-readable display fields.
+- A displayed parent name must exactly match the current name held in the authoritative parent registry.
+- A parent rename must update all duplicated display-name fields in the same controlled change.
+- Do not infer hierarchy from names; always resolve by ID.
+
+### Validator requirements for names
+
+Extend `docs/product/validate_registry.py` so it:
+
+- confirms every capability's `Outcome ID` exists;
+- confirms its displayed `Outcome name` exactly matches that outcome's authoritative name;
+- confirms every feature's `Capability ID` exists;
+- confirms its displayed `Capability name` exactly matches that capability's authoritative name;
+- confirms every story's `Feature ID` exists;
+- confirms its displayed `Feature name` exactly matches that feature's authoritative name;
+- rejects missing display names;
+- rejects stale or mismatched display names;
+- preserves all existing Phase 4A validation behaviour.
+
+Update `README.md` and relevant schema notes/templates so this ID-plus-name convention is explicit.
+
 ## Batch-selection rule
 
-Select exactly one capability area from the discovery inventory using this order of preference:
+Select exactly one capability area using this preference order:
 
-1. a capability area containing between 10 and 20 `confirmed` items;
+1. a capability area containing 10–20 confirmed items;
 2. otherwise, the capability area closest to that range without exceeding 20;
-3. otherwise, choose a coherent confirmed-only subset of no more than 20 items from one capability area.
+3. otherwise, a coherent confirmed-only subset of no more than 20 items from one capability area.
 
-Before migration, write a concise batch-selection record explaining:
+Before migration, record:
 
 - capability area selected;
-- candidate confirmed items found;
-- items included;
-- items excluded and why;
-- expected outcomes/capabilities/features to be created or reused;
+- confirmed candidate items found;
+- included items;
+- excluded items and reasons;
+- expected outcomes, capabilities, and features to create or reuse;
 - expected story count.
 
-Do not select items merely to hit a numeric target. Preserve coherent product grouping.
+Do not select unrelated items merely to hit a target.
 
 ## Mandatory exclusions
 
-Exclude all items with any of these conditions:
+Exclude anything that is:
 
-- `strongly inferred`;
-- `tentative`;
-- `requires human classification`;
-- backlog / not delivered;
-- PH_OT `is_pensionable` unresolved item;
-- Gate 4 disputed item;
-- any contradictory or insufficient evidence discovered during execution;
-- any story whose migration would require rewriting historical source files.
+- strongly inferred;
+- tentative;
+- requires human classification;
+- backlog or not delivered;
+- related to the unresolved `PH_OT is_pensionable` question;
+- the disputed Gate 4 item;
+- contradicted or insufficiently supported during direct inspection;
+- dependent on rewriting historical source files.
 
-If an item initially appears confirmed but direct inspection materially weakens that confidence, exclude it and record the reason. Do not silently downgrade and migrate it within this batch.
+If direct inspection weakens a supposedly confirmed item, exclude and document it. Do not silently downgrade and migrate it.
 
 ## Allowed write scope
-
-You may modify or create files only under:
 
 ```text
 docs/product/
@@ -111,9 +160,7 @@ migrations/
 ~/.claude/
 ```
 
-All unlisted paths are forbidden for writes.
-
-Historical evidence sources are read-only.
+All other paths are forbidden for writes. Historical evidence is read-only.
 
 ## Migration requirements
 
@@ -121,27 +168,21 @@ For every migrated story:
 
 1. Preserve its stable story ID.
 2. Use a descriptive filename beginning with the full stable ID.
-3. Add exactly one corresponding row to `STORY-REGISTRY.md`.
+3. Add exactly one matching row to `STORY-REGISTRY.md`.
 4. Create or reuse the correct outcome, capability, and feature rows.
-5. Preserve the approved hierarchy:
-
-```text
-Outcome → Capability → Feature → Story
-```
-
-6. Record both:
-   - delivery status;
-   - evidence confidence.
-7. Link to the original authoritative evidence rather than duplicating historical acceptance criteria.
+5. Preserve `Outcome → Capability → Feature → Story`.
+6. Record delivery status and evidence confidence separately.
+7. Link to original evidence rather than duplicating historical acceptance criteria.
 8. Record delivery history, including sprint/track and contribution.
 9. Record decision references where applicable.
-10. Record dependencies only where supported by evidence.
-11. Do not invent actors, business outcomes, dependencies, or delivery dates.
-12. Keep the story title understandable to a product owner, not only to an engineer.
+10. Record dependencies only when supported by evidence.
+11. Do not invent actors, outcomes, dependencies, or dates.
+12. Use product-owner-readable titles.
+13. Populate both parent ID and parent display name in every applicable registry row.
 
-## Stable filename and validator rules
+## Stable filename rules
 
-Continue the Phase 4A convention:
+Use:
 
 ```text
 <full-story-id>-<descriptive-slug>.md
@@ -149,53 +190,55 @@ Continue the Phase 4A convention:
 
 The validator must:
 
-- match story files by exact full story-ID prefix;
+- match by exact full story-ID prefix;
 - reject duplicate registry IDs;
 - reject duplicate story-file ID prefixes;
 - reject ambiguous prefix matches;
 - reject registry rows without files;
 - reject files without registry rows;
-- validate outcome → capability → feature → story references;
-- preserve compatibility with the two Phase 4A pilot stories.
+- validate all hierarchy references;
+- validate all duplicated parent display names;
+- preserve compatibility with both Phase 4A stories.
 
 Do not weaken validation to accommodate malformed records.
 
 ## Registry readability
 
-After migration, check that the flat registries remain navigable.
+Keep registries navigable using:
 
-Where necessary, improve schema-preserving presentation only, such as:
+- stable deterministic sorting;
+- concise titles and names;
+- consistent status and confidence values;
+- IDs and names shown together;
+- optional grouping headings where they do not interfere with parsing.
 
-- deterministic sorting;
-- grouping comments/headings by capability;
-- concise titles;
-- consistent evidence-confidence and status values.
-
-Do not change approved source-of-truth ownership or hierarchy semantics.
+Do not change hierarchy semantics or source-of-truth ownership.
 
 ## Reconciliation
 
-Create a batch reconciliation record that proves:
+Create a batch reconciliation record proving:
 
 - every selected item appears exactly once in `STORY-REGISTRY.md`;
 - every selected item has exactly one story file;
-- every story references valid feature, capability, and outcome IDs;
+- every story resolves to valid feature, capability, and outcome IDs;
+- every displayed parent name matches its authoritative parent registry;
 - no excluded item was migrated;
-- the two Phase 4A stories remain unchanged except for strictly necessary validator-compatible mechanical amendments;
-- migrated count matches selected count.
+- the two Phase 4A stories remain valid after the schema amendment;
+- migrated count equals selected count.
 
 ## Programme-control updates
 
-Update programme-control files accurately to show:
+Update programme files to show:
 
-- Phase 4A pilot complete;
+- Phase 4A complete;
 - Phase 4B authorised and complete if all gates pass;
-- wider Phase 4 still not authorised;
-- current human gate is approval of the next migration scope only;
-- all exclusions and newly discovered ambiguities remain visible;
-- no claim that all confirmed stories have been migrated unless this batch genuinely completes them.
+- wider Phase 4 not authorised;
+- current gate is approval of the next migration scope;
+- exclusions and ambiguities remain visible;
+- the human-readable registry amendment was adopted during Phase 4B;
+- no claim that all confirmed stories are migrated unless true.
 
-Record the human authorisation as the next decision ID in `decisions.md` without renumbering prior decisions.
+Record the authorisation as the next decision ID without renumbering earlier decisions.
 
 ## Run record
 
@@ -209,42 +252,41 @@ Include:
 
 - start state;
 - authorisation decision;
+- schema amendment and rationale;
 - batch-selection rationale;
 - selected capability area;
 - included and excluded story IDs;
-- files inspected;
-- files changed;
+- files inspected and changed;
 - hierarchy rows created and reused;
-- validator changes, if any;
-- validation commands and results;
-- reconciliation result;
+- validator changes;
+- validation and reconciliation results;
 - executor findings;
-- critic verdict;
-- amendments made after criticism;
+- critic verdict and amendments;
 - commit SHA(s);
 - outstanding items;
 - next permitted action.
 
 ## Independent critic gate
 
-After executor outputs exist, run a separate read-only critic agent.
+Run a separate read-only critic after executor outputs exist.
 
 The critic must assess:
 
-1. whether the batch is limited to one capability area;
-2. whether every migrated story was `confirmed` before migration;
-3. whether mandatory exclusions were respected;
-4. whether the story count remains within the authorised maximum of 20;
-5. whether IDs, filenames, rows, hierarchy references, and evidence links agree;
-6. whether no historical source was rewritten;
-7. whether no strongly inferred, tentative, disputed, backlog, or unresolved-compliance item slipped into the batch;
-8. whether Phase 4A records remain valid;
-9. whether validator behaviour is strict and unambiguous;
-10. whether programme state stops at the next human gate;
-11. whether the run record is complete and truthful;
-12. whether the allowed write scope was respected.
+1. one capability area only;
+2. confirmed stories only;
+3. mandatory exclusions respected;
+4. no more than 20 migrated stories;
+5. IDs, filenames, rows, hierarchy, evidence links, and display names agree;
+6. every duplicated parent name exactly matches its authoritative parent name;
+7. IDs remain authoritative and names are display-only;
+8. no historical source was rewritten;
+9. Phase 4A records still validate;
+10. validator behaviour remains strict and rejects stale names and ambiguous prefixes;
+11. programme state stops at the next human gate;
+12. run record is complete and truthful;
+13. allowed write scope was respected.
 
-Write the review to:
+Write:
 
 ```text
 docs/programmes/product-traceability/critic-review-phase-4b-confirmed-batch.md
@@ -262,7 +304,7 @@ Critical issues:
 Evidence or classification discrepancies:
 ...
 
-Hierarchy or registry defects:
+Hierarchy, name-display, or registry defects:
 ...
 
 Guardrail gaps:
@@ -275,9 +317,9 @@ Human decisions still required:
 ...
 ```
 
-If amendments are required, the executor may apply only in-scope amendments. Re-review is required unless the critic explicitly says a particular mechanical amendment does not require it.
+Re-review is required after amendments unless the critic explicitly waives it for a purely mechanical correction.
 
-## Validation commands
+## Validation
 
 At minimum run:
 
@@ -287,28 +329,27 @@ git diff --check
 git status --short
 ```
 
-Also run targeted checks that confirm:
+Also confirm:
 
-- selected story count is between 1 and 20;
-- every selected story confidence is `confirmed`;
-- no excluded confidence/status appears among newly migrated rows;
-- every new story filename begins with the exact full story ID;
-- no ambiguous filename prefix exists;
-- every new story row resolves to one file;
-- every new feature resolves to one capability;
-- every new capability resolves to one outcome;
-- existing Phase 4A story rows and files still validate;
-- no forbidden path changed in this run.
+- selected count is 1–20;
+- every selected story was confirmed before migration;
+- no excluded confidence/status appears among new rows;
+- every story filename begins with the full exact ID;
+- no ambiguous prefix exists;
+- every hierarchy ID resolves;
+- every duplicated parent name matches the authoritative parent name;
+- existing Phase 4A records still pass;
+- no forbidden path changed.
 
-Pre-existing unrelated working-tree changes must be identified and left untouched.
+Identify and leave untouched all pre-existing unrelated working-tree changes.
 
 ## Commit and push
 
-After the critic gate passes:
+After critic approval:
 
 1. Commit only authorised files.
 2. Push to `origin/uat`.
-3. Record the actual commit SHA(s) in the run record, using a follow-up commit only if required for honest SHA backfill.
+3. Record actual commit SHA(s), using a follow-up SHA-backfill commit only when necessary.
 
 Suggested commit message:
 
@@ -320,17 +361,18 @@ docs: migrate confirmed product stories batch
 
 Stop and escalate if:
 
-- no coherent confirmed-only capability batch can be formed;
-- more than 20 stories would be required to preserve the capability coherently;
-- source evidence materially contradicts the discovery classification;
-- the hierarchy model cannot represent the selected items without changing approved governance;
+- no coherent confirmed-only batch can be formed;
+- more than 20 stories are required for coherence;
+- evidence contradicts discovery classification;
+- the hierarchy cannot represent the batch without changing approved governance;
+- parent names cannot be derived unambiguously from authoritative registries;
 - a forbidden path would need modification;
-- validator correctness would need to be weakened;
+- validator strictness would need weakening;
 - the critic rejects the batch after permitted amendments.
 
 ## Final report
 
-Report once, at the end:
+Report once at the end:
 
 ```text
 Product traceability Phase 4B confirmed-story batch complete
@@ -340,6 +382,9 @@ Capability area:
 
 Stories migrated:
 <count and IDs>
+
+Human-readable registry amendment:
+<summary and validator result>
 
 Hierarchy rows:
 Outcomes: <created/reused counts>
