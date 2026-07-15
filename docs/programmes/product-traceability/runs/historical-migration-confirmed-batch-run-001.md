@@ -149,7 +149,7 @@ No other amendment was required. The critic independently re-verified all 5 disc
 
 ## Commit SHA(s)
 
-`<to be filled in immediately after commit — see final report>`
+`8a9d357` — "docs: migrate confirmed product stories batch", pushed to `origin/uat`. Only the 32 authorised files under `docs/product/` and `docs/programmes/product-traceability/` were staged and committed; the pre-existing unrelated working-tree changes (`docs/ROADMAP.md`, `docs/test-harness-checklist.md`, `docs/test-reports/test-harness/`, `docs/ux-design-brief/gate-6/ia-timesheet-discoverability.md`) were left uncommitted, exactly as found at run start.
 
 ## Outstanding items
 
