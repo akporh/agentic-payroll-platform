@@ -1,6 +1,6 @@
 # Decisions — Agentic Architecture Review Programme
 
-Programme-level decisions only (D-*). Review-internal human decisions (stage gates, finding resolutions) live in `_core/HUMAN-DECISIONS.md` (HD-*) and are not duplicated here.
+Programme-level decisions only (D-*). Review-internal human decisions (material finding resolutions and final approvals) live in `_core/HUMAN-DECISIONS.md` (HD-*) and are not duplicated here.
 
 ---
 
@@ -10,23 +10,33 @@ Programme-level decisions only (D-*). Review-internal human decisions (stage gat
 
 **Decision:** The agentic architecture review is registered as a programme under `docs/programmes/`, with **full-arc scope**:
 
-- Phase 1 `review-execution` — finish the review (Stage 05 gate → Stage 13), authorised retrospectively (the review began before programme registration; its stage governance — `WORKFLOW.md`, `review-state.md`, `_core/` — is unchanged).
-- Phase 2 `roadmap-consolidation` — placeholder, **not authorised**: cross-reference the Stage 13 approved roadmap with the audit programme's 8 remediation programmes and `docs/ROADMAP.md` into one build order.
-- Phase 3 `adoption` — placeholder, **not authorised**: adopt the approved build order into `docs/product/` and `docs/ROADMAP.md`.
+- Phase 1 `review-execution` — finish the review (Stage 05 gate → Stage 13), authorised retrospectively.
+- Phase 2 `roadmap-consolidation` — placeholder, **not authorised**.
+- Phase 3 `adoption` — placeholder, **not authorised**.
 
-**Alternative considered and rejected:** review-only scope (programme ends at Stage 13; consolidation as a separate future programme).
+**Alternative considered and rejected:** review-only scope.
 
 ---
 
 ## D-002 — Physical move under `docs/programmes/`, with a living-files-only path rewrite (2026-07-15)
 
-**Decided by:** Michael (chat, 2026-07-15 — "convert paths and move to programme folder" in response to a wrapper-vs-move question).
+**Decided by:** Michael (chat, 2026-07-15).
 
-**Decision:** `docs/agentic-architecture-review/` is physically moved to `docs/programmes/agentic-architecture-review/` via `git mv` (history preserved). Because cross-references are repo-relative path strings in prose (not resolvable links), the accompanying rewrite is a recorded mechanical search-and-replace of `docs/agentic-architecture-review` → `docs/programmes/agentic-architecture-review`, applied to **living files only**:
+**Decision:** `docs/agentic-architecture-review/` was moved to `docs/programmes/agentic-architecture-review/` via `git mv`, with living-file path references updated and completed historical records left unchanged.
 
-- All files inside the moved review workspace itself.
-- Four living external files: `docs/sprints/README.md`, `docs/product/README.md`, `docs/programmes/product-traceability/PHASES.md` (forbidden-path lists still governing future phases), `docs/programmes/product-traceability/phase-inputs.yaml`.
+---
 
-**Deliberately NOT rewritten** (historical records citing the path as it correctly existed at the time; per the established principle that completed history is never rewritten): the `docs/diagnostics/` prompt/plan/retrospective records, `docs/programmes/product-traceability/runs/*`, `critic-review-phase-2.md`, and `phase-3-inputs.md`. Old-path mentions in those files are expected and correct; `git log --follow` resolves them.
+## D-003 — Decision-gated continuous execution with independent critic (2026-07-15)
 
-**Consequence accepted:** any future reader of a historical record must know the review moved on 2026-07-15 — recorded here, in the review `README.md`, and in the `docs/programmes/README.md` index.
+**Decided by:** Michael (chat, 2026-07-15 — approved improvement of the programme operating model).
+
+**Decision:** Phase 1 changes from manual approval at every routine stage boundary to **decision-gated continuous execution**.
+
+- A primary executor runs the currently authorised stage from its populated `CONTEXT.md`.
+- An independent critic reviews the stage context, findings, evidence, outputs, handoffs and completion criteria.
+- When the critic returns `PASS` and there is no blocking human decision, the controller may close the stage, populate/open the next stage context and continue automatically.
+- The programme stops for the human reviewer only when a material decision is required, evidence is irreconcilably contradictory or unavailable, scope/policy must change, a write would exceed authorised paths, or the final Stage 13 approval pack is ready.
+- Non-blocking design questions and later-stage specifications are recorded in `decision-queue.md` and forwarded without stopping execution.
+- The human reviewer retains approval of all material product/risk decisions, Phase 2/3 authorisation and final Stage 13 roadmap approval.
+
+**Safety condition:** the critic must be independent of the primary stage execution pass. It may use the same model family only if run as a separate role with no authority to rewrite findings silently; all critic findings and disposition must be recorded.
