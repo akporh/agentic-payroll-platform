@@ -15,6 +15,6 @@ This does not replace `~/.claude/skills/*/SKILL.md` — those keep the reusable 
 This structure is not new invention — it reuses conventions already proven in two other workspaces in this repository:
 
 - `docs/audit-program/` — named stage status, an explicit human-decisions log, evidence-cites-findings discipline, a single state tracker (`audit-state.md`).
-- `docs/agentic-architecture-review/` — numbered stage folders, a `CONTEXT.md` contract per stage, `findings.md`/`decisions.md` per stage, a single `review-state.md` tracker, and an explicit gate rule (a stage does not begin until the prior stage's gate is explicitly passed).
+- `docs/programmes/agentic-architecture-review/` — numbered stage folders, a `CONTEXT.md` contract per stage, `findings.md`/`decisions.md` per stage, a single `review-state.md` tracker, and an explicit gate rule (a stage does not begin until the prior stage's gate is explicitly passed).
 
 `docs/sprints/` generalizes the same primitives (named status + recorded reason + dependency check) to the many-short-sprints delivery workflow, where stages branch, skip, and run in parallel far more than in those two single long-running investigations — hence one folder per sprint rather than one folder per stage.

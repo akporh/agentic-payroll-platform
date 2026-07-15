@@ -31,10 +31,10 @@ Do not re-litigate these decisions:
 Read:
 
 - `CLAUDE.md`
-- `docs/agentic-architecture-review/README.md`
-- `docs/agentic-architecture-review/WORKFLOW.md`
-- `docs/agentic-architecture-review/review-state.md`
-- all files under `docs/agentic-architecture-review/_core/`
+- `docs/programmes/agentic-architecture-review/README.md`
+- `docs/programmes/agentic-architecture-review/WORKFLOW.md`
+- `docs/programmes/agentic-architecture-review/review-state.md`
+- all files under `docs/programmes/agentic-architecture-review/_core/`
 - all confirmed findings and outputs from Stages 01–04
 - `03-agent-portfolio/outputs/agent-capability-matrix.md`
 - `03-agent-portfolio/outputs/blocked-and-deferred-register.md`

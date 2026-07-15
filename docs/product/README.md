@@ -44,7 +44,7 @@ Relationships between outcomes, capabilities, features, and stories are maintain
 - **This product hierarchy** owns long-lived intent, outcome/capability/feature relationships, and cumulative story status. It does **not** own execution-stage state (that stays in `docs/sprints/<sprint>/state.md`) or acceptance-criteria authorship for stories still in flight (that stays in the sprint's own story file until the sprint closes).
 - A story's authoritative acceptance criteria live in exactly one place at a time: pre-delivery, in the sprint's story file (`docs/stories/*.md` or `docs/sprints/<sprint>/`); post-delivery, this hierarchy's story record **summarises but links to**, rather than duplicates, the original story file as the evidence source.
 - **`docs/ROADMAP.md` continues to serve forward planning and open backlog** (🔜/⬜/🔮 items). This product hierarchy is a historical/current-state record of delivered and in-flight status, not a replacement planning surface, unless a future human decision changes this.
-- Nothing in `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, or `docs/retro-reports/` is ever rewritten to make this hierarchy appear to have existed earlier than it did.
+- Nothing in `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, or `docs/retro-reports/` is ever rewritten to make this hierarchy appear to have existed earlier than it did.
 
 ## Validation mechanism
 

@@ -2,6 +2,8 @@
 
 ICM-style (Issue/Confirm/Mitigate) structured review of the agentic payroll platform's current state, product thesis, and target direction.
 
+> **Programme registration (2026-07-15):** this review is Phase 1 of the `agentic-architecture-review` programme and was moved here from `docs/agentic-architecture-review/` (`git mv`, history preserved — see `decisions.md` D-001/D-002). Programme control files (`PROGRAMME.md`, `POLICY.md`, `PHASES.md`, `state.md`, `decisions.md`, `exceptions.md`) sit alongside this README; they govern phase-level scope only. Nothing about stage sequencing, gating, or the finding lifecycle changed — `WORKFLOW.md` and `review-state.md` remain authoritative for the review itself. Historical records elsewhere in `docs/` deliberately still cite the old path.
+
 ## Purpose
 
 This is a review workspace, not a delivery workspace. It exists to build an evidence-backed, stage-gated understanding of:
@@ -14,7 +16,7 @@ This is a review workspace, not a delivery workspace. It exists to build an evid
 
 ## Status
 
-**Not started.** No stage has begun. See `review-state.md` for the authoritative status of every stage.
+See `review-state.md` — the single source of truth for every stage's status and the next action. (This section previously duplicated stage status and went stale; it now only points.)
 
 ## How this workspace works
 
@@ -37,7 +39,8 @@ Read `WORKFLOW.md` before doing anything else — it defines the stage sequence,
 | `_core/` | Binding standards: principles, evidence, finding schema, severity, human decision log |
 | `_inputs/source-register.md` | Register of every source document/system consulted, with provenance |
 | `01-current-operating-model` … `13-approved-roadmap` | Numbered stage folders, run in order |
+| `PROGRAMME.md`, `POLICY.md`, `PHASES.md`, `state.md`, `decisions.md`, `exceptions.md` | Programme-level control files (phase scope and gates — added at programme registration, 2026-07-15) |
 
 ## Next action
 
-**Await approval to begin Stage 01.**
+See `review-state.md` (stage-level) and `state.md` (phase-level). This section previously hard-coded a next action and went stale; it now only points.

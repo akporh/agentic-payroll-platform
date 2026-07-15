@@ -26,7 +26,7 @@ docs/sprints/
 docs/stories/
 docs/audit/
 docs/audit-program/
-docs/agentic-architecture-review/
+docs/programmes/agentic-architecture-review/
 docs/security/
 docs/test-reports/
 docs/retro-reports/
@@ -38,7 +38,7 @@ requirements.txt, package.json, and all lockfiles
 ```
 All paths not explicitly listed under "Allowed paths" are implicitly forbidden for writes.
 
-**Required inputs:** `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/audit/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/security/`, `docs/design/ui-decisions.md`, `docs/analysis/`, `docs/planning/`, git history, associated backend/frontend source and tests cited as evidence.
+**Required inputs:** `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, `docs/audit/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/security/`, `docs/design/ui-decisions.md`, `docs/analysis/`, `docs/planning/`, git history, associated backend/frontend source and tests cited as evidence.
 
 **Required outputs:**
 - `docs/programmes/product-traceability/PROGRAMME.md`, `POLICY.md`, `PHASES.md` (this file), `state.md`, `decisions.md`, `exceptions.md`.
@@ -68,7 +68,7 @@ All paths not explicitly listed under "Allowed paths" are implicitly forbidden f
 docs/programmes/product-traceability/
 ```
 
-**Forbidden paths (as executed):** `docs/product/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `backend/`, `frontend/`, `migrations/`, `~/.claude/` — none of these were touched by this phase.
+**Forbidden paths (as executed):** `docs/product/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `backend/`, `frontend/`, `migrations/`, `~/.claude/` — none of these were touched by this phase.
 
 **Required inputs:** Phase 1 outputs (discovery document, decision pack, critic review) — used as the basis for the human decisions.
 
@@ -96,7 +96,7 @@ docs/product/
 ```
 Write access is limited strictly to this path for this phase. Programme-control files under `docs/programmes/product-traceability/` may also be updated to record the phase's own governance state (decisions, state, run record) — this is the same programme-control write access every phase has had, not an expansion of the `docs/product/` scope.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history (`docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`), `~/.claude/`. No story content may be migrated into `docs/product/` in this phase — registries and `stories/` are created empty. Phase 4 (`historical migration`) is explicitly not begun.
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history (`docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`), `~/.claude/`. No story content may be migrated into `docs/product/` in this phase — registries and `stories/` are created empty. Phase 4 (`historical migration`) is explicitly not begun.
 
 **Required inputs:** Phase 2 decision record (D-007–D-013); `phase-3-inputs.md`; D-014.
 
@@ -131,7 +131,7 @@ No other path. Neither batch required a `TEMPLATE.md` schema exception beyond th
 
 **Allowed paths (Phase 4 as a whole, remaining items):** to be defined at a future, separate authorisation time — expected to remain limited to the `docs/product/` tree created in Phase 3.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `~/.claude/`, and all original historical sources generally (read-only inputs, never rewritten).
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, `~/.claude/`, and all original historical sources generally (read-only inputs, never rewritten).
 
 **Required inputs (pilot):** Phase 1 discovery document; Phase 3 scaffold; the two named ICM sprint workspaces (`docs/sprints/aud-q1-trace-source/`, `docs/sprints/sec-s7-timesheet-upload-guard/`) and their linked audit/security/test/retro/implementation evidence.
 

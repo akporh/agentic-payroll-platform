@@ -2,7 +2,7 @@
 
 Begin Stage 02 only:
 
-`docs/agentic-architecture-review/02-product-thesis/`
+`docs/programmes/agentic-architecture-review/02-product-thesis/`
 
 ## Objective
 
@@ -19,12 +19,12 @@ Do not review the individual agent portfolio in detail yet. That belongs to Stag
 Read:
 
 - `CLAUDE.md`
-- `docs/agentic-architecture-review/README.md`
-- `docs/agentic-architecture-review/WORKFLOW.md`
-- `docs/agentic-architecture-review/review-state.md`
-- all files under `docs/agentic-architecture-review/_core/`
-- `docs/agentic-architecture-review/_inputs/source-register.md`
-- `docs/agentic-architecture-review/01-current-operating-model/findings.md`
+- `docs/programmes/agentic-architecture-review/README.md`
+- `docs/programmes/agentic-architecture-review/WORKFLOW.md`
+- `docs/programmes/agentic-architecture-review/review-state.md`
+- all files under `docs/programmes/agentic-architecture-review/_core/`
+- `docs/programmes/agentic-architecture-review/_inputs/source-register.md`
+- `docs/programmes/agentic-architecture-review/01-current-operating-model/findings.md`
 - all Stage 01 outputs, especially:
   - `outputs/current-operating-model-summary.md`
 - the current agent-layer architecture document

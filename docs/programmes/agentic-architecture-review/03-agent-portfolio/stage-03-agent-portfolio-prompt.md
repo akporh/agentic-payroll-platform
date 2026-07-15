@@ -2,7 +2,7 @@
 
 Begin Stage 03 only:
 
-`docs/agentic-architecture-review/03-agent-portfolio/`
+`docs/programmes/agentic-architecture-review/03-agent-portfolio/`
 
 ## Objective
 
@@ -26,11 +26,11 @@ Do not design the final target architecture or roadmap in this stage.
 Read:
 
 - `CLAUDE.md`
-- `docs/agentic-architecture-review/README.md`
-- `docs/agentic-architecture-review/WORKFLOW.md`
-- `docs/agentic-architecture-review/review-state.md`
-- all files under `docs/agentic-architecture-review/_core/`
-- `docs/agentic-architecture-review/_inputs/source-register.md`
+- `docs/programmes/agentic-architecture-review/README.md`
+- `docs/programmes/agentic-architecture-review/WORKFLOW.md`
+- `docs/programmes/agentic-architecture-review/review-state.md`
+- all files under `docs/programmes/agentic-architecture-review/_core/`
+- `docs/programmes/agentic-architecture-review/_inputs/source-register.md`
 - all Stage 01 findings and outputs
 - all Stage 02 findings, decisions and outputs
 - especially:

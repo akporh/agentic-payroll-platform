@@ -34,7 +34,7 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 - **Date**: 2026-07-12
 - **Stage**: cross-cutting (raised Stage 02, binds Stage 12/13)
 - **Decision**: `docs/architecture/agent-layer-architecture.html`'s `NEEDS REVISION` status remains open. This review is the formal revision path; the document is not approved until Stage 12 synthesises the target direction and Stage 13 records approval.
-- **Made by**: Michael Emedo, via `docs/agentic-architecture-review/02-product-thesis/stage-02-review-decision-prompt.md` (D-02-01)
+- **Made by**: Michael Emedo, via `docs/programmes/agentic-architecture-review/02-product-thesis/stage-02-review-decision-prompt.md` (D-02-01)
 - **Context**: Only the human reviewer can determine whether "NEEDS REVISION" reflects a still-open objection or stale labelling; this could not be derived from evidence alone.
 - **Affects**: F-02-02; Stage 12 (must treat the document as revisable input, not settled design); Stage 13 (sole stage authorized to record approval)
 

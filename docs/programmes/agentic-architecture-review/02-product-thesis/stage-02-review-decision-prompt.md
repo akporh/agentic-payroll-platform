@@ -27,8 +27,8 @@ Y1 may later detect external changes, compare evidence and prepare proposals. It
 ## Required updates
 
 1. Record these decisions in:
-   - `docs/agentic-architecture-review/02-product-thesis/decisions.md`
-   - `docs/agentic-architecture-review/_core/HUMAN-DECISIONS.md`, if required by the workflow
+   - `docs/programmes/agentic-architecture-review/02-product-thesis/decisions.md`
+   - `docs/programmes/agentic-architecture-review/_core/HUMAN-DECISIONS.md`, if required by the workflow
 2. Update affected Stage 02 findings and outputs so the decisions are reflected consistently.
 3. Update the Stage 03, Stage 05, Stage 06, Stage 07, Stage 08, Stage 12 and Stage 13 handoffs where relevant.
 4. Mark Stage 02 `complete` in `review-state.md` once the decision updates pass the Stage 02 completion criteria.

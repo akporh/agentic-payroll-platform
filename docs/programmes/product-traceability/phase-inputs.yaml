@@ -85,8 +85,8 @@ authoritative_input_files:
   - docs/sprints/WORKFLOW.md
   - docs/audit-program/
   - docs/audit-program/audit-state.md
-  - docs/agentic-architecture-review/
-  - docs/agentic-architecture-review/review-state.md
+  - docs/programmes/agentic-architecture-review/
+  - docs/programmes/agentic-architecture-review/review-state.md
   - docs/audit/
   - docs/test-reports/
   - docs/test-reports/test-harness/test-harness-checklist.md

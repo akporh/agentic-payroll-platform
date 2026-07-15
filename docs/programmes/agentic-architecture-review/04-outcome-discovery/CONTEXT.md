@@ -32,18 +32,18 @@ Do not re-litigate these decisions:
 Read:
 
 - `CLAUDE.md`
-- `docs/agentic-architecture-review/README.md`
-- `docs/agentic-architecture-review/WORKFLOW.md`
-- `docs/agentic-architecture-review/review-state.md`
-- all files under `docs/agentic-architecture-review/_core/`
-- `docs/agentic-architecture-review/01-current-operating-model/findings.md`
-- `docs/agentic-architecture-review/01-current-operating-model/outputs/current-operating-model-summary.md`
+- `docs/programmes/agentic-architecture-review/README.md`
+- `docs/programmes/agentic-architecture-review/WORKFLOW.md`
+- `docs/programmes/agentic-architecture-review/review-state.md`
+- all files under `docs/programmes/agentic-architecture-review/_core/`
+- `docs/programmes/agentic-architecture-review/01-current-operating-model/findings.md`
+- `docs/programmes/agentic-architecture-review/01-current-operating-model/outputs/current-operating-model-summary.md`
 - all Stage 02 outputs
-- `docs/agentic-architecture-review/03-agent-portfolio/findings.md`
-- `docs/agentic-architecture-review/03-agent-portfolio/outputs/agent-capability-matrix.md`
-- `docs/agentic-architecture-review/03-agent-portfolio/outputs/portfolio-boundary-map.md`
-- `docs/agentic-architecture-review/03-agent-portfolio/outputs/blocked-and-deferred-register.md`
-- `docs/agentic-architecture-review/03-agent-portfolio/outputs/stage-04-handoff.md`
+- `docs/programmes/agentic-architecture-review/03-agent-portfolio/findings.md`
+- `docs/programmes/agentic-architecture-review/03-agent-portfolio/outputs/agent-capability-matrix.md`
+- `docs/programmes/agentic-architecture-review/03-agent-portfolio/outputs/portfolio-boundary-map.md`
+- `docs/programmes/agentic-architecture-review/03-agent-portfolio/outputs/blocked-and-deferred-register.md`
+- `docs/programmes/agentic-architecture-review/03-agent-portfolio/outputs/stage-04-handoff.md`
 - the current agent-layer architecture document
 - current code only where needed to verify that an outcome has a real current-state basis
 
