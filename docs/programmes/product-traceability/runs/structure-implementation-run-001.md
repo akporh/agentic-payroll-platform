@@ -60,7 +60,7 @@ Neither amendment touched `docs/product/` itself or implied any authorisation of
 
 ## Commit SHA(s)
 
-Not yet committed as of this run record's pre-commit write. Updated with the real SHA(s) immediately after the commit is made.
+`381e34a` — "docs: scaffold docs/product/ hierarchy (Phase 3, structure implementation)", on branch `uat`. Scope: 7 new files under `docs/product/` + 7 changed files under `docs/programmes/product-traceability/` (14 files total). The pre-existing, unrelated uncommitted changes present throughout this run (`docs/ROADMAP.md` modification, `docs/test-harness-checklist.md` deletion, `docs/test-reports/test-harness/`, `docs/ux-design-brief/gate-6/ia-timesheet-discoverability.md`) were deliberately left unstaged and uncommitted — out of this programme's authorised scope.
 
 ## Outstanding follow-ups
 
