@@ -40,3 +40,17 @@ Programme-level decisions only (D-*). Review-internal human decisions (material 
 - The human reviewer retains approval of all material product/risk decisions, Phase 2/3 authorisation and final Stage 13 roadmap approval.
 
 **Safety condition:** the critic must be independent of the primary stage execution pass. It may use the same model family only if run as a separate role with no authority to rewrite findings silently; all critic findings and disposition must be recorded.
+
+---
+
+## D-004 — Session independence of every loop iteration (2026-07-15)
+
+**Decided by:** Michael (chat, 2026-07-15).
+
+**Decision:** Every iteration of the Phase 1 continuous loop must be executable from repository state alone — no dependence on the conversational context of the session that ran the previous iteration.
+
+- All state needed to resume (stage status, findings disposition, handoffs, open questions, critic reports) must be persisted to the programme's state files **before** a session ends or a stage is closed.
+- A fresh session per stage or per critic pass is the preferred operating pattern, not an exception to be worked around.
+- If a session discovers that resuming required information not present in the state files, that is a defect in the previous iteration's close-out and must be fixed by strengthening the persisted state, not by relying on session memory.
+
+**Rationale:** long-running programme work spans many sessions; conversational context is lossy and non-auditable, while repository state is durable and reviewable.

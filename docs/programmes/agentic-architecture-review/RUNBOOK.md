@@ -49,6 +49,14 @@ Stop for the human reviewer when:
 - Stage 13 final approval is ready
 - Phase 2 or Phase 3 authorisation is requested
 
+## Session independence (D-004)
+
+Every loop iteration must be executable from repository state alone:
+
+- Persist all resume-relevant state (stage status, findings disposition, handoffs, open questions, critic reports) to the state files **before** ending a session or closing a stage — never leave it only in conversation.
+- Prefer a fresh session per stage or per critic pass; the loop must not assume the previous iteration's conversational context is available.
+- If resuming a stage requires information that is not in the state files, treat that as a close-out defect of the previous iteration: strengthen the persisted state, do not patch over it from session memory.
+
 ## Approval permissions
 
 Routine repository reads, searches and writes inside this programme folder are pre-authorised by programme policy. Production code, migrations, external programme records, roadmap/product adoption, destructive actions and phase changes always remain outside automatic execution.
