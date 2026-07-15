@@ -10,23 +10,72 @@ discovery_run_id: discovery-run-001
 hierarchy_approval_run_id: hierarchy-approval-run-001
 structure_implementation_run_id: structure-implementation-run-001
 historical_migration_pilot_run_id: historical-migration-pilot-run-001
+historical_migration_confirmed_batch_run_id: historical-migration-confirmed-batch-run-001
 
-current_phase: historical-migration-phase-4a-pilot
+current_phase: historical-migration-phase-4b-confirmed-batch
 current_phase_status: complete-for-authorised-scope
-current_phase_authorised: true  # D-015, docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md, 2026-07-15
+current_phase_authorised: true  # D-016, docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md, 2026-07-15
 current_phase_allowed_paths:
   - docs/product/
   - docs/programmes/product-traceability/
 current_phase_migrated_story_ids:
-  - PT-A4-31
-  - PT-A4-32
+  - PT-A1-07
+  - PT-A1-08
+  - PT-A1-09
+  - PT-A1-10
+  - PT-A1-11
+  - PT-A1-15
+  - PT-A1-16
+  - PT-A1-17
+  - PT-A1-18
+  - PT-A1-19
+  - PT-A1-20
+  - PT-A1-21
+  - PT-A1-22
+  - PT-A1-25
+  - PT-A1-28
+  - PT-A1-38
+  - PT-A1-39
+  - PT-A1-41
+  - PT-A1-42
+current_phase_capability_area: A1+A2 (Onboarding & Workforce Setup)
+
+all_migrated_story_ids_to_date:
+  - PT-A4-31   # Phase 4A pilot
+  - PT-A4-32   # Phase 4A pilot
+  - PT-A1-07   # Phase 4B confirmed-batch
+  - PT-A1-08
+  - PT-A1-09
+  - PT-A1-10
+  - PT-A1-11
+  - PT-A1-15
+  - PT-A1-16
+  - PT-A1-17
+  - PT-A1-18
+  - PT-A1-19
+  - PT-A1-20
+  - PT-A1-21
+  - PT-A1-22
+  - PT-A1-25
+  - PT-A1-28
+  - PT-A1-38
+  - PT-A1-39
+  - PT-A1-41
+  - PT-A1-42
 
 recommended_next_phase_id: historical-migration-remainder
 recommended_next_phase_authorised: false  # authorisation is a human decision, not granted by this file
-# Full Phase 4 (historical migration of the remaining ~146 discovery items) is
-# explicitly not begun or authorised by D-015's bounded two-story pilot.
-# Successful pilot completion does not auto-authorise it (human-gate discipline
-# check #12 of the pilot's own governance rubric).
+# Full Phase 4 (historical migration of every remaining discovery item — other
+# capability areas' confirmed items, and every strongly-inferred/tentative/
+# requires-human-classification item anywhere) is explicitly not begun or
+# authorised by D-015's pilot or D-016's confirmed-batch. Neither batch's
+# completion auto-authorises it (human-gate-discipline checks in each
+# authorising prompt's own governance rubric).
+# NOTE: this is not a claim that all confirmed items are migrated — only
+# capability area A1+A2's 19 confirmed items (D-016) and the two Phase 4A
+# pilot items (D-015) have been. Other capability areas' confirmed items
+# (e.g. 13 in A4 Execution, 2 of which are already covered by Phase 4A)
+# remain unmigrated pending a further, separate authorisation.
 
 authoritative_input_files:
   - docs/ROADMAP.md
@@ -77,6 +126,35 @@ historical_migration_pilot_outputs_delivered:
   - docs/programmes/product-traceability/critic-review-phase-4a-pilot.md
   - docs/programmes/product-traceability/runs/historical-migration-pilot-run-001.md
 
+historical_migration_confirmed_batch_outputs_delivered:
+  - docs/product/OUTCOMES.md            # +1 row: OUT-3; +outcome_name column on all rows
+  - docs/product/CAPABILITIES.md        # +1 row: CAP-3; +outcome_name column on all rows
+  - docs/product/FEATURES.md            # +3 rows: FEAT-3, FEAT-4, FEAT-5; +capability_name column on all rows
+  - docs/product/STORY-REGISTRY.md      # +19 rows (PT-A1-*); +feature_name column on all rows
+  - docs/product/stories/PT-A1-07-pay-cycle-post-setup-update.md
+  - docs/product/stories/PT-A1-08-grade-designation-add-edit-ui.md
+  - docs/product/stories/PT-A1-09-salary-definition-add-edit-ui.md
+  - docs/product/stories/PT-A1-10-payroll-rule-active-toggle-ui.md
+  - docs/product/stories/PT-A1-11-statutory-override-edit-toggle-ui.md
+  - docs/product/stories/PT-A1-15-client-component-metadata-columns.md
+  - docs/product/stories/PT-A1-16-statutory-override-hard-reject.md
+  - docs/product/stories/PT-A1-17-configuration-get-extended.md
+  - docs/product/stories/PT-A1-18-workspaceconfig-interactive-overhaul.md
+  - docs/product/stories/PT-A1-19-employee-schema-shift-tax-skill-fields.md
+  - docs/product/stories/PT-A1-20-grade-percentage-structure.md
+  - docs/product/stories/PT-A1-21-employee-crud-api-run-lock.md
+  - docs/product/stories/PT-A1-22-unified-employee-creation-path.md
+  - docs/product/stories/PT-A1-25-split-edit-change-grade-salary.md
+  - docs/product/stories/PT-A1-28-employee-page-enhancements.md
+  - docs/product/stories/PT-A1-38-enrollment-prepopulation-fix.md
+  - docs/product/stories/PT-A1-39-workspace-activation-cta-coverage.md
+  - docs/product/stories/PT-A1-41-attendance-code-policy-configuration.md
+  - docs/product/stories/PT-A1-42-workspace-timesheet-configuration.md
+  - docs/product/README.md               # status + validation-mechanism sections updated
+  - docs/product/validate_registry.py    # extended: name-matching, duplicate-ID, ambiguous-prefix checks
+  - docs/programmes/product-traceability/critic-review-phase-4b-confirmed-batch.md
+  - docs/programmes/product-traceability/runs/historical-migration-confirmed-batch-run-001.md
+
 discovered_counts:
   total_candidate_items: 148
   capability_areas_covered: 8
@@ -106,6 +184,7 @@ approved_decision_ids:
   - D-013  # resolves DP-07 — authorises Phase 2 only, not Phase 3
   - D-014  # authorises Phase 3 (structure implementation), scope-limited to docs/product/
   - D-015  # authorises Phase 4A bounded two-story pilot only — full Phase 4 remains unauthorised
+  - D-016  # authorises Phase 4B bounded confirmed-story batch (A1+A2, ≤20 items) + human-readable names — full Phase 4 remains unauthorised
 
 unresolved_decision_ids: []  # DP-01 through DP-07 all resolved 2026-07-15; next unresolved decision is Phase 3 authorisation itself (not yet a numbered DP item)
 

@@ -10,9 +10,18 @@ This directory is the durable product-traceability layer for the Agentic Payroll
 
 ## Status
 
-This scaffold was created empty in Phase 3 (`structure implementation`), authorised by decision D-014 in `docs/programmes/product-traceability/decisions.md`. A bounded **Phase 4A pilot** (D-015, 2026-07-15) has since migrated exactly **two** historical stories — `PT-A4-31` (AUD-1/Q1, `component_source` trace field) and `PT-A4-32` (SEC-S7, timesheet upload size guard) — plus the minimum `OUTCOMES.md`/`CAPABILITIES.md`/`FEATURES.md` rows needed to place them. **Full Phase 4 (`historical migration`) of the remaining ~146 items from `docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md` remains unauthorised** — pilot completion does not auto-authorise it.
+This scaffold was created empty in Phase 3 (`structure implementation`), authorised by decision D-014 in `docs/programmes/product-traceability/decisions.md`. Two bounded migration batches have since populated it:
+
+- **Phase 4A pilot** (D-015, 2026-07-15): exactly **two** historical stories — `PT-A4-31` (AUD-1/Q1, `component_source` trace field) and `PT-A4-32` (SEC-S7, timesheet upload size guard).
+- **Phase 4B confirmed-batch** (D-016, 2026-07-15): **19 confirmed-only** stories from capability area A1+A2 (Onboarding & Workforce Setup) — see `docs/programmes/product-traceability/runs/historical-migration-confirmed-batch-run-001.md`. This batch also introduced the human-readable parent-name display convention (below).
+
+**Full Phase 4 (`historical migration`) of the remaining discovery-document items — other capability areas' confirmed items, and every strongly-inferred/tentative/requires-human-classification item everywhere — remains unauthorised.** Neither batch's completion auto-authorises the next.
 
 Do not add any further content row to any registry file, or any further story file to `stories/`, without a separate, recorded Phase 4 (broader-batch) authorisation decision in `docs/programmes/product-traceability/decisions.md`.
+
+## Human-readable names alongside stable IDs (D-016)
+
+Every parent reference in `CAPABILITIES.md`, `FEATURES.md`, and `STORY-REGISTRY.md` carries **both** a stable ID column (authoritative — e.g. `outcome_id`, `capability_id`, `feature_id`) and a human-readable display-name column (`outcome_name`, `capability_name`, `feature_name` respectively) so a reviewer can understand a relationship without opening another file. IDs remain the only authoritative reference for identity and relationships — never resolve or infer a relationship from a display name. A parent rename must update every duplicated display-name field in the same controlled change; `validate_registry.py` rejects any row whose display name has drifted from its parent's actual current name, or is missing.
 
 ## Structure (Model A — flat registries, per D-008)
 
@@ -41,10 +50,12 @@ Relationships between outcomes, capabilities, features, and stories are maintain
 
 `validate_registry.py` is a dependency-free Python script (standard library only) that checks internal consistency of this directory:
 
-- Every story ID listed in `STORY-REGISTRY.md`'s table has a corresponding file in `stories/`.
-- Every file in `stories/` (other than `TEMPLATE.md`) has a corresponding row in `STORY-REGISTRY.md`.
+- Every story ID listed in `STORY-REGISTRY.md`'s table has exactly one corresponding file in `stories/` (no missing file, no ambiguous match against more than one file).
+- Every file in `stories/` (other than `TEMPLATE.md`) has exactly one corresponding row in `STORY-REGISTRY.md`.
 - Every `FEATURES.md` row references a capability ID that exists in `CAPABILITIES.md`.
 - Every `CAPABILITIES.md` row references an outcome ID that exists in `OUTCOMES.md`.
+- No duplicate ID within any single registry.
+- Every display-name field (`outcome_name`, `capability_name`, `feature_name`) exactly matches its referenced parent's current authoritative name, and is present (not blank).
 
 Run it with:
 
