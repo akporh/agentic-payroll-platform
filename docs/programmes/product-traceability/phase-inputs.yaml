@@ -1,0 +1,77 @@
+# Phase inputs — Product Traceability Programme
+#
+# Factual parameters only. This file does not redefine policy, weaken stop
+# conditions, grant new permissions, convert recommendations into approval,
+# or contain a prose continuation prompt. See POLICY.md for policy and
+# decision-pack.md for the actual decisions still required.
+
+programme_id: product-traceability
+discovery_run_id: discovery-run-001
+
+recommended_next_phase_id: hierarchy-approval
+recommended_next_phase_authorised: false  # authorisation is a human decision, not granted by this file
+
+authoritative_input_files:
+  - docs/ROADMAP.md
+  - docs/stories/
+  - docs/sprints/
+  - docs/sprints/STAGE-REGISTRY.md
+  - docs/sprints/WORKFLOW.md
+  - docs/audit-program/
+  - docs/audit-program/audit-state.md
+  - docs/agentic-architecture-review/
+  - docs/agentic-architecture-review/review-state.md
+  - docs/audit/
+  - docs/test-reports/
+  - docs/test-reports/test-harness/test-harness-checklist.md
+  - docs/retro-reports/
+  - docs/security/
+  - docs/design/ui-decisions.md
+  - docs/analysis/
+  - docs/planning/manus/
+
+# Proposed only — not granted by this file. Any expansion of allowed paths
+# requires a human decision recorded in decisions.md before it takes effect.
+proposed_allowed_paths_next_phase:
+  - docs/programmes/product-traceability/
+
+proposed_outputs_next_phase:
+  - docs/programmes/product-traceability/decisions.md  # updated with Phase 2 decision(s)
+
+discovered_counts:
+  total_candidate_items: 148
+  capability_areas_covered: 8
+  cross_cutting_programmes_covered: 3
+  sprints_or_tracks_referenced: 33
+  independent_review_programmes_referenced: 2
+
+confidence_counts:
+  confirmed: 60
+  strongly_inferred: 65
+  tentative: 18
+  requires_human_classification: 5
+
+approved_decision_ids:
+  - D-001
+  - D-002
+  - D-003
+  - D-004
+  - D-005
+  - D-006
+
+unresolved_decision_ids:
+  - DP-01
+  - DP-02
+  - DP-03
+  - DP-04
+  - DP-05
+  - DP-06
+  - DP-07
+
+proposed_validation_commands:
+  - "git diff --check"
+  - "git status --short"
+  - "git log --oneline -- docs/ROADMAP.md | head -1"  # confirm no new commit touched ROADMAP.md during this run
+  - "find docs/programmes/product-traceability -maxdepth 1 -type f | sort"
+
+exception_ids: []  # no stop-condition exception occurred during discovery — see exceptions.md
