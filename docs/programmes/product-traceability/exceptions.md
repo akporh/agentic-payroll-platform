@@ -49,3 +49,16 @@ The seven human decisions (DP-01–DP-07) were supplied directly by the human vi
 **No exception occurred during the structure-implementation phase.**
 
 The phase was executed under a direct, explicit, narrowly-scoped human authorisation (D-014) limiting write access to `docs/product/`. No authoritative-source contradiction, sensitive-data discovery, out-of-scope write requirement, destructive change, inaccessible evidence, or uncorrectable validation failure arose. No historical file was modified; no story content was migrated; Phase 4 was not begun.
+
+---
+
+## Phase 4A pilot (bounded two-story historical migration)
+
+**No stop-condition exception occurred during the Phase 4A pilot**, executed under D-015. Two items below are recorded here for transparency because they involved a correction, even though neither meets `POLICY.md`'s stop-condition bar (both were corrected within scope without requiring escalation):
+
+1. **`validate_registry.py` had a latent defect, only surfaced now that real content rows exist.** The table parser stripped whitespace but not Markdown backtick formatting (`` `PT-A4-31` ``) from cell values, so a populated registry row's ID (with backticks) never matched a filename stem (without backticks) — the validator failed on its first run against real data. Fixed by stripping backticks in `read_table_rows`. This is a mechanical fix to the validation mechanism's own parsing, not a change to programme policy, source-of-truth rules, or any story's content — it was invisible on the empty Phase 3 scaffold because zero rows meant the comparison logic was never exercised.
+2. **Story-file naming was made more descriptive at the human's request mid-run** (`PT-A4-31.md` → `PT-A4-31-component-source-trace-fix.md`, and similarly for `PT-A4-32`), so a filename alone identifies the story without opening it. `validate_registry.py`'s story/file matching was extended from exact-stem equality to story-ID-prefix matching (stem equals the ID, or starts with `"<story_id>-"`) to accommodate this, and `stories/TEMPLATE.md`'s naming instruction was updated to match. This is a naming/tooling convenience, not a change to any story's recorded content, classification, or evidence.
+
+Neither correction required reclassifying any item, contradicted any authoritative source, touched a forbidden path, or required a destructive change — both are recorded here as transparency about mid-run corrections, not as stop-condition exceptions.
+
+No authoritative-source contradiction, sensitive-data discovery, out-of-scope write requirement, destructive change, inaccessible evidence, or uncorrectable validation failure arose. Exactly two historical items (`PT-A4-31`, `PT-A4-32`) were migrated; no other historical item was touched; full Phase 4 was not begun.

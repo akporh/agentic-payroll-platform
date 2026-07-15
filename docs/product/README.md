@@ -10,9 +10,9 @@ This directory is the durable product-traceability layer for the Agentic Payroll
 
 ## Status
 
-**This scaffold is empty of historical content.** It was created in Phase 3 (`structure implementation`) of the `product-traceability` programme, authorised by decision D-014 in `docs/programmes/product-traceability/decisions.md`. Phase 4 (`historical migration`) — which populates these registries with the 148 candidate items reconstructed in `docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md` — has **not** been authorised and has not begun. Every registry file below currently contains only its schema (column headers and usage notes), zero content rows.
+This scaffold was created empty in Phase 3 (`structure implementation`), authorised by decision D-014 in `docs/programmes/product-traceability/decisions.md`. A bounded **Phase 4A pilot** (D-015, 2026-07-15) has since migrated exactly **two** historical stories — `PT-A4-31` (AUD-1/Q1, `component_source` trace field) and `PT-A4-32` (SEC-S7, timesheet upload size guard) — plus the minimum `OUTCOMES.md`/`CAPABILITIES.md`/`FEATURES.md` rows needed to place them. **Full Phase 4 (`historical migration`) of the remaining ~146 items from `docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md` remains unauthorised** — pilot completion does not auto-authorise it.
 
-Do not add content rows to any registry file, or story files to `stories/`, without a recorded Phase 4 authorisation decision in `docs/programmes/product-traceability/decisions.md`.
+Do not add any further content row to any registry file, or any further story file to `stories/`, without a separate, recorded Phase 4 (broader-batch) authorisation decision in `docs/programmes/product-traceability/decisions.md`.
 
 ## Structure (Model A — flat registries, per D-008)
 

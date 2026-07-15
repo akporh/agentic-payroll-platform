@@ -127,6 +127,19 @@ This is the programme-level decision register. It records only actual approved d
 **Effect on later phases:** Governs the write scope validated in `runs/structure-implementation-run-001.md`. Phase 4 (historical migration) still requires its own separate, explicit authorisation before any story content is migrated into the scaffold created under this decision.
 **Follow-up outside this programme:** None — the two follow-up investigations from D-010/D-012 (PH_OT `is_pensionable`, Gate 4 contradiction) remain open and unaffected by this decision.
 
+## D-015 — Authorise Phase 4A: bounded two-story pilot migration only
+
+**Date:** 2026-07-15
+**Approved by:** Michael Emedo (via `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`)
+**Decision:** A bounded pilot of Phase 4 (`historical migration`) is authorised, and only this pilot — **Phase 4 as a whole remains unauthorised.** The pilot migrates exactly two proven ICM sprint-workflow stories into the `docs/product/` hierarchy created in Phase 3:
+- `aud-q1-trace-source` (Q1/AUD-1 — `component_source` field on `fixed_amount` trace entries)
+- `sec-s7-timesheet-upload-guard` (SEC-S7 — 10 MB timesheet upload size guard)
+
+No other historical item (of the 148 inventoried in the discovery document, or any other) may be migrated under this decision. The pilot exists to prove the product layer carries the intended ICM disciplines (stable IDs, source-of-truth ownership, explicit state, evidence links, decision traceability, dependency visibility, append-only history, human-gate discipline) on two already-closed, well-evidenced ICM sprints before any wider migration batch is considered.
+**Rationale:** These two sprints are the only ones executed under the newer, more rigorous ICM sprint-workflow structure (`docs/sprints/<sprint>/state.md`/`decisions.md`/`evidence/`) with fully terminal per-stage status, closed audit/security/test/retro records, and unambiguous commit references — the strongest possible evidence base for a first migration pilot, deliberately chosen over any of the other 146 items (most of which rest on `docs/ROADMAP.md`'s narrative status plus a cross-check, not a dedicated per-stage evidence trail).
+**Effect on later phases:** Governs `runs/historical-migration-pilot-run-001.md`. Successful pilot completion does **not** auto-authorise the remainder of Phase 4 — a separate, explicit human decision is required for any broader migration batch, per the pilot's own "human-gate discipline" governance check.
+**Follow-up outside this programme:** None — the two follow-up investigations from D-010/D-012 (PH_OT `is_pensionable`, Gate 4 contradiction) remain open and unaffected by this decision.
+
 ---
 
-*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4 (historical migration) remains unauthorised.*
+*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4 (historical migration) as a whole remains unauthorised.*

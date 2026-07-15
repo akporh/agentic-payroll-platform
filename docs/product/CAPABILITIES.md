@@ -7,7 +7,7 @@ A capability sits between an outcome and a feature. Per the hybrid framing adopt
 
 This distinction lets the registry express both "what lasting product area does this belong to" and "which bounded effort delivered it" without inventing a fifth hierarchy level.
 
-**This registry is currently empty of content rows.** It was scaffolded in Phase 3 (`structure implementation`) and is populated only by an authorised Phase 4 (`historical migration`) run — see `docs/product/README.md`.
+**Phase 4A pilot (D-015):** two rows below were added under the bounded two-story pilot migration authorised 2026-07-15 — see `docs/programmes/product-traceability/decisions.md` D-015 and `docs/programmes/product-traceability/runs/historical-migration-pilot-run-001.md`. Full Phase 4 (historical migration) remains unauthorised; no other row from the 148-item discovery inventory has been migrated.
 
 ## Schema
 
@@ -25,4 +25,5 @@ This distinction lets the registry express both "what lasting product area does 
 
 | `capability_id` | `name` | `type` | `description` | `outcome_id` | `status` | `sprint_or_track_refs` |
 |---|---|---|---|---|---|---|
-| *(no rows — populated in Phase 4, not yet authorised)* | | | | | | |
+| `CAP-1` | Governed, auditable payroll execution | `durable` | Roughly corresponds to `docs/ROADMAP.md` Track Q (Audit Observations) — the durable product area of making stored calculation results independently verifiable from persisted trace data. | `OUT-1` | `active` | Track Q |
+| `CAP-2` | Sustainable delivery process | `durable` | Roughly corresponds to `docs/ROADMAP.md` Track S (Security) — the durable product area of security/process discipline applied to every route and input handler, not a single feature. | `OUT-2` | `active` | Track S |

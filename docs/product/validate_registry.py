@@ -7,6 +7,12 @@ Standard-library only, no dependencies. Checks:
   3. Every capability_id referenced in FEATURES.md exists in CAPABILITIES.md.
   4. Every outcome_id referenced in CAPABILITIES.md exists in OUTCOMES.md.
 
+Story files are named `<story-id>-<descriptive-slug>.md` (e.g.
+`PT-A4-31-component-source-trace-fix.md`) so a filename alone identifies the
+story without opening it — the story ID is not required to be the exact
+filename stem. A file matches a registry story_id if its stem equals the
+story_id exactly, or starts with "<story_id>-".
+
 On the empty scaffold (zero content rows in every registry) this passes trivially.
 Run: python3 docs/product/validate_registry.py
 """
@@ -43,7 +49,7 @@ def read_table_rows(md_path: Path, heading: str = "## Registry") -> list[list[st
 
     rows = []
     for line in table_lines[2:]:  # skip header + separator
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
         if not cells or not cells[0]:
             continue
         if any(marker in cells[0] for marker in PLACEHOLDER_MARKERS):
@@ -59,20 +65,23 @@ def main() -> int:
     story_registry_rows = read_table_rows(HERE / "STORY-REGISTRY.md")
     story_ids_in_registry = {row[0] for row in story_registry_rows if row}
 
-    story_files = {
+    story_file_stems = {
         p.stem for p in stories_dir.glob("*.md") if p.name != "TEMPLATE.md"
     } if stories_dir.exists() else set()
 
+    def stem_matches_story_id(stem: str, story_id: str) -> bool:
+        return stem == story_id or stem.startswith(story_id + "-")
+
     for story_id in story_ids_in_registry:
-        if story_id not in story_files:
+        if not any(stem_matches_story_id(stem, story_id) for stem in story_file_stems):
             errors.append(
-                f"STORY-REGISTRY.md lists '{story_id}' but stories/{story_id}.md does not exist"
+                f"STORY-REGISTRY.md lists '{story_id}' but no stories/{story_id}[-*].md file exists"
             )
 
-    for story_file in story_files:
-        if story_file not in story_ids_in_registry:
+    for stem in story_file_stems:
+        if not any(stem_matches_story_id(stem, story_id) for story_id in story_ids_in_registry):
             errors.append(
-                f"stories/{story_file}.md exists but '{story_file}' is not in STORY-REGISTRY.md"
+                f"stories/{stem}.md exists but no story_id in STORY-REGISTRY.md matches it"
             )
 
     features_rows = read_table_rows(HERE / "FEATURES.md")

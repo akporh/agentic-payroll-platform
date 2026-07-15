@@ -114,23 +114,36 @@ Write access is limited strictly to this path for this phase. Programme-control 
 
 ## Phase 4 — `historical migration`
 
-**Status:** not authorised
+**Status:** not authorised as a whole. **Phase 4A — bounded two-story pilot — authorised and active** (2026-07-15, via D-015, `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`). The remaining ~146 historical items from the discovery inventory are **not** authorised for migration; a separate, explicit human decision is required before any broader batch begins.
 
-**Purpose:** Populate the approved structure with the discovery phase's reconstructed historical stories, under the confidence and classification rules established in Phase 1, with any Phase 1 `requires human classification` items resolved by explicit human decision first.
+**Purpose (Phase 4 as a whole):** Populate the approved structure with the discovery phase's reconstructed historical stories, under the confidence and classification rules established in Phase 1, with any Phase 1 `requires human classification` items resolved by explicit human decision first.
 
-**Allowed paths:** to be defined at authorisation time — expected to be limited to the `docs/product/` tree created in Phase 3.
+**Purpose (Phase 4A pilot, as authorised by D-015):** Migrate exactly two already-closed, well-evidenced ICM sprint-workflow stories (`aud-q1-trace-source` → `PT-A4-31`; `sec-s7-timesheet-upload-guard` → `PT-A4-32`) into the `docs/product/` scaffold created in Phase 3, proving the product layer carries the intended ICM disciplines (stable IDs, source-of-truth ownership, explicit state, evidence links, decision traceability, dependency visibility, append-only history, human-gate discipline) before any wider migration batch is considered.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, and all original historical sources (read-only inputs, never rewritten).
+**Allowed paths (Phase 4A pilot, as authorised by D-015):**
+```text
+docs/product/
+docs/programmes/product-traceability/
+```
+No other path. The pilot did not require a `TEMPLATE.md` schema exception beyond the additive fields recorded in the template's own amendment note (Outcome/Capability, Decision references, Dependencies, Delivery history) — see `runs/historical-migration-pilot-run-001.md`.
 
-**Required inputs:** Phase 1 discovery document (as amended by any Phase 2 human decisions), Phase 3 scaffold.
+**Allowed paths (Phase 4 as a whole, remaining ~146 items):** to be defined at a future, separate authorisation time — expected to remain limited to the `docs/product/` tree created in Phase 3.
 
-**Required outputs:** populated product hierarchy with every migrated item traceable back to its original evidence source; a migration log.
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `~/.claude/`, and all original historical sources generally (read-only inputs, never rewritten).
 
-**Required validations:** to be defined at authorisation time; expected to include a reconciliation check that every `confirmed`/`strongly inferred` Phase 1 item has a corresponding entry, and that no `tentative`/`requires human classification` item was migrated without a resolving human decision.
+**Required inputs (pilot):** Phase 1 discovery document; Phase 3 scaffold; the two named ICM sprint workspaces (`docs/sprints/aud-q1-trace-source/`, `docs/sprints/sec-s7-timesheet-upload-guard/`) and their linked audit/security/test/retro/implementation evidence.
 
-**Human gate:** **after** — human spot-checks the migration before Phase 5 integration work begins.
+**Required outputs (pilot, delivered):** two populated `STORY-REGISTRY.md` rows; two story files (`stories/PT-A4-31-component-source-trace-fix.md`, `stories/PT-A4-32-timesheet-upload-size-guard.md`); the minimum `OUTCOMES.md`/`CAPABILITIES.md`/`FEATURES.md` rows needed to place them (`OUT-1`/`OUT-2`, `CAP-1`/`CAP-2`, `FEAT-1`/`FEAT-2`); `runs/historical-migration-pilot-run-001.md`; `critic-review-phase-4a-pilot.md`.
 
-**Executor / critic responsibilities:** to be scoped at authorisation time.
+**Required validations (pilot):** `python3 docs/product/validate_registry.py` passes; `git diff --check` clean; exactly two non-template story files exist; `STORY-REGISTRY.md` has exactly two content rows; every referenced outcome/capability/feature ID exists; every story file has one matching registry row and vice versa; no forbidden path modified; critic review passes.
+
+**Required validations (Phase 4 as a whole, remaining ~146 items):** to be defined at a future authorisation time; expected to include a reconciliation check that every `confirmed`/`strongly inferred` Phase 1 item has a corresponding entry, and that no `tentative`/`requires human classification` item was migrated without a resolving human decision.
+
+**Human gate:** **after** — human spot-checks the pilot (this Phase 4A instance) before any broader Phase 4 batch is separately authorised; human also spot-checks any future full-Phase-4 migration before Phase 5 integration work begins.
+
+**Executor / critic responsibilities (pilot):** migrate exactly the two authorised stories; create only the minimum hierarchy rows needed; do not migrate any other historical item; do not modify `stories/TEMPLATE.md` beyond a recorded, justified schema-defect fix; do not authorise or begin any broader Phase 4 batch. Critic independently verifies the 12-point rubric in the D-015 authorising prompt and produces `critic-review-phase-4a-pilot.md`.
+
+**Executor / critic responsibilities (Phase 4 as a whole, remaining ~146 items):** to be scoped at a future, separate authorisation time.
 
 ---
 
