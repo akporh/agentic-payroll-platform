@@ -118,6 +118,15 @@ This is the programme-level decision register. It records only actual approved d
 **Effect on later phases:** `PHASES.md` and `state.md` are updated to reflect discovery = complete, hierarchy approval = complete, structure implementation = not authorised. The next human gate is authorisation of Phase 3's scope and controls specifically.
 **Follow-up outside this programme:** None — the next action is squarely within this programme (a future Phase 3 authorisation decision).
 
+## D-014 — Authorise Phase 3 (structure implementation), scope-limited
+
+**Date:** 2026-07-15
+**Approved by:** Michael Emedo (direct chat instruction: "Authorise Phase 3 with write access limited to docs/product/. Create the empty hierarchy scaffold, templates and validation mechanism. Do not modify historical files, migrate stories or begin Phase 4.")
+**Decision:** Phase 3 (`structure implementation`) is authorised, with write access limited strictly to `docs/product/`. The authorised scope is: create the empty hierarchy scaffold (registries + `stories/` folder, per the Model A structure fixed in D-008), templates, and a validation mechanism. No historical file is to be modified. No story content is to be migrated into the registries or `stories/` folder — they are created empty of historical content. Phase 4 (`historical migration`) is explicitly not begun by this authorisation.
+**Rationale:** This is a narrowly-scoped, explicit human authorisation matching exactly the Phase 3 definition already fixed in `PHASES.md` and the factual parameters already compiled in `phase-3-inputs.md` following D-008/D-009. No new judgement calls are introduced — this decision executes what was already proposed and reviewed, at the human's explicit direction.
+**Effect on later phases:** Governs the write scope validated in `runs/structure-implementation-run-001.md`. Phase 4 (historical migration) still requires its own separate, explicit authorisation before any story content is migrated into the scaffold created under this decision.
+**Follow-up outside this programme:** None — the two follow-up investigations from D-010/D-012 (PH_OT `is_pensionable`, Gate 4 contradiction) remain open and unaffected by this decision.
+
 ---
 
-*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. No further decisions have been approved. Phase 3 (structure implementation) remains unauthorised — see `phase-3-inputs.md` for factual inputs only, not a permission grant.*
+*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4 (historical migration) remains unauthorised.*

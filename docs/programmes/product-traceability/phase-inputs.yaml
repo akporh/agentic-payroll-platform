@@ -8,13 +8,17 @@
 programme_id: product-traceability
 discovery_run_id: discovery-run-001
 hierarchy_approval_run_id: hierarchy-approval-run-001
+structure_implementation_run_id: structure-implementation-run-001
 
-current_phase: hierarchy-approval
-current_phase_status: complete
+current_phase: structure-implementation
+current_phase_status: active
+current_phase_authorised: true  # D-014, direct human chat instruction, 2026-07-15
+current_phase_allowed_paths:
+  - docs/product/
 
-recommended_next_phase_id: structure-implementation
+recommended_next_phase_id: historical-migration
 recommended_next_phase_authorised: false  # authorisation is a human decision, not granted by this file
-# See phase-3-inputs.md for the factual (non-permission-granting) Phase 3 parameters.
+# Phase 4 (historical migration) is explicitly not begun by D-014's authorisation of Phase 3.
 
 authoritative_input_files:
   - docs/ROADMAP.md
@@ -38,15 +42,21 @@ authoritative_input_files:
 # Proposed only — not granted by this file. Any expansion of allowed paths
 # requires a human decision recorded in decisions.md before it takes effect.
 proposed_allowed_paths_next_phase:
-  - docs/product/   # new tree only, per phase-3-inputs.md — not yet authorised
+  - docs/product/stories/<story-id>.md   # populated content — not yet authorised; Phase 4 only
 
 proposed_outputs_next_phase:
-  - docs/product/OUTCOMES.md
-  - docs/product/CAPABILITIES.md
-  - docs/product/FEATURES.md
-  - docs/product/STORY-REGISTRY.md
-  - docs/product/stories/
+  - populated docs/product/STORY-REGISTRY.md rows (up to 148, per D-007 granularity)
+  - populated docs/product/stories/*.md (one per confirmed/strongly-inferred/tentative item)
+  - populated docs/product/OUTCOMES.md, CAPABILITIES.md, FEATURES.md rows
+
+structure_implementation_outputs_delivered:
   - docs/product/README.md
+  - docs/product/OUTCOMES.md            # empty registry — schema only
+  - docs/product/CAPABILITIES.md        # empty registry — schema only
+  - docs/product/FEATURES.md            # empty registry — schema only
+  - docs/product/STORY-REGISTRY.md      # empty registry — schema only
+  - docs/product/stories/TEMPLATE.md
+  - docs/product/validate_registry.py
 
 discovered_counts:
   total_candidate_items: 148

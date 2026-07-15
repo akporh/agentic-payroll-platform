@@ -86,23 +86,29 @@ docs/programmes/product-traceability/
 
 ## Phase 3 — `structure implementation`
 
-**Status:** not authorised. Phase 2's decisions (D-007–D-013) fix *what* Phase 3 would build; they do not authorise *building* it. Factual inputs are compiled in `docs/programmes/product-traceability/phase-3-inputs.md` for the human's future authorisation decision — that file grants no permission on its own.
+**Status:** authorised and active (2026-07-15, via D-014, direct human chat instruction — see `decisions.md`)
 
-**Purpose:** Create the approved `docs/product/` (or equivalent) structure and registries per the Phase 2 decisions (D-008 Model A, D-009 source-of-truth rules), empty of historical story content.
+**Purpose:** Create the approved `docs/product/` structure and registries per the Phase 2 decisions (D-008 Model A, D-009 source-of-truth rules), empty of historical story content.
 
-**Allowed paths:** to be defined at authorisation time — proposed (not granted) in `phase-3-inputs.md` as a new `docs/product/` tree only.
+**Allowed paths (as authorised by D-014):**
+```text
+docs/product/
+```
+Write access is limited strictly to this path for this phase. Programme-control files under `docs/programmes/product-traceability/` may also be updated to record the phase's own governance state (decisions, state, run record) — this is the same programme-control write access every phase has had, not an expansion of the `docs/product/` scope.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history, `docs/ROADMAP.md`, and (until Phase 3 is authorised) `docs/product/` itself — confirmed absent by `test ! -e docs/product` at the end of both the discovery and hierarchy-approval runs.
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history (`docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`), `~/.claude/`. No story content may be migrated into `docs/product/` in this phase — registries and `stories/` are created empty. Phase 4 (`historical migration`) is explicitly not begun.
 
-**Required inputs:** Phase 2 decision record (D-007–D-013); `phase-3-inputs.md`.
+**Required inputs:** Phase 2 decision record (D-007–D-013); `phase-3-inputs.md`; D-014.
 
-**Required outputs:** the approved registry/hierarchy scaffold, empty of historical content, plus validation that it matches the approved model exactly.
+**Required outputs (delivered):** `docs/product/README.md`, `OUTCOMES.md`, `CAPABILITIES.md`, `FEATURES.md`, `STORY-REGISTRY.md` (all empty registries — schema/instructions only, zero content rows), `docs/product/stories/` (empty except a template), `docs/product/stories/TEMPLATE.md`, `docs/product/validate_registry.py` (validation mechanism, dependency-free, operates only on files inside `docs/product/`).
 
-**Required validations:** to be defined at authorisation time; expected to include schema/format validation of any registry files.
+**Required validations:** `git diff --check`; `git status --short` confirming only `docs/product/` and programme-control files changed; `test ! -e docs/product/stories/<any-non-template-file>` (confirms no story migrated); running `docs/product/validate_registry.py` itself and confirming it passes on the empty scaffold; confirming zero content rows in each registry file.
 
-**Human gate:** **before** — an explicit authorisation of Phase 3's scope and controls specifically (per D-013), not merely a continuation of Phase 2's approval. **After** authorisation, human also confirms the scaffold matches the approved decision before any historical content is migrated into it.
+**Human gate:** **after** — human confirms the scaffold matches the approved decision before Phase 4 (historical migration) is separately authorised.
 
-**Executor / critic responsibilities:** to be scoped at authorisation time.
+**Executor responsibilities:** build exactly the authorised scaffold, templates, and validation mechanism; do not populate any registry row or story file with historical content; do not touch any file outside `docs/product/` (other than this programme's own control files); do not begin Phase 4.
+
+**Critic responsibilities:** independently, read-only, verify write scope was honoured, no historical files were touched, no story content was migrated, the scaffold matches the approved Model A structure and source-of-truth rules, and Phase 4 was not begun. Produces `critic-review-phase-3.md`.
 
 ---
 
