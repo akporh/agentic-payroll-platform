@@ -106,9 +106,7 @@ No other amendment was required. Two items were noted by the critic for future-d
 
 ## Commit SHA(s)
 
-Recorded at the end of this run, after the critic gate passed and the authorised files were committed and pushed — see the final paragraph of this section or a follow-up note if the commit occurred in a separate step.
-
-`<to be filled in immediately after commit — see final report>`
+`c4c8c9b` — "docs: pilot product traceability migration with two ICM stories", pushed to `origin/uat` (28b270c..c4c8c9b). Only the 16 authorised files under `docs/product/` and `docs/programmes/product-traceability/` were staged and committed; the pre-existing unrelated working-tree changes (`docs/ROADMAP.md`, `docs/test-harness-checklist.md`, `docs/test-reports/test-harness/`, `docs/ux-design-brief/gate-6/ia-timesheet-discoverability.md`) were left uncommitted, exactly as found at run start. Pre-push hook ran the full backend suite (308 passed, 1 pre-existing skip, 0 failed) and frontend typecheck (clean) before the push completed.
 
 ## Outstanding questions
 
