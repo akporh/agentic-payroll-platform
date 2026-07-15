@@ -30,4 +30,4 @@ See `review-state.md` (authoritative — this file deliberately carries no stage
 
 ## Next permitted action
 
-**Execute the continuous Phase 1 loop per `RUNBOOK.md`**, starting with the independent critic pass on Stage 05 (see `review-state.md`). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.
+**Continue the continuous Phase 1 loop per `RUNBOOK.md`** — Stage 05 closed 2026-07-15 (critic PASS); Stage 06 is `context-ready`, so the next loop action is the Stage 06 primary-executor pass (see `review-state.md`). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.

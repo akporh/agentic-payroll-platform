@@ -13,6 +13,8 @@ _None currently recorded._
 | DQ-001 | Concrete C7 statistical formulas, numeric thresholds and minimum history window | 04 | 08 | forwarded |
 | DQ-002 | Confirmation-protocol expiry, conflict, idempotency and run-state invalidation rules | 03 | 08 | forwarded |
 | DQ-003 | Deterministic onboarding dry-run mechanism | 03/04 | 08 | forwarded |
+| DQ-004 | What "safely separated from production state" means operationally for a dry run (does it create a `payroll_run` row?) — refines DQ-003; classified `implementation-specification` by the Stage 05 critic (F-05-09) | 05 | 08 | forwarded |
+| DQ-005 | Should `run_type = CORRECTION` remain API-only by design or be exposed in the UI — classified `non-blocking-forwarded-decision` by the Stage 05 critic (F-05-12) | 05 | 09/11 | forwarded |
 
 ## Evidence gaps
 

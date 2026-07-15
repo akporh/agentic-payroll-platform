@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-review (investigation complete 2026-07-13 — 12 confirmed findings, 0 draft, 0 parked; 0 human decisions required at this stage's gate (2 design questions forwarded to Stage 08/09); 15 outputs produced, all findings independently re-verified against current committed code, not inferred from prior stages. Not marked `complete` per this CONTEXT.md's own completion procedure — Stage 06 not started.)
+closed (2026-07-15 — independent critic PASS per `outputs/critic-review.md` under the D-003 lifecycle; 0 blocking human decisions, so the controller closed the stage automatically per `RUNBOOK.md`. One informational note surfaced to the human reviewer, not a gate item: F-05-07 downgraded F-01-29 to Low on verified-unreachability evidence, while D-02-03's closure requirement for C4 remains intact. Investigation had completed 2026-07-13 — 12 confirmed findings, 0 draft, 0 parked; 2 design questions forwarded to Stage 08/09 via `decision-queue.md` DQ-004/DQ-005; 15 outputs produced, all findings independently re-verified against current committed code.)
 
 ## Objective
 
@@ -353,4 +353,4 @@ When work is finished:
 
 ## Next action
 
-**Human review of Stage 05 outputs; gate approval required before Stage 06.**
+**None — stage closed 2026-07-15 (critic PASS, D-003 automatic closure).** The pre-D-003 human-gate wording above was superseded by D-003's decision-gated continuous model; closure authority for a 0-decision stage rests with the controller on critic PASS. Stage 06 is the active stage.
