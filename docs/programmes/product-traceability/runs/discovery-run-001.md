@@ -71,7 +71,7 @@ No other executor artefact was changed as a result of critic review — the crit
 
 ## Commit SHA(s)
 
-Not yet committed as of the critic's final re-review (confirmed via `git log --oneline` and `git status --short` — the whole `docs/programmes/` tree and the discovery document are still untracked). This section is updated with the real commit SHA(s) immediately after the commit is made, per the bootstrap prompt's instruction to commit and push authorised discovery-phase outputs in coherent commit boundaries without requesting intermediate confirmation.
+`6c7c6df` — "docs: bootstrap product-traceability programme (discovery phase)", on branch `uat`. Scope: `docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md` + all of `docs/programmes/product-traceability/`. The pre-existing, unrelated uncommitted changes present at run start (`docs/ROADMAP.md` modification, `docs/test-harness-checklist.md` deletion, `docs/test-reports/test-harness/`, `docs/ux-design-brief/gate-6/ia-timesheet-discoverability.md`) were deliberately left unstaged and uncommitted — out of this programme's authorised scope.
 
 ## Outstanding human decisions
 
