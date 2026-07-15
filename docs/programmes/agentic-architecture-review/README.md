@@ -2,7 +2,7 @@
 
 ICM-style (Issue/Confirm/Mitigate) structured review of the agentic payroll platform's current state, product thesis, and target direction.
 
-> **Programme registration (2026-07-15):** this review is Phase 1 of the `agentic-architecture-review` programme and was moved here from `docs/agentic-architecture-review/` (`git mv`, history preserved — see `decisions.md` D-001/D-002). Programme control files (`PROGRAMME.md`, `POLICY.md`, `PHASES.md`, `state.md`, `decisions.md`, `exceptions.md`) sit alongside this README; they govern phase-level scope only. Nothing about stage sequencing, gating, or the finding lifecycle changed — `WORKFLOW.md` and `review-state.md` remain authoritative for the review itself. Historical records elsewhere in `docs/` deliberately still cite the old path.
+> **Programme registration (2026-07-15):** this review is Phase 1 of the `agentic-architecture-review` programme and was moved here from `docs/agentic-architecture-review/` (`git mv`, history preserved — see `decisions.md` D-001/D-002). Programme control files (`PROGRAMME.md`, `POLICY.md`, `PHASES.md`, `state.md`, `decisions.md`, `exceptions.md`) sit alongside this README; they govern phase-level scope only. `WORKFLOW.md` and `review-state.md` remain authoritative for the review itself. Historical records elsewhere in `docs/` deliberately still cite the old path. Later the same day, D-003 replaced per-stage human gates with decision-gated continuous execution (independent critic per `CRITIC.md`, loop per `RUNBOOK.md`).
 
 ## Purpose
 
@@ -25,7 +25,7 @@ Read `WORKFLOW.md` before doing anything else — it defines the stage sequence,
 ## Hard rules
 
 - This review does not modify production code. It is read-only with respect to `backend/`, `frontend/`, and `migrations/`.
-- Stages run in numbered order. A stage does not start until the prior stage's gate is explicitly passed (see `WORKFLOW.md`).
+- Stages run in numbered order. A stage does not open until the prior stage is closed under the critic-gated lifecycle in `WORKFLOW.md` (per-stage human gates were replaced by D-003; the human stop points are listed in `POLICY.md`).
 - No finding is treated as fact until it meets the evidence standard in `_core/EVIDENCE-STANDARD.md` and is promoted from draft to confirmed per `_core/FINDING-SCHEMA.md`.
 - Current implementation, intended design, and identified gap are always recorded as three separate things — never merged into one narrative. See `_core/REVIEW-PRINCIPLES.md`.
 
@@ -40,6 +40,7 @@ Read `WORKFLOW.md` before doing anything else — it defines the stage sequence,
 | `_inputs/source-register.md` | Register of every source document/system consulted, with provenance |
 | `01-current-operating-model` … `13-approved-roadmap` | Numbered stage folders, run in order |
 | `PROGRAMME.md`, `POLICY.md`, `PHASES.md`, `state.md`, `decisions.md`, `exceptions.md` | Programme-level control files (phase scope and gates — added at programme registration, 2026-07-15) |
+| `RUNBOOK.md`, `CRITIC.md`, `decision-queue.md` | Continuous-execution operating model: controller loop, independent critic contract, non-blocking decision queue (added by D-003, 2026-07-15) |
 
 ## Next action
 

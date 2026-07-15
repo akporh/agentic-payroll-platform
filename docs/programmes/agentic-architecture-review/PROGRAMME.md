@@ -36,7 +36,7 @@ Out of scope:
 
 ## Intended phases
 
-1. **review-execution** — run Stages 01–13 to gated completion under the review's own `WORKFLOW.md`. *Authorised (the review was begun before programme registration; D-001 registers it without altering its stage governance). In flight: Stages 01–04 gated-closed, Stage 05 awaiting human review, Stages 06–13 not started — see `review-state.md`.*
+1. **review-execution** — run Stages 01–13 to closure under the review's own `WORKFLOW.md`, operating decision-gated-continuous per D-003 (`RUNBOOK.md`/`CRITIC.md`). *Authorised (D-001 registered the in-flight review; D-003 set the continuous operating model). Stage position: see `review-state.md`.*
 2. **roadmap-consolidation** — cross-reference the Stage 13 approved roadmap with the audit programme's 8 remediation programmes and `docs/ROADMAP.md`; produce a single reconciled build order and a decision pack for human approval. *Not authorised.*
 3. **adoption** — adopt the approved build order into `docs/product/` (initiatives/epics/features per the product-traceability conventions) and `docs/ROADMAP.md`. *Not authorised.*
 
@@ -48,15 +48,16 @@ Each phase after Phase 1 requires an explicit human authorisation recorded in `d
 |---|---|
 | `review-state.md` | **Stage-level** state of the 13 review stages — unchanged, still the single source of truth for "where is the review" |
 | `state.md` (this programme) | **Phase-level** state — which programme phase is authorised/active/complete, and the current human gate |
-| `WORKFLOW.md` | Stage sequence, gating rules, finding lifecycle — unchanged by programme registration |
-| `_core/HUMAN-DECISIONS.md` | Review-internal human decisions (HD-*) — unchanged |
-| `decisions.md` (this programme) | Programme-level decisions (D-*): registration, phase authorisations, scope changes |
-
-Programme registration changes **nothing** about how stages run, gate, or record findings.
+| `WORKFLOW.md` | Stage sequence, stage lifecycle, gating rules, finding lifecycle |
+| `RUNBOOK.md` | The continuous Phase 1 loop: controller/executor/critic roles and dispositions (D-003) |
+| `CRITIC.md` | Independent critic contract: review scope, verdicts, decision classification (D-003) |
+| `decision-queue.md` | Non-blocking forwarded decisions, implementation specifications, and evidence gaps |
+| `_core/HUMAN-DECISIONS.md` | Review-internal material human decisions (HD-*) — unchanged |
+| `decisions.md` (this programme) | Programme-level decisions (D-*): registration, operating model, phase authorisations, scope changes |
 
 ## Success criteria
 
-- The review reaches Stage 13 `gated-closed` with every stage gate explicitly passed per `WORKFLOW.md`.
+- The review reaches Stage 13 `closed`, every stage having passed independent critic review per `WORKFLOW.md`/`CRITIC.md` (or, for Stages 01–04, the pre-D-003 human gates), with Stage 13's final roadmap approval given by the human reviewer.
 - The consolidation phase (when authorised) accounts for **every** item in the audit programme's Stage 13 crosswalk and the Stage 13 approved roadmap — nothing dropped silently; conflicts surfaced as decisions, not resolved by executor fiat.
 - The adoption phase (when authorised) leaves `docs/product/` and `docs/ROADMAP.md` telling the same story, with traceability from each adopted initiative back to the review finding(s) and/or audit finding(s) that justify it.
 - The programme does not authorise its own continuation — each phase boundary is a recorded human decision.

@@ -8,9 +8,9 @@ These are **programme phases**, not review stages. The 13 review stages all live
 
 ## Phase 1 — `review-execution`
 
-**Status:** authorised and in flight (registered retrospectively by D-001, 2026-07-15 — the review began before programme registration; registration changes nothing about its stage governance). Stage position at registration: Stages 01–04 gated-closed, Stage 05 awaiting human review, Stages 06–13 not started. Authoritative stage state: `review-state.md`.
+**Status:** authorised and in flight (registered retrospectively by D-001, 2026-07-15; operating model changed to decision-gated continuous execution by D-003, same day). Authoritative stage state: `review-state.md`.
 
-**Purpose:** Run review Stages 01–13 to gated completion under the review's own `WORKFLOW.md`, ending with Stage 13 (`approved-roadmap`) gated-closed.
+**Purpose:** Run review Stages 01–13 to closure under the review's own `WORKFLOW.md`, ending with Stage 13 (`approved-roadmap`) — which always requires final human approval.
 
 **Allowed paths (read-write):**
 ```text
@@ -41,9 +41,9 @@ All paths not explicitly listed under "Allowed paths" are implicitly forbidden f
 
 **Required outputs:** each stage's `findings.md`, `decisions.md`, and `outputs/` per `WORKFLOW.md`; gate records in `_core/HUMAN-DECISIONS.md`; `review-state.md` kept current at every stage transition.
 
-**Human gate:** **per stage** — every stage gate is an explicit human approval (`HD-GATE-*`). Phase 1 completes when Stage 13 is gated-closed.
+**Human gate:** **decision-gated (D-003)** — routine stage transitions are closed by an independent critic `PASS` per `RUNBOOK.md`/`CRITIC.md`; the human reviewer is engaged only at the stop points in `POLICY.md` (material decisions, unresolved executor/critic disagreement, policy/scope change, residual-risk acceptance). Stage 13's final roadmap approval is always human. Phase 1 completes when Stage 13 is closed with that approval. (Stages 01–04 were closed under the earlier per-stage human-gate model, `HD-GATE-01`–`04` — that history stands.)
 
-**Executor responsibilities:** investigate and record findings to the evidence standard; never open a stage early; keep `review-state.md` truthful; do not begin Phase 2.
+**Executor/controller responsibilities:** investigate and record findings to the evidence standard; run the independent critic on every stage from D-003 onward; never open a stage before its predecessor is closed; keep `review-state.md` and `decision-queue.md` truthful; do not begin Phase 2.
 
 ---
 

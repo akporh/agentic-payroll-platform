@@ -1,33 +1,33 @@
 # State — Agentic Architecture Review Programme
 
-*Last updated: 2026-07-15 (programme registration, D-001/D-002). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
+*Last updated: 2026-07-15 (D-003 adopted: decision-gated continuous execution). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
 
 ## Current phase
 
-`review-execution` (Phase 1) — authorised and in flight.
+`review-execution` (Phase 1) — authorised and in flight, running under **decision-gated continuous execution** (D-003): controller → executor → independent critic per `RUNBOOK.md`/`CRITIC.md`, human stops only at the points named in `POLICY.md`.
 
 ## Phase status
 
 | Phase | Status | Authorised by |
 |---|---|---|
-| 1 — review-execution | active | D-001 (retrospective registration; review began before the programme existed) |
+| 1 — review-execution | active (decision-gated continuous) | D-001 (retrospective registration); D-003 (continuous operating model) |
 | 2 — roadmap-consolidation | not authorised | — |
 | 3 — adoption | not authorised | — |
 
-## Stage position (pointer only — see `review-state.md` for authority)
+## Stage position
 
-At registration (2026-07-15): Stages 01–04 gated-closed; Stage 05 (Platform Readiness) investigation complete, **awaiting human review**; Stages 06–13 not started.
+See `review-state.md` (authoritative — this file deliberately carries no stage snapshot).
 
 ## Human-gate status
 
-- Programme registration and full-arc scope (D-001) and the physical move under `docs/programmes/` (D-002): **received and recorded**, 2026-07-15.
-- **Current open gate: human review of Stage 05 outputs** — gate approval required before Stage 06 may begin (this is the review's own `HD-GATE-05`, tracked in `review-state.md`; recorded here only as the programme's current blocking item).
+- D-001 (registration, full-arc scope), D-002 (physical move), D-003 (continuous execution with independent critic): **received and recorded**, 2026-07-15.
+- **No open programme-level human gate.** Under D-003, routine stage transitions do not require approval; the programme stops for the human reviewer only at the stop points in `POLICY.md`/`RUNBOOK.md` (material decisions, executor/critic disagreement, policy change, Stage 13 final approval, Phase 2/3 authorisation).
 - Phase 2 authorisation: not requested, not granted.
 
 ## Blocked or outstanding decisions
 
-- None at programme level. All open decisions are stage-level and live in the review's own tracking.
+- None blocking at programme level. Non-blocking forwarded items and evidence gaps live in `decision-queue.md` (currently DQ-001–003, EG-001–003 — none blocking).
 
 ## Next permitted action
 
-**Human review of Stage 05 outputs and gate approval (HD-GATE-05).** On approval, Phase 1 continues into Stage 06 under `WORKFLOW.md` — no programme-level decision needed until Stage 13 closes, at which point Phase 2 authorisation becomes the next human gate.
+**Execute the continuous Phase 1 loop per `RUNBOOK.md`**, starting with the independent critic pass on Stage 05 (see `review-state.md`). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.

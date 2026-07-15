@@ -7,7 +7,7 @@ Long-running, multi-phase governance efforts that sit **above** the ICM sprint w
 | Programme | Purpose | Phase state | Current human gate |
 |---|---|---|---|
 | [`product-traceability`](product-traceability/PROGRAMME.md) | Durable product hierarchy (Outcome → Capability → Feature → Story) + retrospective migration of delivered work | Phase 4 (historical migration) — 4A pilot + 4B batch complete; remainder not authorised | Review batch quality; authorise further Phase 4 scope |
-| [`agentic-architecture-review`](agentic-architecture-review/PROGRAMME.md) | 13-stage architecture review → consolidation with the audit backlog → adopted agentic build order | Phase 1 (review-execution) — Stages 01–04 gated-closed, Stage 05 awaiting review | Approve Stage 05 gate (HD-GATE-05) |
+| [`agentic-architecture-review`](agentic-architecture-review/PROGRAMME.md) | 13-stage architecture review → consolidation with the audit backlog → adopted agentic build order | Phase 1 (review-execution) — decision-gated continuous per D-003; Stage 05 awaiting critic | None open — stops only on material decisions; final human approval at Stage 13 |
 
 *Phase-state column is a convenience snapshot — each programme's `state.md` is authoritative. Update this row when a programme's phase or gate changes.*
 
@@ -24,6 +24,8 @@ Every programme folder carries the same control files, per the pattern establish
 | `decisions.md` | Programme-level human decisions (D-*), append-only |
 | `exceptions.md` | Stop-condition events, append-only |
 | `runs/` | Run records, one per executed phase run (created with the first run) |
+
+A programme may add operating-model files on top of the core set — e.g. `agentic-architecture-review`'s `RUNBOOK.md` (controller loop), `CRITIC.md` (independent critic contract), and `decision-queue.md` (non-blocking decisions), added by its D-003.
 
 Two standing rules: a programme never authorises its own next phase, and completed history (closed run records, diagnostics, critic reviews — here or anywhere in `docs/`) is never rewritten.
 
