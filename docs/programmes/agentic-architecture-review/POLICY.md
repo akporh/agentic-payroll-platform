@@ -1,56 +1,76 @@
 # Policy — Agentic Architecture Review Programme
 
-Fixed execution policy for the `agentic-architecture-review` programme. The executor must not weaken it. Any change to this file requires human approval and is itself a consequential decision under `decisions.md`.
+Fixed execution policy for the `agentic-architecture-review` programme. The executor and critic must not weaken it. Any change requires human approval and a programme decision.
 
 ## Autonomy mode
 
-`stage-gated` (Phase 1) / `phase-gated` (Phases 2–3)
+`decision-gated-continuous` (Phase 1) / `phase-gated` (Phases 2–3)
 
-Phase 1 inherits the review's own gating, which is **stricter** than phase-level autonomy: a stage may be investigated autonomously, but no stage begins until the prior stage's gate is explicitly passed by a human (see `WORKFLOW.md`). Phases 2 and 3 may not begin at all without a recorded human authorisation in `decisions.md`.
+Phase 1 may progress continuously through review stages after an independent critic returns `PASS`, provided no blocking human decision or stop condition remains. Phases 2 and 3 may not begin without explicit human authorisation.
 
-## Executor may
+## Roles
 
-- Investigate within the currently open review stage per `WORKFLOW.md` and the stage's `CONTEXT.md`.
-- Read repository evidence (source code, migrations, tests, docs, git history) read-only.
-- Write within `docs/programmes/agentic-architecture-review/` only, respecting the review's own stage/finding rules.
-- Record findings as draft and promote them only per `_core/EVIDENCE-STANDARD.md` and `_core/FINDING-SCHEMA.md`.
-- Update `review-state.md` (stage-level) and `state.md` (phase-level) to reflect actual state.
+- Primary executor: performs the stage review from `CONTEXT.md`.
+- Independent critic: validates evidence, scope, completeness and decision classification under `CRITIC.md`.
+- Controller: advances, revises or stops according to `RUNBOOK.md`.
+- Human reviewer: resolves material decisions and approves Stage 13 and later phases.
 
-## Executor may not
+## Executor/controller may
 
-- Modify production code (`backend/`, `frontend/`, `migrations/`) — hard rule inherited from the review's README.
-- Modify `docs/audit-program/` (closed record), `docs/ROADMAP.md`, `docs/product/`, `docs/sprints/**`, `docs/stories/**`, or any other tree outside this programme's folder — until and unless a later phase's authorisation explicitly grants a named path.
-- Begin a review stage whose predecessor's gate has not been explicitly passed.
-- Begin Phase 2 or Phase 3, or treat its own recommendation as human approval.
-- Weaken the review's evidence standard, finding schema, or severity model (`_core/`).
-- Modify user-home skills (`~/.claude/**`) or add dependencies.
+- Populate the next eligible stage `CONTEXT.md` from confirmed prior findings, decisions and handoffs.
+- Investigate the currently eligible stage.
+- Read repository evidence read-only.
+- Write within `docs/programmes/agentic-architecture-review/` only.
+- Record/promote findings under the binding evidence rules.
+- Run the independent critic and apply named corrections.
+- Close and advance a stage automatically after critic `PASS` when no blocking decision remains.
+- Update `review-state.md`, `state.md` and `decision-queue.md` truthfully.
+
+## Executor/controller may not
+
+- Modify production code, migrations, configuration or data.
+- Modify `docs/audit-program/`, `docs/ROADMAP.md`, `docs/product/`, `docs/sprints/**`, `docs/stories/**` or any path outside this programme until explicitly authorised in a later phase.
+- Resolve a material product, risk, compliance or residual-risk choice without the human reviewer.
+- Begin Phase 2 or Phase 3.
+- Treat critic `PASS` as final Stage 13 roadmap approval.
+- Weaken `_core/` standards, alter this policy or expand authorised paths.
+- Modify user-home skills or add dependencies.
 
 ## Human approval required for
 
-- Every stage gate (the existing `HD-GATE-*` pattern in `_core/HUMAN-DECISIONS.md`).
-- Authorisation of Phase 2 (`roadmap-consolidation`) and Phase 3 (`adoption`), including their exact allowed-path grants.
-- Any change to this file, `PROGRAMME.md`, or the review's `_core/` binding standards.
-- Any conflict between the Stage 13 approved roadmap and the audit programme's backlog that cannot be resolved by evidence (Phase 2 surfaces these as decisions, never resolves them silently).
+- material product, risk, compliance, scope or residual-risk decisions where evidence does not determine one answer
+- reversal of a binding prior decision
+- policy, programme-scope or authorised-path changes
+- unresolved executor/critic disagreement after one correction cycle
+- final Stage 13 roadmap approval
+- authorisation of Phases 2 and 3
+- conflicts in Phase 2 that evidence cannot resolve
+
+Routine stage transitions do not require approval.
 
 ## Stop conditions
 
-Stop and record an exception in `exceptions.md` when:
+Stop and record an exception when:
 
-- Authoritative sources materially contradict one another and reading further cannot resolve it.
-- A required write falls outside the authorised paths.
-- A destructive or irreversible change would be required.
-- Sensitive or personal information is discovered.
-- Evidence needed to meet the review's confirmation standard cannot be accessed.
+- authoritative sources materially contradict one another and further investigation cannot resolve it
+- required evidence cannot be accessed
+- a required write falls outside authorised paths
+- a destructive or irreversible change would be required
+- sensitive/personal information is discovered
+- a genuine blocking human decision exists
+- the critic returns `STOP`
 
-Routine naming, formatting, and evidence-collection questions are **not** stop conditions.
+Routine naming, formatting, context population, evidence collection, documentation updates and forwarded implementation specifications are not stop conditions.
 
-## Source-of-truth boundaries (fixed for this programme)
+## Source-of-truth boundaries
 
-- `review-state.md` owns stage-level review state.
-- `state.md` owns phase-level programme state.
-- `_core/HUMAN-DECISIONS.md` owns review-internal human decisions (HD-*).
-- `decisions.md` owns programme-level decisions (D-*).
-- `docs/audit-program/audit-state.md` owns the audit programme's record — read-only here.
-- `docs/product/` registries own product-hierarchy truth — writable only under a Phase 3 grant, under the product-traceability programme's conventions.
+- `review-state.md`: stage-level state
+- `state.md`: phase-level state and current programme gate
+- `decision-queue.md`: unresolved decision/specification/evidence queue
+- `_core/HUMAN-DECISIONS.md`: review-internal material decisions and final approval records
+- `decisions.md`: programme-level decisions
+- `outputs/critic-review.md` in each stage: independent gate-quality record
+- `docs/audit-program/audit-state.md`: read-only audit truth
+- `docs/product/`: writable only under a Phase 3 grant
 
-This boundary list may only be changed by explicit human approval recorded in `decisions.md`.
+These boundaries may only be changed by explicit human approval.
