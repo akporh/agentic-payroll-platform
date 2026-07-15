@@ -2,7 +2,7 @@
 
 ## Stage sequence
 
-Stages run in strict numbered order. A stage is a unit of investigation, not a unit of delivery.
+Stages run in strict numbered order. A stage is a unit of investigation, not delivery.
 
 | # | Stage | Folder |
 |---|---|---|
@@ -20,50 +20,86 @@ Stages run in strict numbered order. A stage is a unit of investigation, not a u
 | 12 | Target Direction | `12-target-direction` |
 | 13 | Approved Roadmap | `13-approved-roadmap` |
 
-Stages 01–11 are diagnostic: they establish what is true now. Stage 12 synthesizes confirmed findings into a target direction. Stage 13 is the only stage that produces a roadmap, and it may only draw on confirmed findings and human decisions from prior stages — never on draft findings or assumptions carried in from outside the review.
+Stages 01–11 are diagnostic. Stage 12 synthesises confirmed findings into target direction. Stage 13 produces the roadmap and always requires final human approval.
 
 ## Per-stage contents
 
 Every stage folder contains:
 
-- `CONTEXT.md` — scope of the stage, questions it is answering, what is explicitly out of scope
-- `findings.md` — findings log for the stage, using the schema in `_core/FINDING-SCHEMA.md`. Draft and confirmed findings are visually and structurally separated in this file — never merged into one list.
-- `decisions.md` — human decisions made during the stage, logged per `_core/HUMAN-DECISIONS.md`
-- `evidence/` — raw evidence artifacts (query outputs, file excerpts, screenshots, logs) that back confirmed findings. Every confirmed finding must cite a file in this folder.
-- `outputs/` — synthesized stage deliverables (e.g. a written assessment, a diagram) produced once the stage is gated closed
+- `CONTEXT.md` — populated execution contract
+- `findings.md` — draft, confirmed and parked/rejected findings
+- `decisions.md` — material human decisions made during the stage
+- `evidence/` — captured evidence where needed
+- `outputs/` — stage deliverables, handoffs and `critic-review.md`
 
-## Gating rules
+Authoritative repository code, tests, migrations, git history and confirmed prior-stage findings may be cited directly. Evidence snapshots should be captured under `evidence/` when the source may change, the extract is needed for reproducibility, or the finding depends on a query/log rather than a stable repository location.
 
-A stage may not begin until:
+## Stage execution lifecycle
 
-1. The prior stage's gate has been explicitly passed by the human reviewer (see `_core/HUMAN-DECISIONS.md` for how approval is recorded).
-2. `review-state.md` has been updated to reflect the prior stage's closure.
+1. **eligible** — predecessor is closed and no blocking decision prevents opening.
+2. **context-ready** — `CONTEXT.md` is fully populated and controller-validated.
+3. **in-progress** — primary executor performs the investigation.
+4. **awaiting-critic** — required outputs exist and the independent critic runs.
+5. **revision-required** — critic returned `REVISE`; executor applies named corrections.
+6. **awaiting-human-decision** — critic passed but a material decision blocks progression.
+7. **closed** — critic passed, decisions are resolved or non-blocking/forwarded, state and handoffs are complete.
 
-A stage may not be marked closed until:
+## Automatic stage progression
 
-1. Every finding in `findings.md` intended to inform later stages is either confirmed (with evidence) or explicitly marked as parked/rejected — no findings are left ambiguously "maybe."
-2. `review-state.md` is updated with the stage's final status.
+A stage may open automatically when:
+
+- the prior stage is closed
+- its context is populated from confirmed evidence and binding decisions
+- no blocking human decision or stop condition exists
+
+A stage may close automatically when:
+
+- required outputs exist
+- findings informing later work are confirmed, parked or rejected
+- evidence meets `_core/EVIDENCE-STANDARD.md`
+- current implementation, intended design and gap remain separated
+- the critic returns `PASS`
+- no blocking human decision remains
+- handoffs and `review-state.md` are consistent
+
+After automatic closure, the controller may populate and open the next stage without a human prompt.
+
+## Human gating
+
+Human approval is required only for:
+
+- genuine material decisions classified under `POLICY.md`
+- unresolved executor/critic disagreement
+- changes to binding review/programme policy
+- final Stage 13 roadmap approval
+- Phase 2 or Phase 3 authorisation
+
+Non-blocking questions are recorded in `decision-queue.md` and forwarded to the stage that owns them.
+
+## Independent critic
+
+Every stage from the adoption of D-003 onward must receive a separate critic review under `CRITIC.md`.
+
+The critic returns `PASS`, `REVISE` or `STOP`. It reviews evidence and outputs, not merely the prompt. It cannot silently rewrite executor findings.
 
 ## Finding lifecycle
 
-1. **Draft** — an observation or hypothesis, recorded as soon as it is noticed. Not to be cited by any other stage.
-2. **Confirmed** — meets the bar in `_core/EVIDENCE-STANDARD.md`, has a cited evidence artifact, and has been reviewed. Only confirmed findings may be cited by Stage 12 or Stage 13, or by any later stage's `CONTEXT.md`.
-3. **Parked / Rejected** — explicitly closed out without promotion, with a one-line reason. This prevents a draft from silently rotting into an assumed fact by omission.
+1. **Draft** — observation/hypothesis; not citable downstream.
+2. **Confirmed** — meets evidence standard and is citable downstream.
+3. **Parked / Rejected** — explicitly closed with a reason.
 
-## Current operating model / intended design / gap separation
+## Current implementation / intended design / gap separation
 
-Every stage that touches a system behavior must record three things separately, never as one merged statement:
+Every system-behaviour finding records separately:
 
-- **Current implementation** — what the code/config/data actually does today, cited to evidence
-- **Intended design** — what the design intent was (from specs, tickets, `CLAUDE.md`, or stated by the human reviewer)
-- **Identified gap** — the delta between the two, if any
-
-This separation is structural in `_core/FINDING-SCHEMA.md` and must not be collapsed in prose.
+- current implementation
+- intended design
+- identified gap
 
 ## Production code
 
-This review does not modify production code, configuration, or data. All stage work is read/analysis only. Any output that recommends a code change is a roadmap recommendation for future delivery work, not an edit made during the review.
+This programme does not modify production code, configuration or data. Recommendations become future roadmap/build-order inputs for ICM sprint delivery.
 
 ## Next action
 
-**Await approval to begin Stage 01.**
+Read `review-state.md` and `decision-queue.md`, then execute the next eligible action under `RUNBOOK.md`.
