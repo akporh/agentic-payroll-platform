@@ -7,9 +7,14 @@
 
 programme_id: product-traceability
 discovery_run_id: discovery-run-001
+hierarchy_approval_run_id: hierarchy-approval-run-001
 
-recommended_next_phase_id: hierarchy-approval
+current_phase: hierarchy-approval
+current_phase_status: complete
+
+recommended_next_phase_id: structure-implementation
 recommended_next_phase_authorised: false  # authorisation is a human decision, not granted by this file
+# See phase-3-inputs.md for the factual (non-permission-granting) Phase 3 parameters.
 
 authoritative_input_files:
   - docs/ROADMAP.md
@@ -33,10 +38,15 @@ authoritative_input_files:
 # Proposed only — not granted by this file. Any expansion of allowed paths
 # requires a human decision recorded in decisions.md before it takes effect.
 proposed_allowed_paths_next_phase:
-  - docs/programmes/product-traceability/
+  - docs/product/   # new tree only, per phase-3-inputs.md — not yet authorised
 
 proposed_outputs_next_phase:
-  - docs/programmes/product-traceability/decisions.md  # updated with Phase 2 decision(s)
+  - docs/product/OUTCOMES.md
+  - docs/product/CAPABILITIES.md
+  - docs/product/FEATURES.md
+  - docs/product/STORY-REGISTRY.md
+  - docs/product/stories/
+  - docs/product/README.md
 
 discovered_counts:
   total_candidate_items: 148
@@ -58,20 +68,28 @@ approved_decision_ids:
   - D-004
   - D-005
   - D-006
+  - D-007  # resolves DP-01
+  - D-008  # resolves DP-02
+  - D-009  # resolves DP-03
+  - D-010  # resolves DP-04 — resolved as "still open, escalate outside programme," not as "closed"
+  - D-011  # resolves DP-05
+  - D-012  # resolves DP-06 — resolved as "investigate before trusting either source," not as "closed"
+  - D-013  # resolves DP-07 — authorises Phase 2 only, not Phase 3
 
-unresolved_decision_ids:
-  - DP-01
-  - DP-02
-  - DP-03
-  - DP-04
-  - DP-05
-  - DP-06
-  - DP-07
+unresolved_decision_ids: []  # DP-01 through DP-07 all resolved 2026-07-15; next unresolved decision is Phase 3 authorisation itself (not yet a numbered DP item)
+
+follow_up_investigations_outside_programme:
+  - id: PH_OT-is_pensionable
+    origin: D-010 (DP-04)
+    status: open
+  - id: gate-4-status-contradiction
+    origin: D-012 (DP-06)
+    status: open
 
 proposed_validation_commands:
   - "git diff --check"
   - "git status --short"
-  - "git log --oneline -- docs/ROADMAP.md | head -1"  # confirm no new commit touched ROADMAP.md during this run
-  - "find docs/programmes/product-traceability -maxdepth 1 -type f | sort"
+  - "find docs/programmes/product-traceability -maxdepth 2 -type f | sort"
+  - "test ! -e docs/product"
 
-exception_ids: []  # no stop-condition exception occurred during discovery — see exceptions.md
+exception_ids: []  # no stop-condition exception occurred during discovery or hierarchy-approval — see exceptions.md

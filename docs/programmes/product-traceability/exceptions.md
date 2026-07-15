@@ -33,3 +33,11 @@ None of the seven stop conditions in `POLICY.md` were triggered:
 - No validation failed in a way that could not be corrected within scope.
 
 If a future amendment pass (post-critic-review) surfaces a stop condition, it will be appended below as a new dated entry rather than overwriting this statement.
+
+---
+
+## Hierarchy-approval phase (Phase 2)
+
+**No exception occurred during the hierarchy-approval phase.**
+
+The seven human decisions (DP-01–DP-07) were supplied directly by the human via `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md` and recorded verbatim as D-007–D-013 in `decisions.md`; no authoritative-source contradiction, sensitive-data discovery, out-of-scope write requirement, destructive change, inaccessible evidence, unclassifiable-item threshold breach, or uncorrectable validation failure arose while recording them or closing the phase. Two items (DP-04, DP-06) were explicitly decided as "still open, escalate/investigate outside this programme" — that is a recorded decision about follow-up ownership, not a stop-condition exception within this programme's own execution.

@@ -6,7 +6,7 @@ All five phases are defined here in advance for planning visibility. **Only `dis
 
 ## Phase 1 — `discovery`
 
-**Status:** authorised, active
+**Status:** complete (2026-07-15 — see `runs/discovery-run-001.md`; critic verdict `approve-for-human-review`)
 
 **Purpose:** Inventory delivered work from repository evidence, propose (not adopt) a product hierarchy model and repository structure, and produce a decision pack of genuine open questions for human approval.
 
@@ -59,45 +59,48 @@ All paths not explicitly listed under "Allowed paths" are implicitly forbidden f
 
 ## Phase 2 — `hierarchy approval`
 
-**Status:** not authorised
+**Status:** authorised and complete (2026-07-15, via `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`; decisions D-007–D-013 recorded in `decisions.md`; critic verdict recorded in `critic-review-phase-2.md`)
 
 **Purpose:** Human reviews the discovery document and decision pack; approves, amends, or rejects the hierarchy terminology/model and the repository information architecture (Model A / Model B / hybrid / alternative).
 
-**Allowed paths:** none granted yet — to be defined in the human-approval record that authorises this phase.
+**Allowed paths (as executed):**
+```text
+docs/programmes/product-traceability/
+```
 
-**Forbidden paths:** all paths not explicitly granted at authorisation time.
+**Forbidden paths (as executed):** `docs/product/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/sprints/`, `docs/audit/`, `docs/audit-program/`, `docs/agentic-architecture-review/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `backend/`, `frontend/`, `migrations/`, `~/.claude/` — none of these were touched by this phase.
 
-**Required inputs:** Phase 1 outputs (discovery document, decision pack, critic review).
+**Required inputs:** Phase 1 outputs (discovery document, decision pack, critic review) — used as the basis for the human decisions.
 
-**Required outputs:** a recorded decision in `docs/programmes/product-traceability/decisions.md` naming the approved hierarchy model, repository structure, and any amendments to source-of-truth boundaries.
+**Required outputs (delivered):** DP-01–DP-07 recorded as D-007–D-013 in `decisions.md`; `decision-pack.md` annotated with resolutions (original questions/options/recommendations preserved, not erased); `state.md`, `phase-inputs.yaml`, `exceptions.md` updated to reflect Phase 2 closure; `phase-3-inputs.md` created (factual only, no permission granted); `runs/hierarchy-approval-run-001.md` created; `critic-review-phase-2.md` created.
 
-**Required validations:** to be defined at authorisation time.
+**Required validations:** `git diff --check`; `git status --short`; `find docs/programmes/product-traceability -maxdepth 2 -type f`; `test ! -e docs/product` (confirms Phase 3's structure was never created); direct inspection confirming DP-01–DP-07 each appear exactly once as resolved, all control files agree Phase 2 is complete, Phase 3 remains unauthorised, and DP-04/DP-06 remain visible as open follow-up investigations rather than silently resolved.
 
-**Human gate:** **before** — this phase is entirely a human decision-making phase; the executor's role (if any) is limited to presenting options, not proceeding until the decision is recorded.
+**Human gate:** **before** — the human's decisions (recorded in the bootstrap-decision prompt) were the trigger for this phase's execution; the executor recorded them faithfully rather than proposing or reinterpreting them.
 
-**Executor responsibilities:** none until authorised; if authorised, support the human's review (e.g. answer clarifying questions) without expanding scope.
+**Executor responsibilities:** record the exact decisions supplied; close programme control files accurately; do not erase the historical decision-pack trail; do not authorise Phase 3; prepare factual (not permission-granting) Phase 3 inputs.
 
-**Critic responsibilities:** none defined yet — to be scoped at authorisation time if applicable.
+**Critic responsibilities:** independently, read-only, verify the 9-point rubric in the decision-recording prompt (decisions recorded exactly; recommendations kept distinct from approvals; Phase 3 not accidentally authorised; `docs/product/` uncreated; source-of-truth rules match the approved proposal; DP-04/DP-06 visible as follow-ups; control files agree on phase/gate; write scope respected; Phase 3 inputs factual-only). Produces `critic-review-phase-2.md`.
 
 ---
 
 ## Phase 3 — `structure implementation`
 
-**Status:** not authorised
+**Status:** not authorised. Phase 2's decisions (D-007–D-013) fix *what* Phase 3 would build; they do not authorise *building* it. Factual inputs are compiled in `docs/programmes/product-traceability/phase-3-inputs.md` for the human's future authorisation decision — that file grants no permission on its own.
 
-**Purpose:** Create the approved `docs/product/` (or equivalent) structure and registries per the Phase 2 decision, empty of historical story content.
+**Purpose:** Create the approved `docs/product/` (or equivalent) structure and registries per the Phase 2 decisions (D-008 Model A, D-009 source-of-truth rules), empty of historical story content.
 
-**Allowed paths:** to be defined at authorisation time — expected to include a new `docs/product/` tree only.
+**Allowed paths:** to be defined at authorisation time — proposed (not granted) in `phase-3-inputs.md` as a new `docs/product/` tree only.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history, `docs/ROADMAP.md`.
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, all existing sprint/story/audit history, `docs/ROADMAP.md`, and (until Phase 3 is authorised) `docs/product/` itself — confirmed absent by `test ! -e docs/product` at the end of both the discovery and hierarchy-approval runs.
 
-**Required inputs:** Phase 2 decision record.
+**Required inputs:** Phase 2 decision record (D-007–D-013); `phase-3-inputs.md`.
 
 **Required outputs:** the approved registry/hierarchy scaffold, empty of historical content, plus validation that it matches the approved model exactly.
 
 **Required validations:** to be defined at authorisation time; expected to include schema/format validation of any registry files.
 
-**Human gate:** **after** — human confirms the scaffold matches the approved decision before any historical content is migrated into it.
+**Human gate:** **before** — an explicit authorisation of Phase 3's scope and controls specifically (per D-013), not merely a continuation of Phase 2's approval. **After** authorisation, human also confirms the scaffold matches the approved decision before any historical content is migrated into it.
 
 **Executor / critic responsibilities:** to be scoped at authorisation time.
 

@@ -2,9 +2,13 @@
 
 This pack contains only genuine human decisions arising from the discovery phase. It does not contain routine formatting or mechanical questions. Every recommendation here is a recommendation, not an approval — approval happens only by the human recording a decision in `decisions.md`.
 
+**Status as of 2026-07-15 (Phase 2 closure):** All seven decisions below (DP-01–DP-07) have been made by the human and recorded as D-007 through D-013 in `decisions.md`, per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. The original questions, options, and executor recommendations are preserved below **unmodified** so the historical decision trail remains visible — each is now annotated with a "**Resolved:**" line pointing to the binding decision. This file is retained as the historical record of what was asked and recommended; `decisions.md` is the authoritative record of what was decided.
+
 ---
 
 ## DP-01 — Story-reconstruction granularity
+
+**Resolved:** Option A selected — see `decisions.md` D-007. Current 148-item granularity retained.
 
 **Question:** Should the delivered-work inventory in the discovery document (`docs/diagnostics/2026-07-15-retrospective-product-story-and-hierarchy-discovery.md`, Section 3) use the story/feature-line granularity it currently uses (148 items), or a coarser (one-per-sprint, ~35 items) or finer (one-per-acceptance-criterion, 400+ items) grain?
 
@@ -30,6 +34,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 
 ## DP-02 — Repository information architecture
 
+**Resolved:** Option A selected — see `decisions.md` D-008. Model A (flat registries + flat `stories/` folder) adopted; Model B rejected.
+
 **Question:** Which repository structure should the eventual `docs/product/` hierarchy use?
 
 **Available options:**
@@ -53,6 +59,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 ---
 
 ## DP-03 — Source-of-truth rules for the product layer
+
+**Resolved:** Option A selected — see `decisions.md` D-009. Proposed rules (Section 10 of the discovery document) adopted as written, no amendment.
 
 **Question:** Should the proposed source-of-truth rules in Section 10 of the discovery document be adopted as written, amended, or rejected?
 
@@ -78,6 +86,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 
 ## DP-04 — PH_OT `is_pensionable` deferral (Sprint 7 open question OQ1)
 
+**Resolved:** Option B selected — see `decisions.md` D-010. Still open; escalated as a potential statutory-compliance risk **outside this programme**. This programme does not investigate or resolve it. Follow-up investigation required (see D-010's "Follow-up outside this programme").
+
 **Question:** Was the Sprint 7 deferral of `is_pensionable=true` on the `PH_OT` component-metadata row (pending "PH_OT handler ships atomically") ever resolved? If not, is this a live statutory-compliance gap requiring urgent attention outside this programme, or a documentation-only loose end?
 
 **Available options:**
@@ -102,6 +112,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 
 ## DP-05 — Resolve the 5 `requires human classification` items
 
+**Resolved:** Option A selected — see `decisions.md` D-011. All 5 classified backlog / not delivered, unless newer evidence is supplied.
+
 **Question:** Confirm the classification of the 5 items flagged `requires human classification` in Section 14 of the discovery document (PT-A1-14 Client 3 shift allowance, PT-Q-02 period_type retry context, PT-Q-03 simulate-script Decimal conversion, PT-Q-07 approved_by actor identity, PT-S-08 python-multipart pin).
 
 **Available options:**
@@ -123,6 +135,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 ---
 
 ## DP-06 — Gate 4 status contradiction
+
+**Resolved:** Option C selected — see `decisions.md` D-012. Neither source trusted as-is; a targeted investigation is required **outside this programme** before either is treated as authoritative. Follow-up investigation required (see D-012's "Follow-up outside this programme").
 
 **Question:** `docs/ROADMAP.md` marks Track UI Gate 4 (Bureau/workspace-setup journey, 8 pages) as ✅ complete, but `docs/stories/ux-ui-upgrade-stories/gate-4-bureau-workspace-setup.md` states "🔜 Plan approved April 2026, implementation pending." Which is current?
 
@@ -147,6 +161,8 @@ This pack contains only genuine human decisions arising from the discovery phase
 ---
 
 ## DP-07 — Authorise Phase 2 (hierarchy approval)
+
+**Resolved:** Option A selected — see `decisions.md` D-013. Phase 2 authorised and complete. Phase 3 (structure implementation) is **not** authorised by this decision and requires its own separate authorisation.
 
 **Question:** Should the programme proceed to Phase 2?
 
