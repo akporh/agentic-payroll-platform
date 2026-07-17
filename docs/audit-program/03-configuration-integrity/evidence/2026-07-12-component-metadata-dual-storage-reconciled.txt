@@ -1,0 +1,126 @@
+=== component_metadata / client_component_metadata: proration_strategy dual storage (dedicated column + overrides_json.calculations_behaviour) ===
+--- original run (payroll.py) reconciliation ---
+    # --- Load workspace component overrides (is_active suppression + flat-amount overrides) ---
+    # proration_strategy is fetched as a dedicated column because the PATCH endpoint writes
+    # it there rather than into overrides_json.calculations_behaviour.  Both storage
+    # locations are reconciled during client_meta construction below.
+    override_rows = db.execute(text("""
+        SELECT component_code, overrides_json, proration_strategy, is_active
+        FROM client_component_metadata
+        WHERE workspace_id = :wid
+    """), {"wid": workspace_id}).fetchall()
+
+    client_overrides = {r[0]: r[1] for r in override_rows}
+    # Map of component_code → proration_strategy from the dedicated column (may be None)
+    ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
+
+    # Remove components the workspace has disabled — read is_active from the dedicated
+    # column (r[3]), not from overrides_json. NULL means no override → treat as active.
+    disabled_codes = {r[0] for r in override_rows if r[3] is False}
+    if disabled_codes:
+        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+
+    # Apply flat-amount overrides for workspace-configurable components
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
+
+    # Build client_meta: global component metadata as the base layer with
+    # workspace-specific overrides layered on top (one-level-deep merge).
+    # This makes proration_strategy available for all earning components
+    # even when client_component_metadata has no rows for this workspace.
+    client_meta = {
+        m["component_code"]: dict(m.get("metadata_json") or {})
+        for m in component_metadata
+    }
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                # Deep-merge nested dicts (e.g. calculations_behaviour)
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
+    # Reconcile the dedicated proration_strategy column with calculations_behaviour.
+    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+    # engine reads client_meta[code]["calculations_behaviour"]["proration_strategy"].
+    # If the column has a value it takes precedence over whatever is in overrides_json.
+    for code, strategy in ws_proration_col.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        cb = client_meta[code].get("calculations_behaviour")
+        if isinstance(cb, dict):
+            cb["proration_strategy"] = strategy
+        else:
+            client_meta[code]["calculations_behaviour"] = {"proration_strategy": strategy}
+
+
+--- retry (payroll_retry_service.py) reconciliation — IDENTICAL logic ---
+    # ── Workspace component overrides — read from snapshot (D2 workspace scoping) ─
+    override_rows = db.execute(
+        text("""
+            SELECT component_code, overrides_json, proration_strategy, is_active
+            FROM   client_component_metadata_snapshot
+            WHERE  payroll_run_id = :run_id
+              AND  workspace_id   = :wid
+        """),
+        {"run_id": payroll_run_id, "wid": workspace_id},
+    ).fetchall()
+
+    client_overrides = {r[0]: r[1] for r in override_rows}
+    ws_proration_col = {r[0]: r[2] for r in override_rows if r[2] is not None}
+
+    # Read is_active from the dedicated snapshot column (r[3]).
+    # NULL means the snapshot predates this column — treat as active to preserve
+    # existing behaviour for runs created before migration bc1de2f3a4b5.
+    disabled_codes = {r[0] for r in override_rows if r[3] is False}
+    if disabled_codes:
+        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+
+    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        dev_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
+        health_ins_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
+
+    # Build client_meta: global defaults as base, workspace overrides on top
+    client_meta = {m["component_code"]: dict(m.get("metadata_json") or {}) for m in component_metadata}
+    for code, ws_override in client_overrides.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        for key, val in ws_override.items():
+            if (
+                key in client_meta[code]
+                and isinstance(client_meta[code][key], dict)
+                and isinstance(val, dict)
+            ):
+                client_meta[code][key] = {**client_meta[code][key], **val}
+            else:
+                client_meta[code][key] = val
+
+    # Reconcile the dedicated proration_strategy column into calculations_behaviour.
+    # The PATCH endpoint writes to client_component_metadata.proration_strategy; the
+    # engine reads client_meta[code]["calculations_behaviour"]["proration_strategy"].
+    for code, strategy in ws_proration_col.items():
+        if code not in client_meta:
+            client_meta[code] = {}
+        cb = client_meta[code].get("calculations_behaviour")
+        if isinstance(cb, dict):
+            cb["proration_strategy"] = strategy
+        else:
+            client_meta[code]["calculations_behaviour"] = {"proration_strategy": strategy}
+
+
+=== D-ARCH-2 guard explicitly disabled in patch_component_override ===
+        # D-ARCH-2: Statutory deduction components cannot be disabled.
+        # Guard is intentionally not enforced for now — operators may disable any
+        # component per workspace (e.g. NHF, NHIS, Check-Off Dues vary by employer).
+        # Re-enable this block to restore the restriction in future.
+

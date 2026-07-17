@@ -18,6 +18,8 @@ class PayrollRunStatus(Enum):
 
     Members (in required order):
         DRAFT: Initial state. Run is being prepared.
+        FAILED: A calculation precondition (e.g. snapshot creation) failed
+            before calculation began. Terminal — reachable only from DRAFT.
         CALCULATING: Payroll engine is actively computing results.
         CALCULATED: All calculations complete, awaiting review.
         APPROVED: Authorized approver has signed off on results.
@@ -26,6 +28,7 @@ class PayrollRunStatus(Enum):
     """
 
     DRAFT = "DRAFT"
+    FAILED = "FAILED"
     CALCULATING = "CALCULATING"
     CALCULATED = "CALCULATED"
     APPROVED = "APPROVED"

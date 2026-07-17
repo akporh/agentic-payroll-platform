@@ -1,0 +1,75 @@
+=== run_first_payroll_emp001.py: no component_metadata passed -> legacy fallback path ===
+    print("\n🧮 Executing payroll engine...\n")
+    # 🔍 Debug: confirm which PAYE module Python is using
+    import backend.domain.rules.paye as paye_module
+    print("Loaded PAYE from:", paye_module.__file__)
+
+    from backend.domain.payroll.executor import execute_single_employee_payroll
+
+    result = execute_single_employee_payroll(
+        payroll_run_id=payroll_run_id,
+        employee_id=str(employee_id),
+        components=components,
+        tax_bands=tax_bands,
+        statutory_rule_id=str(statutory_rule_id),
+        statutory_version=statutory_version,
+        payroll_rule_ids=payroll_rule_ids,
+        performed_by=performed_by,
+    )
+
+    payroll_result = result["payroll_result"]
+    
+    print("DEBUG payroll_result keys:", payroll_result.keys())
+
+=== raw INSERT into payroll_result omits status (NOT NULL, no default) and component_trace_jsonb ===
+    cur.execute("""
+        INSERT INTO payroll_result (
+            payroll_result_id,
+            payroll_run_id,
+            employee_id,
+            gross_components_jsonb,
+            deductions_jsonb,
+            net_pay,
+            calculations_snapshot_json
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (
+        payroll_result_id,
+        payroll_run_id,
+        employee_id,
+        json.dumps(payroll_result["gross_components_jsonb"], default=str),
+        json.dumps(payroll_result["deductions_jsonb"], default=str),
+        payroll_result["net_pay"],
+        json.dumps(payroll_result["calculations_snapshot_json"], default=str)
+    ))
+
+=== payroll_result.status: NOT NULL, server_default removed in same migration ===
+
+def upgrade():
+    # Add status + error_message to payroll_result
+    op.add_column(
+        "payroll_result",
+        sa.Column(
+            "status",
+            sa.String(length=20),
+            nullable=False,
+            server_default="SUCCESS",
+        ),
+    )
+
+    op.add_column(
+        "payroll_result",
+        sa.Column(
+            "error_message",
+            sa.Text(),
+            nullable=True,
+        ),
+    )
+
+    # Optional: remove server_default after backfill
+    op.alter_column(
+        "payroll_result",
+        "status",
+        server_default=None,
+    )
+

@@ -34,6 +34,7 @@ from sqlalchemy import text
 from backend.api.main import app
 from backend.infra.db.session import SessionLocal
 from backend.infra.db.models import Account, Workspace
+from tests.registry_state import pin_registry_state, restore_registry_state
 
 client = TestClient(app)
 
@@ -76,6 +77,12 @@ def test_full_payroll_pipeline_e2e():
     component_metadata_id = uuid.uuid4()
 
     db = SessionLocal()
+    # The worked example above assumes neither NHF nor rent relief deducts —
+    # declare that registry state rather than assume it (fresh migrated DBs
+    # ship both components active).
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
 
     try:
         # -------------------------------------------------------------------
@@ -105,7 +112,7 @@ def test_full_payroll_pipeline_e2e():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9999, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-02-01')
+                VALUES (:id, 'NATIONAL', 9999, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-05-10')
             """),
             {"id": statutory_rule_id},
         )
@@ -338,24 +345,42 @@ def test_full_payroll_pipeline_e2e():
             f"Payroll run HTTP status: {payroll_resp.status_code}\n{payroll_resp.text}"
         )
         payroll_body = payroll_resp.json()
-        assert payroll_body["status"] == "success", (
-            f"Payroll run failed: {payroll_body}"
+        # Async contract: the endpoint returns immediately after DRAFT creation
+        # and calculation runs in a BackgroundTask. TestClient executes
+        # background tasks to completion before returning, so persisted state
+        # is final by the time we query the DB below.
+        assert payroll_body["status"] == "DRAFT", (
+            f"Unexpected run-trigger response: {payroll_body}"
         )
 
         payroll_run_id = payroll_body["payroll_run_id"]
         assert payroll_run_id is not None
 
-        summary = payroll_body["summary"]
-        assert summary["success_count"] == 1, (
-            f"Expected 1 success, got: {summary}"
-        )
-        assert summary["failure_count"] == 0, (
-            f"Expected 0 failures, got: {summary}"
-        )
+        # The per-run summary is no longer in the HTTP response — verify it
+        # from persisted state instead.
+        counts = db.execute(
+            text("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'SUCCESS'),
+                    COUNT(*) FILTER (WHERE status <> 'SUCCESS')
+                FROM payroll_result
+                WHERE payroll_run_id = :run_id
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+        assert counts[0] == 1, f"Expected 1 success result, got: {counts}"
+        assert counts[1] == 0, f"Expected 0 failed results, got: {counts}"
 
-        # Summary totals are Decimal serialised to float by FastAPI
-        assert float(summary["total_gross_pay"]) == float(GROSS)
-        assert float(summary["total_net_pay"])   == float(EXPECTED_NET)
+        totals = db.execute(
+            text("""
+                SELECT total_gross_pay, total_net_pay
+                FROM payroll_run
+                WHERE payroll_run_id = :run_id
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+        assert float(totals[0]) == float(GROSS)
+        assert float(totals[1]) == float(EXPECTED_NET)
 
         # -------------------------------------------------------------------
         # STEP 7 — Verify payroll_run persisted (status + rules_context_snapshot)
@@ -383,8 +408,21 @@ def test_full_payroll_pipeline_e2e():
         assert run_snapshot["statutory_rule"]["version"] == 9999, (
             f"snapshot statutory_rule.version mismatch: {run_snapshot['statutory_rule']['version']}"
         )
-        assert isinstance(run_snapshot["payroll_rules"], list), (
-            "snapshot payroll_rules must be a list"
+        # 04-001 remediation: v2 statutory content is now always frozen, even for a
+        # workspace whose only payroll rule has no effective_from (legacy payroll_rule-
+        # only path, no rule_set published) — retry depends on this snapshot
+        # (docs/audit-program/05-snapshot-integrity/findings.md §9). "rule_set" is
+        # None in that case rather than the snapshot omitting statutory content
+        # entirely, since statutory obligations don't depend on custom rule config.
+        assert run_snapshot.get("snapshot_version") == 2, (
+            f"expected v2 snapshot (statutory content always frozen), got: {run_snapshot}"
+        )
+        assert run_snapshot["rule_set"] is None, (
+            "this workspace's PENSION rule has no effective_from, so no rule_set "
+            "was published — rule_set must be None, not the v1 payroll_rules shape"
+        )
+        assert isinstance(run_snapshot["statutory_rule"]["tax_bands"], list), (
+            "snapshot statutory_rule.tax_bands must be a list"
         )
 
         # -------------------------------------------------------------------
@@ -440,6 +478,8 @@ def test_full_payroll_pipeline_e2e():
         assert float(gross_comp["TRANSPORT"]["amount"]) == float(TRANSPORT)
 
     finally:
+        db.rollback()
+        restore_registry_state(db, registry_prior)
         # -------------------------------------------------------------------
         # Cleanup — delete in reverse FK dependency order.
         # Each statement scoped to the workspace or IDs created above so that

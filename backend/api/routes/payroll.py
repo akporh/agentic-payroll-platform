@@ -22,7 +22,11 @@ from backend.domain.rules.snapshot import build_rules_context_snapshot
 from backend.infra.db.session import SessionLocal
 from backend.application.payroll_run_service import execute_and_persist
 from backend.application.snapshot_service import create_payroll_snapshot
-from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run
+from backend.infra.repositories.payroll_run_repo import create_draft_payroll_run, mark_payroll_run_failed
+from backend.domain.payroll.status import PayrollRunStatus
+from backend.domain.payroll.audit_events import build_transition_audit, build_transition_event
+from backend.infra.repositories.audit_log_repo import save_audit_log
+from backend.infra.repositories.event_store_repo import save_event
 from backend.application.payroll_retry_service import retry_failed_payroll_employees
 from backend.application.rule_set_service import resolve_effective_rules
 from backend.application.payroll_approval_service import approve_payroll_run, lock_payroll_run, mark_payroll_run_paid
@@ -232,8 +236,36 @@ def run_payroll(
          "period_start_date": _period_start_date},
     ).fetchall()
     _union_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _union_rows}
+
+    # ── Bulk-load is_first_paid_month for all employees (DEV-LEVY-1 cadence trigger b) ──
+    # An employee's own first ever SUCCESS payroll_result for this workspace, strictly
+    # before this run's period_start. Computed once at run creation (not per-run-retry
+    # re-query) and threaded through per_employee_context_json so retry reproduces the
+    # same value from the frozen snapshot rather than re-evaluating against live data.
+    _first_paid_rows = db.execute(
+        text("""
+            SELECT e.employee_id,
+                   NOT EXISTS (
+                       SELECT 1
+                       FROM payroll_result pr
+                       JOIN payroll_run r ON pr.payroll_run_id = r.payroll_run_id
+                       WHERE pr.employee_id = e.employee_id
+                         AND r.workspace_id = :workspace_id
+                         AND r.period_start < :this_period_start
+                         AND pr.status = 'SUCCESS'
+                   ) AS is_first_paid_month
+            FROM employee e
+            WHERE e.employee_id = ANY(CAST(:ids AS uuid[]))
+        """),
+        {"ids": _emp_ids, "workspace_id": workspace_id, "this_period_start": _period_start_date},
+    ).fetchall()
+    _first_paid_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _first_paid_rows}
+
     for emp in employees:
-        emp["employee_context"] = {"is_union_member": _union_map.get(emp["employee_id"], False)}
+        emp["employee_context"] = {
+            "is_union_member":      _union_map.get(emp["employee_id"], False),
+            "is_first_paid_month":  _first_paid_map.get(emp["employee_id"], False),
+        }
 
     # ── A1-A2: Statutory rule — temporal selection using statutory_effective_date ─
     # SELECT the rule whose effective_from is <= statutory_effective_date,
@@ -275,6 +307,7 @@ def run_payroll(
     nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
     health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
     development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    development_levy_cadence         = str(rules_jsonb.get("development_levy", {}).get("cadence") or "ANNUAL").upper()
     life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # --- Load Tax Bands (scoped to the selected statutory rule) ---
@@ -449,9 +482,13 @@ def run_payroll(
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 
-    # Apply flat-amount overrides for workspace-configurable components
-    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
-        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    # Apply flat-amount overrides for workspace-configurable components.
+    # Key presence (`in`), never a truthy check — an explicit annual_amount: 0
+    # override must resolve to ₦0, distinct from "no override, use statutory
+    # default" (DEC-09). `Decimal("0")` is falsy, so a truthy check here would
+    # silently discard a deliberate zero-override.
+    if "DEVELOPMENT_LEVY" in client_overrides and "annual_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["annual_amount"]))
 
     if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
         health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
@@ -609,23 +646,24 @@ def run_payroll(
             hist_db.close()
 
     # ── Build rules context snapshot ──────────────────────────────────────────
-    # v2 (full content) when a rule set is resolved; v1 (ID-only) for legacy.
-    if rule_set_id:
-        rules_ctx_snapshot = build_rules_context_snapshot(
-            statutory_rule_id         = statutory_rule_id,
-            statutory_version         = statutory_version,
-            statutory_effective_from  = stat_effective_from,
-            statutory_rules_jsonb     = rules_jsonb,
-            statutory_tax_bands       = tax_bands,
-            rule_set_id               = rule_set_id,
-            rule_set_effective_from   = rule_set_effective_from,
-            rule_set_items            = rule_set_items_for_snapshot,
-            historical_rule_sets      = historical_rule_sets_list,
-        )
-    else:
-        rules_ctx_snapshot = build_rules_context_snapshot(
-            statutory_rule_id, statutory_version, payroll_rule_ids
-        )
+    # v2 (full statutory content) is always requested — retry depends on it
+    # (audit finding 04-001). rule_set_id/rule_set_effective_from/
+    # rule_set_items_for_snapshot are None/None/[] when this workspace has no
+    # published rule set (already set that way above); build_rules_context_
+    # snapshot emits "rule_set": None in that case rather than omitting
+    # statutory content, since statutory obligations are independent of
+    # whether a workspace has any custom payroll rules.
+    rules_ctx_snapshot = build_rules_context_snapshot(
+        statutory_rule_id         = statutory_rule_id,
+        statutory_version         = statutory_version,
+        statutory_effective_from  = stat_effective_from,
+        statutory_rules_jsonb     = rules_jsonb,
+        statutory_tax_bands       = tax_bands,
+        rule_set_id               = rule_set_id,
+        rule_set_effective_from   = rule_set_effective_from,
+        rule_set_items            = rule_set_items_for_snapshot,
+        historical_rule_sets      = historical_rule_sets_list,
+    )
 
     # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
     workspace_payroll_config = get_workspace_payroll_config(workspace_id)
@@ -801,6 +839,7 @@ def run_payroll(
         "nhf_rate":                         nhf_rate,
         "health_insurance_employee_amount": health_insurance_employee_amount,
         "development_levy_amount":          development_levy_amount,
+        "development_levy_cadence":         development_levy_cadence,
         "life_insurance_employer_rate":     life_insurance_employer_rate,
         "client_meta":                      client_meta,
         "period":                           period_ctx,
@@ -926,6 +965,14 @@ def _calculate_and_persist(
     try:
         # Create snapshot here (not in the sync route) so the HTTP response returns
         # immediately after DRAFT creation.
+        #
+        # 05-001 remediation: snapshot creation is a calculation precondition, not an
+        # optional side effect. Previously this exception was logged and swallowed,
+        # after which execute_and_persist ran anyway — a run whose snapshot silently
+        # failed to persist would still calculate and complete normally, only
+        # surfacing the problem much later (and only as an opaque retry-time
+        # hard-fail) the first time an operator tried to retry a FAILED employee on
+        # it. It must instead abort here and leave an operator-visible FAILED run.
         try:
             create_payroll_snapshot(
                 payroll_run_id=payroll_run_id,
@@ -936,6 +983,20 @@ def _calculate_and_persist(
             )
         except Exception as exc:
             logger.error("Snapshot write failed for run %s: %s", payroll_run_id, exc)
+            error_message = "Failed to create the run's configuration snapshot — no calculation was performed."
+            mark_payroll_run_failed(payroll_run_id, error_message)
+            save_audit_log(workspace_id, build_transition_audit(
+                payroll_run_id=payroll_run_id,
+                old_status=PayrollRunStatus.DRAFT,
+                new_status=PayrollRunStatus.FAILED,
+                performed_by="system",
+            ))
+            save_event(build_transition_event(
+                payroll_run_id=payroll_run_id,
+                old_status=PayrollRunStatus.DRAFT,
+                new_status=PayrollRunStatus.FAILED,
+            ))
+            return
 
         execute_and_persist(
             payroll_run_id              = payroll_run_id,
@@ -1015,7 +1076,7 @@ def get_payroll_run(workspace_id: str, run_id: str):
             text("""
                 SELECT payroll_run_id, workspace_id, status,
                        period_start, period_end, pay_date, created_at,
-                       statutory_effective_date
+                       statutory_effective_date, error_message
                 FROM payroll_run
                 WHERE payroll_run_id = :rid AND workspace_id = :wid
             """),
@@ -1034,6 +1095,7 @@ def get_payroll_run(workspace_id: str, run_id: str):
             "pay_date":                  str(row[5]) if row[5] else None,
             "created_at":                str(row[6]) if row[6] else None,
             "statutory_effective_date":  str(row[7]) if row[7] else None,
+            "error_message":             row[8],
         }
     finally:
         db.close()
@@ -1648,6 +1710,12 @@ def _require_timesheet_enabled(workspace_id: str) -> None:
         raise HTTPException(status_code=400, detail="Timesheet is not enabled for this workspace.")
 
 
+# Authoritative server-side limit (SEC-S7). A matching advisory constant
+# exists in frontend/src/pages/TimesheetUpload.tsx for early user feedback —
+# that copy is UX-only and never replaces this check.
+MAX_TIMESHEET_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/workspaces/{workspace_id}/timesheet/upload")
 async def upload_timesheet(
     workspace_id: str,
@@ -1657,7 +1725,9 @@ async def upload_timesheet(
 ):
     """Upload a timesheet Excel file for a pay period. TM-2."""
     _require_timesheet_enabled(workspace_id)
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_TIMESHEET_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_TIMESHEET_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large — max 10 MB per upload.")
     ps = date.fromisoformat(period_start)
     pe = date.fromisoformat(period_end)
     result = timesheet_derivation_service.upload_timesheet(workspace_id, ps, pe, file_bytes)

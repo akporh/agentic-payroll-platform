@@ -1,0 +1,122 @@
+=== Original run's statutory-content extraction (payroll.py) — every field retry needs ===
+    # ── A1-A2: Statutory rule — temporal selection using statutory_effective_date ─
+    # SELECT the rule whose effective_from is <= statutory_effective_date,
+    # breaking ties by most recently published (effective_from DESC, version DESC).
+    stat_row = db.execute(text("""
+        SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb, sr.effective_from
+        FROM statutory_rule sr
+        JOIN workspace w ON sr.country_code = w.country_code
+        WHERE w.workspace_id = :workspace_id
+          AND sr.effective_from <= :as_of_date
+        ORDER BY sr.effective_from DESC, sr.version DESC
+        LIMIT 1
+    """), {"workspace_id": workspace_id, "as_of_date": statutory_effective_date}).fetchone()
+
+    if not stat_row:
+        db.close()
+        raise HTTPException(status_code=400, detail="No statutory rule found for this workspace's country")
+
+    statutory_rule_id      = str(stat_row[0])
+    statutory_version      = stat_row[1]
+    rules_jsonb            = stat_row[2] or {}
+    stat_effective_from    = str(stat_row[3]) if stat_row[3] else None
+
+    # Extract pension rates from statutory rule — required, no hardcoded fallback.
+    pension_config = rules_jsonb.get("pension")
+    if not pension_config or "employee_rate" not in pension_config or "employer_rate" not in pension_config:
+        db.close()
+        raise HTTPException(
+            status_code=500,
+            detail="Statutory rule is missing pension rates (employee_rate / employer_rate). Run the pension rates migration.",
+        )
+    pension_employee_rate = Decimal(str(pension_config["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_config["employer_rate"]))
+
+    # Extract rent relief config (used by sequential executor for PAYE annualisation)
+    rent_relief_cfg = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
+
+    # Extract workspace-level statutory component rates/amounts
+    nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+    health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+    development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
+
+    # --- Load Tax Bands (scoped to the selected statutory rule) ---
+    tax_rows = db.execute(text("""
+        SELECT lower_limit, upper_limit, rate
+        FROM tax_band
+        WHERE statutory_rule_id = :sr_id
+        ORDER BY lower_limit
+    """), {"sr_id": statutory_rule_id}).fetchall()
+
+    tax_bands = [
+        {
+            "lower_limit": Decimal(str(r[0])) if r[0] is not None else None,
+            "upper_limit": Decimal(str(r[1])) if r[1] is not None else None,
+            "rate":        Decimal(str(r[2])) if r[2] is not None else None,
+        }
+        for r in tax_rows
+    ]
+
+
+=== v2 snapshot shape (snapshot.py) — captures rules_jsonb + tax_bands in full ===
+        return {
+            "snapshot_version": 2,
+            "statutory_rule": {
+                "id":             statutory_rule_id,
+                "version":        statutory_version,
+                "effective_from": statutory_effective_from,
+                "rules_jsonb":    statutory_rules_jsonb,
+                "tax_bands":      statutory_tax_bands,
+            },
+            "rule_set": {
+                "id":             rule_set_id,
+                "effective_from": rule_set_effective_from,
+                "items":          rule_set_items,
+            },
+            "historical_rule_sets": historical_rule_sets,
+        }
+
+=== v1 legacy snapshot shape — id+version ONLY, no rules_jsonb/tax_bands ===
+
+    # ── v1: legacy ID-only snapshot (backward compatible) ────────────────────
+    return {
+        "statutory_rule": {
+            "id":      statutory_rule_id,
+            "version": statutory_version,
+        },
+        "payroll_rules": payroll_rule_ids or [],
+    }
+
+=== Original route call sites populating v2 vs v1 ===
+                    }
+
+            historical_rule_sets_list = list(hist_rs_map.values())
+        finally:
+            hist_db.close()
+
+    # ── Build rules context snapshot ──────────────────────────────────────────
+    # v2 (full content) when a rule set is resolved; v1 (ID-only) for legacy.
+    if rule_set_id:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id         = statutory_rule_id,
+            statutory_version         = statutory_version,
+            statutory_effective_from  = stat_effective_from,
+            statutory_rules_jsonb     = rules_jsonb,
+            statutory_tax_bands       = tax_bands,
+            rule_set_id               = rule_set_id,
+            rule_set_effective_from   = rule_set_effective_from,
+            rule_set_items            = rule_set_items_for_snapshot,
+            historical_rule_sets      = historical_rule_sets_list,
+        )
+    else:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id, statutory_version, payroll_rule_ids
+        )
+
+    # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
+    workspace_payroll_config = get_workspace_payroll_config(workspace_id)
+    # PH_ADDITIVE has no engine implementation — treat as LEAVE_ABSORBS_PH.
+    if workspace_payroll_config.get("d3_leave_overlap_rule") == "PH_ADDITIVE":
+        logger.warning(
+            "workspace %s has d3_leave_overlap_rule=PH_ADDITIVE which is not implemented — "

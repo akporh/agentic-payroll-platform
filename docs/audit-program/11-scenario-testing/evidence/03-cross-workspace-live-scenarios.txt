@@ -1,0 +1,18 @@
+=== 1. Timeline via WRONG workspace path (09-005) ===
+[]
+HTTP:200
+
+=== 2. Timeline via CORRECT workspace path (control) ===
+[]
+HTTP:200
+
+=== 3. Reconciliation via WRONG workspace path (09-004) ===
+{"detail":"No reconciliation found for run 1eac8919-7cf6-4cc1-be5a-36c52a8c3a24."}
+HTTP:404
+
+=== 4. Legacy unscoped reconcile GET, no workspace at all (06-007/09-002) ===
+{"detail":"No reconciliation found for run 1eac8919-7cf6-4cc1-be5a-36c52a8c3a24."}
+HTTP:404
+
+=== 5. Legacy-executor-stats via WRONG workspace path (09-006) ===
+{"total_runs":3130,"runs_with_legacy":290,"pct_runs_affected":9.3,"total_legacy_events":290,"by_run":[{"run_id":"00208b0f-011e-4eb7-8839-cfd2087aa411","legacy_count":1},{"run_id":"0067deb2-1ce4-4f44-8c8a-591fa12b712b","legacy_count":1},{"run_id":"01310d79-a853-466d-9790-9701f7f89d7d","legacy_count":1},{"run_id":"03420039-651f-470f-9f62-6c9348e96941","legacy_count":1},{"run_id":"05200b34-12da-4d62-

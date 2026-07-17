@@ -1,0 +1,39 @@
+=== export_payroll_register_csv assumes gross_components_jsonb is a LIST ===
+    with open(output_path, "w", newline="") as f:
+        writer = csv.writer(f)
+
+        writer.writerow(
+            ["employee_id", "gross_pay", "paye", "pension", "net_pay"]
+        )
+
+        for r in payroll_results:
+            employee_id = r["employee_id"]
+
+            payroll = r["payroll_result"]
+
+            gross_components = payroll["gross_components_jsonb"]
+            gross_pay = sum(
+                (Decimal(str(c["amount"])) for c in gross_components),
+                Decimal("0"),
+            )
+
+
+=== production executor.py builds gross_components_jsonb as a DICT (code -> {amount}) ===
+    # gross_components_jsonb: all earning-class components
+    gross_components = {
+        code: {"amount": value}
+        for code, value in results.items()
+        if class_map.get(code) == "earning"
+    }
+
+
+=== zero production callers of any export_*_csv function ===
+backend/scripts/test_export_paye.py:1:from backend.application.exports.paye_export import export_paye_summary_csv
+backend/scripts/test_export_paye.py:20:export_paye_summary_csv(dummy_results, "paye_summary.csv")
+backend/scripts/test_export_netpay.py:1:from backend.application.exports.net_pay_export import export_net_pay_csv
+backend/scripts/test_export_netpay.py:8:export_net_pay_csv(dummy_results, "netpay.csv")
+backend/scripts/test_export_register.py:2:    export_payroll_register_csv,
+backend/scripts/test_export_register.py:28:export_payroll_register_csv(dummy_results, "payroll_register.csv")
+backend/application/exports/net_pay_export.py:16:def export_net_pay_csv(payroll_results: list[dict], output_path: str):
+backend/application/exports/paye_export.py:18:def export_paye_summary_csv(payroll_results: list[dict], output_path: str):
+backend/application/exports/payroll_register_export.py:20:def export_payroll_register_csv(payroll_results: list[dict], output_path: str):

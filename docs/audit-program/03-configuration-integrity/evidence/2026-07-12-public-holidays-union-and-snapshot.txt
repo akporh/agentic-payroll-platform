@@ -1,0 +1,30 @@
+=== public holidays: national + workspace UNION (additive, no precedence conflict) ===
+    # Load public holidays (national + workspace overrides) for the period.
+    ph_rows = db.execute(text("""
+        SELECT holiday_date FROM national_public_holiday
+        WHERE country_code = :cc
+          AND holiday_date BETWEEN :start AND :end
+        UNION
+        SELECT holiday_date FROM workspace_public_holiday
+        WHERE workspace_id = :wid
+          AND holiday_date BETWEEN :start AND :end
+    """), {
+        "cc":    country_code,
+        "wid":   workspace_id,
+        "start": period_start or date.today().replace(day=1),
+        "end":   period_end   or date.today(),
+    }).fetchall()
+    public_holiday_dates = {r[0] for r in ph_rows}
+
+=== ph_dates_used / ph_source captured on original run and read from snapshot (not re-queried) on retry ===
+backend/api/routes/payroll.py:650:        ph_source = "AUTOMATIC"
+backend/api/routes/payroll.py:654:        ph_source = "FILE_BASED"
+backend/api/routes/payroll.py:658:    ph_dates_used  = [str(d) for d in ph_weekday_dates]
+backend/api/routes/payroll.py:665:        "ph_dates_used":  ph_dates_used,
+backend/api/routes/payroll.py:666:        "ph_source":      ph_source,
+backend/api/routes/payroll.py:817:        "ph_dates_used":                    ph_dates_used,
+backend/api/routes/payroll.py:818:        "ph_source":                        ph_source,
+backend/application/payroll_retry_service.py:338:    ph_dates_used   = original_snapshot.get("ph_dates_used", [])
+backend/application/payroll_retry_service.py:339:    ph_source       = original_snapshot.get("ph_source", "FILE_BASED")
+backend/application/payroll_retry_service.py:378:        "ph_dates_used":                    ph_dates_used,
+backend/application/payroll_retry_service.py:379:        "ph_source":                        ph_source,

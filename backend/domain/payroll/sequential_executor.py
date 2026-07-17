@@ -213,8 +213,13 @@ def build_runtime_component_registry(
 
     Source 2 — dynamic_components_from_rules
         Synthesised from rule_set_item (or legacy payroll_rule) rows whose
-        calculation_method is unit_multiplier or fixed_amount.  These methods
-        add a *new* key to salary_components (rule_name → computed amount).
+        calculation_method is unit_multiplier, fixed_amount, ot_multiplier,
+        or percentage_of_sum.  These methods add a *new* key to
+        salary_components (rule_name → computed amount) via apply_payroll_rules
+        upstream in executor.py — without a registry entry here, that computed
+        value sits in salary_components but is never read into results{}, so
+        it silently never reaches GROSS_PAY/NET_PAY despite tracing as
+        "applied" (audit finding, dev-levy-rule-pct sprint, 2026-07-16).
         daily_rate_deduction is excluded — it modifies existing keys only.
 
         Each synthesised entry gets:
@@ -247,7 +252,7 @@ def build_runtime_component_registry(
         if not code or code in existing_codes:
             continue
         method = (rule.get("rule_definition_json") or {}).get("calculation_method", "")
-        if method not in ("unit_multiplier", "fixed_amount", "ot_multiplier"):
+        if method not in ("unit_multiplier", "fixed_amount", "ot_multiplier", "percentage_of_sum"):
             continue  # daily_rate_deduction modifies existing keys — never adds a new code
         additions.append({
             "component_code":     code,
@@ -424,8 +429,38 @@ def _handle_development_levy_flat(
     code: str, meta_json: dict,
     results: dict, salary_components: dict, ctx: dict,
 ) -> dict[str, Decimal]:
-    amount = Decimal(str(ctx.get("development_levy_amount", "0")))
-    return {code: amount}
+    """Development Levy — statutory ₦100/employee/year (or workspace override).
+
+    Cadence (DEC-04): two independent triggers, evaluated every run, OR'd
+    together — never exclusive branches:
+      (a) the run period contains January
+      (b) this is the employee's first paid month (ctx["is_first_paid_month"])
+    Both can fire for the same employee within weeks of each other (a
+    December hire is charged in December via (b) and again the following
+    January via (a)) — that is one charge per calendar year for each
+    trigger, not a double-charge bug.
+
+    Cadence-absent default is ANNUAL, not MONTHLY — MONTHLY-as-silent-default
+    would silently 12× overcharge every workspace that never set the key.
+    """
+    amount   = Decimal(str(ctx.get("development_levy_amount", "0")))
+    cadence  = str(ctx.get("development_levy_cadence") or "ANNUAL").upper()
+    period: PeriodContext = ctx["period"]
+
+    if cadence == "MONTHLY":
+        return {code: amount}
+
+    period_contains_january = period.period_start.month == 1 or period.period_end.month == 1
+    is_first_paid_month = bool(ctx.get("is_first_paid_month", False))
+
+    if period_contains_january or is_first_paid_month:
+        return {code: amount}
+
+    _store_trace_extra(ctx, code, {
+        "status": "not_applied",
+        "note":   "not applied — annual levy already outside eligible month",
+    })
+    return {code: Decimal("0")}
 
 
 def _store_trace_extra(ctx: dict, code: str, extras: dict) -> None:

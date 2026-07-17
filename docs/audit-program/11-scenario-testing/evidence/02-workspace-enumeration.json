@@ -1,0 +1,562 @@
+[
+    {
+        "workspace_id": "d6932f76-6a1f-4e24-9eb4-759a85b62b50",
+        "name": "ACME",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 10
+    },
+    {
+        "workspace_id": "50484f65-7a29-4582-a7a3-bcafd79141ee",
+        "name": "ACME Acedemy",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 183
+    },
+    {
+        "workspace_id": "79deffb3-394e-4045-843a-5fc3e6bc9e5d",
+        "name": "ACME AE",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 352
+    },
+    {
+        "workspace_id": "8d14e7a1-5f68-4f46-b01d-b2622b53bc18",
+        "name": "ACME Airforce",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 3
+    },
+    {
+        "workspace_id": "bc85151e-1127-4271-9246-0787da0cbb69",
+        "name": "ACME Banking",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "a7f69dea-0c00-4c1d-a9d4-4afefb692627",
+        "name": "ACME Banking Variant",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "0608add1-3959-463a-b156-326899f7437b",
+        "name": "ACME Branding",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "32a68471-d44d-45c1-a11f-a202f09e7d2e",
+        "name": "Acme component settins",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "0cbe74df-8d7c-4855-9876-2a38746b1105",
+        "name": "ACME Corp",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 178
+    },
+    {
+        "workspace_id": "c20ca3d3-d6f6-44d1-9540-896d310c222b",
+        "name": "ACME ENROLL TO PAYROLL",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 183
+    },
+    {
+        "workspace_id": "61aa8bc4-d2e4-4764-b17c-6b1e75782aa5",
+        "name": "ACME Enterprise",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "f86d81ec-13f0-463e-90d8-54bc5a0154ab",
+        "name": "ACME Excel",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "1de25c2d-3007-44ed-bd95-cb49529650ed",
+        "name": "ACME Experience",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "b32a08fc-e47a-4c44-89a4-59ef6fabefa9",
+        "name": "ACME Fashion",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "0be770c7-dd50-4ff3-8bfa-75e20c1c0443",
+        "name": "ACME FBN",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "a5f23a07-3feb-4a29-8649-b5e706726ccb",
+        "name": "ACME Frontend",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "7db41b1a-655d-4a48-ba8d-13245cb8b56e",
+        "name": "ACME Infrastructure",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "767b6de5-9dcd-4e82-abb5-11ca106beb08",
+        "name": "ACME Invest",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "bbe84e52-b479-4aea-9b0b-3e1502591cb8",
+        "name": "ACME IT",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "4fb3610b-c66e-44aa-9c3c-fde4877ad222",
+        "name": "ACME KENT",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "928df6f5-4537-46de-bfec-54451fbaf46c",
+        "name": "ACME lifts",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "f3e6c521-1fe0-43ea-82dd-449da1fd05c2",
+        "name": "ACME LONDON",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "65159aaa-ac04-4c44-9f70-dd8bd1cb48ed",
+        "name": "ACME LUX",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "badd2a4a-0028-4dcc-aa66-86513e2c8ee8",
+        "name": "ACME Manufacturing",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "33936e88-b1fe-45af-8a7a-fe9cdea14723",
+        "name": "ACME Manufacturing",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "aca08263-e7bb-4239-b1df-67aad71b34c2",
+        "name": "ACME Media",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "d4a2f816-0349-4850-9c69-f445a99e7e97",
+        "name": "ACME OT",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "61ccfa14-0749-4ce9-8dac-8f14f1e050bf",
+        "name": "ACME OT test",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "d68964d1-c3d4-441d-a127-d8f95a29a6c8",
+        "name": "ACME Period Context",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "3c64bc7f-9f68-4a35-bc53-d3ffbce66c9f",
+        "name": "ACME Revive",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "9d9bd107-23db-43a6-9df7-baacae30dc1b",
+        "name": "ACME Sandy Mgt",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "8a4a5fa6-3e98-4122-9f15-7e95263463fe",
+        "name": "ACME Solicitors",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "ec8e1a8b-534f-4a9f-a95e-e113abe6ebe1",
+        "name": "ACME Solutions",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "505a165a-3afe-4c70-8882-752036ff8f86",
+        "name": "ACME Sports",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "a8fb308f-9fd5-4603-81c8-364306822bf5",
+        "name": "ACME Standard Month",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "f82ab283-d4d6-41fd-a9d9-1b0a820c5cb1",
+        "name": "ACME test",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "f1ab1f72-540a-49cd-9107-7af8defc94d1",
+        "name": "ACME Test",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "89cf8280-e458-44b6-adba-0e3f99c35d0a",
+        "name": "ACME timeswap",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "6850fb35-b5fa-480c-84ba-ee5a075f7bac",
+        "name": "ACME tom",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "45d83b63-d0a2-4e71-a063-42d5ed0ecfd0",
+        "name": "ACME Toys",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "5ecac7f6-07ce-4e00-8bd9-63d7aa7e4908",
+        "name": "ACME treasury",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "3c16522a-3145-42b7-8a57-e426cb9ae980",
+        "name": "acme underscore cooperation big company",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "1865411c-51dd-402d-afeb-7dcdb19a8297",
+        "name": "ACME White Hat Company",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 177
+    },
+    {
+        "workspace_id": "20973394-0440-4595-afa4-a137ceb82f86",
+        "name": "ACME with Timesheets",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "94a18dd1-26d5-4c83-a61f-f6bbe1fa8561",
+        "name": "AMCE Banking",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "155e60b1-d0c0-49e8-bdbb-3179c33988b3",
+        "name": "AMCE Banking Final",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "fe0db67a-1194-4951-8597-5ac0015b5503",
+        "name": "Audit Trail Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "279f38e6-8ec4-4bb7-889a-638ac1670d7f",
+        "name": "Claiming Test WS",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "be4d9ed3-22f7-431d-8831-cca7e2d735c6",
+        "name": "Claiming Test WS",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "59b8612d-c7a2-4860-a6fb-6fef913170c3",
+        "name": "E2E Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "7056d9b6-6201-4b80-99c8-0a2e89e9343d",
+        "name": "First Bank Nigeria",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "19136c32-4dad-40da-87aa-7afcd9095702",
+        "name": "Lock Approval Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "e10a19a7-7e02-4f7b-87b0-36ee3ff5beba",
+        "name": "Lock Approval Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "7ec992d3-1c05-43db-afc0-edb5fa5da5d8",
+        "name": "Lock Approval Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "c4cab0ee-ea88-4fa7-93ca-fd0b9f725dc9",
+        "name": "new test client",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "32dd5a4d-e604-4518-aab8-833762b4b24f",
+        "name": "PAID Test Workspace 9073",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "68f4ecc9-9dbd-4056-b99f-16cb19c988a9",
+        "name": "PAID Test Workspace 9074",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "a55beef8-593a-459f-93b9-8d0fd5c42b87",
+        "name": "PAID Test Workspace 9076",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "02cdf699-29ce-44e3-8ca5-95a6cdac9c7d",
+        "name": "Partial Run Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "52b93f33-2065-4b8f-ba09-2d6ce87e5435",
+        "name": "Partial Run Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 1
+    },
+    {
+        "workspace_id": "dd67b88e-6308-4f75-8788-aeebd0a0fc3b",
+        "name": "Sandy ACME",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "4711c755-2a04-4e34-849a-25a4faf7754e",
+        "name": "Status Transition Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "fcf200b1-17be-4e35-aac5-7d732599aecc",
+        "name": "Status Transition Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "5b31b8b7-bdba-402a-82f5-0e20be6e2280",
+        "name": "Status Transition Test Workspace",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "220cbcea-f2d4-49bb-b0fb-e1829877bcec",
+        "name": "test",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    },
+    {
+        "workspace_id": "6b70612c-b2e1-4275-800c-33140e7f4ebd",
+        "name": "Test Workspace",
+        "country_code": "NG",
+        "base_currency": null,
+        "status": "DRAFT",
+        "active_employee_count": 2
+    },
+    {
+        "workspace_id": "c21cb4dd-0cf5-4338-91a0-187cabba4a9b",
+        "name": "testme.com",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 180
+    },
+    {
+        "workspace_id": "d955259f-606c-487a-b51a-4e9e992ee18b",
+        "name": "testmeagain.com",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "READY",
+        "active_employee_count": 173
+    },
+    {
+        "workspace_id": "98fdb513-5417-413e-95bf-38e002f28dc0",
+        "name": "testmeagain&again.com",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "LIVE",
+        "active_employee_count": 172
+    },
+    {
+        "workspace_id": "f82db776-f8c0-4430-bb62-c11c5446f79a",
+        "name": "Vector AI",
+        "country_code": "NG",
+        "base_currency": "NGN",
+        "status": "DRAFT",
+        "active_employee_count": 0
+    }
+]

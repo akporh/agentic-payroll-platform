@@ -1,0 +1,96 @@
+=== retry control DOES exist for PARTIAL runs (correcting an earlier grep miss) ===
+function ActionPanel({ run, onApprove, onLock, onPay, onRetry, actionLoading }: ActionPanelProps) {
+  if (run.status === 'CALCULATING') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <svg className="w-4 h-4 text-blue-500 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        </svg>
+        <p className="text-sm text-blue-800 font-medium">Calculating payroll — refreshing automatically every 5 seconds…</p>
+      </div>
+    );
+  }
+
+  if (run.status === 'PARTIAL') {
+    if (!run.statutory_effective_date) {
+      return (
+        <AlertBanner
+          variant="warning"
+          title="Some employees failed to calculate — retry not available"
+          description="This run was created before the snapshot engine was enabled. Open a new payroll run to correct this period."
+          className="mb-5"
+        />
+      );
+    }
+    return (
+      <AlertBanner
+        variant="warning"
+        title="Some employees failed to calculate"
+        description="Review the results table below. Retry to re-attempt failed employees — successful results are preserved."
+        action={{ label: 'Retry Failed Employees', onClick: onRetry }}
+        className="mb-5"
+      />
+    );
+  }
+
+  if (run.status === 'CALCULATED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-800">Results calculated — ready for approval</p>
+          <p className="text-xs text-gray-500 mt-0.5">Review the figures below, then approve to send for locking.</p>
+        </div>
+        <Btn variant="primary" size="md" loading={actionLoading} onClick={onApprove}>
+          Approve Run
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'APPROVED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-violet-50 border border-violet-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-violet-800">Run approved. Lock it when ready for payment processing.</p>
+          <p className="text-xs text-violet-600 mt-0.5">Locking prevents further changes and enables the Mark as Paid action.</p>
+        </div>
+        <Btn variant="primary" size="md" loading={actionLoading} onClick={onLock}>
+          Lock Run
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'LOCKED') {
+    return (
+      <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-800">Run is locked — ready to mark as paid</p>
+          <p className="text-xs text-gray-500 mt-0.5">Once marked as PAID this cannot be undone.</p>
+        </div>
+        <Btn variant="destructive" size="md" onClick={onPay}>
+          Mark as Paid
+        </Btn>
+      </div>
+    );
+  }
+
+  if (run.status === 'PAID') {
+    return (
+      <div className="mb-5 px-4 py-3 bg-green-50 border border-green-200 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+        <p className="text-sm font-semibold text-green-800">Run is PAID — no further actions available.</p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+=== ActionPanel is an if-chain over the OLD 6-status set (CALCULATING/PARTIAL/CALCULATED/APPROVED/LOCKED/PAID); falls through to 'return null' for any unmatched status including FAILED and DRAFT ===
+97:  if (run.status === 'CALCULATING') {
+109:  if (run.status === 'PARTIAL') {
+131:  if (run.status === 'CALCULATED') {
+145:  if (run.status === 'APPROVED') {
+159:  if (run.status === 'LOCKED') {
+173:  if (run.status === 'PAID') {

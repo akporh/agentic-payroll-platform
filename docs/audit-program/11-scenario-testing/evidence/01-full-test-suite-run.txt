@@ -1,0 +1,40 @@
+........................................................................ [ 23%]
+.......................s................................................ [ 46%]
+........................................................................ [ 70%]
+........................................................................ [ 93%]
+...................                                                      [100%]
+=============================== warnings summary ===============================
+../../../../../../../opt/homebrew/lib/python3.10/site-packages/starlette/formparsers.py:10
+  /opt/homebrew/lib/python3.10/site-packages/starlette/formparsers.py:10: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+tests/test_payroll_audit_trail.py: 3 warnings
+tests/test_payroll_idempotency.py: 7 warnings
+tests/test_payroll_lock_and_approval.py: 1 warning
+tests/test_payroll_paid_lifecycle.py: 4 warnings
+tests/test_payroll_partial_run_e2e.py: 1 warning
+tests/test_payroll_pipeline_e2e.py: 1 warning
+tests/test_payroll_reconciliation.py: 1 warning
+tests/test_payroll_reconciliation_e2e.py: 5 warnings
+tests/test_payroll_results_immutable.py: 5 warnings
+tests/test_payroll_retry.py: 1 warning
+tests/test_payroll_retry_snapshot_first.py: 4 warnings
+tests/test_payroll_run_readiness.py: 5 warnings
+tests/test_payroll_run_snapshot_immutable.py: 1 warning
+tests/test_payroll_snapshot_integrity.py: 4 warnings
+tests/test_statutory_flat_amount_keys_e2e.py: 1 warning
+  /Users/michaelemedo/Documents/2.OnAiR/Clients/Sandy/agentic-payroll-platform/backend/domain/onboarding/workspace_state_machine.py:23: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    workspace = db.query(Workspace).get(workspace_id)
+
+tests/test_workspace_integration.py::test_create_designation_persists_to_db
+tests/test_workspace_integration.py::test_create_designation_persists_to_db
+  /Users/michaelemedo/Documents/2.OnAiR/Clients/Sandy/agentic-payroll-platform/backend/infra/db/repositories/workspace_repo.py:13: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    return db.query(Workspace).get(workspace_id)
+
+tests/test_workspace_integration.py::test_create_designation_persists_to_db
+  /Users/michaelemedo/Documents/2.OnAiR/Clients/Sandy/agentic-payroll-platform/backend/infra/db/repositories/workspace_repo.py:40: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    workspace = db.query(Workspace).get(workspace_id)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+306 passed, 1 skipped, 48 warnings in 9.45s
+psql: payroll_dev|PostgreSQL 15.16 (Homebrew) on aarch64-apple-darwin25.2.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit

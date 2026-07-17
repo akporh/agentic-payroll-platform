@@ -1,0 +1,5 @@
+=== attendance_code_config IS consumed by timesheet_derivation_service.py (not a dead end) ===
+30:    attendance_config_repo,
+150:    known_codes  = attendance_config_repo.get_all_code_client_codes(workspace_id)
+151:    policies_map = attendance_config_repo.get_attendance_policies_for_derivation(workspace_id)
+327:    policies_map   = attendance_config_repo.get_attendance_policies_for_derivation(workspace_id)

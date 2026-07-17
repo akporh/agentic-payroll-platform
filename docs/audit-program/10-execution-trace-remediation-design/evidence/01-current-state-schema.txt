@@ -1,0 +1,69 @@
+=== execution_trace (current schema) ===
+id, run_id, step_name, status, duration_ms, error_message, created_at
+No workspace_id, no employee_id, no event_code, no operation_type, no correlation/invocation_id, no actor_id.
+Migration: migrations/versions/e5f6a7b8c9d0_add_execution_trace.py
+
+=== payroll_result (current schema) ===
+payroll_result_id, payroll_run_id, employee_id, gross_components_jsonb, deductions_jsonb,
+net_pay, calculations_snapshot_json, generated_at, status, error_message,
+component_trace_jsonb, per_employee_context_json, salary_inputs_snapshot
+No statutory_rule_id, no statutory_version.
+
+=== audit_log (current schema) ===
+audit_log_id, workspace_id, entity_type, entity_id, action, old_value_jsonb, new_value_jsonb,
+performed_by, performed_at
+
+=== event_store (current schema) ===
+event_id, aggregate_type, aggregate_id, event_type, event_payload, occurred_at, workspace_id
+
+=== payroll_run (relevant columns) ===
+payroll_run_id, workspace_id, status, rules_context_snapshot (jsonb), rule_set_id,
+statutory_effective_date, run_type, error_message
+
+=== ExecutionTracer.step() persistence (backend/application/execution_tracer.py) ===
+- Writes one row per top-level engine stage on success/error via save_trace_step().
+- _persist() wraps the write in try/except Exception: pass — a trace write failure
+  is completely silent, no server-side log, no metric.
+- NULL_TRACER is the no-op tracer retry currently uses in practice (zero .step calls
+  found anywhere in payroll_retry_service.py despite instantiating a real ExecutionTracer
+  at line 526 — the instance exists but .step()/.warn_persist() are never invoked on it).
+
+=== .step() call sites (original run only) ===
+backend/application/payroll_run_service.py:103   "Execute payroll engine"
+backend/application/payroll_run_service.py:123   "Persist results"
+backend/application/payroll_run_persister.py:71  "Save payroll run header"
+backend/application/payroll_run_persister.py:88  "Save {N} employee results"
+backend/application/payroll_run_persister.py:96  "Save {N} audit entries"
+backend/application/payroll_run_persister.py:102 "Save {N} events"
+backend/domain/payroll/run_executor.py:65         "Transition: DRAFT -> CALCULATING"
+backend/domain/payroll/run_executor.py:83         "Batch process: N employees (mode=...)"
+backend/domain/payroll/run_executor.py:113        "Transition: CALCULATING -> {status}"
+Free-text step_name only; no stable event code.
+
+=== statutory_rule_id / statutory_version — computed but never persisted per-result ===
+backend/domain/payroll/executor.py:138 and run_executor.py:134:
+  build_rules_context_snapshot(statutory_rule_id, statutory_version, payroll_rule_ids)
+  -> written ONLY into payroll_run.rules_context_snapshot (run-level JSON), never onto
+     the per-employee payroll_result row. Confirms 04-002.
+
+=== component exclusion — silently filtered, zero trace (08-003) ===
+backend/domain/payroll/sequential_executor.py:658:
+  active_meta = [m for m in component_metadata if m.get("is_active")]
+Components with is_active=False are dropped from `component_metadata` before any
+handler runs and before component_trace_jsonb is built — no row anywhere records
+that a component was configured but excluded, vs. never configured, vs. eligibility-skipped.
+
+=== timeline route (09-005, unchanged root cause carried into this design) ===
+backend/api/routes/payroll.py:1337-1341:
+  GET /{workspace_id}/payroll/runs/{run_id}/timeline
+  def get_run_timeline(workspace_id: str, run_id: str):
+      steps = get_trace_steps(run_id)   # workspace_id never passed through
+      return steps
+backend/infra/repositories/execution_trace_repo.py:102 get_trace_steps(run_id) — no
+workspace_id parameter exists on the function at all.
+
+=== frontend consumption ===
+frontend/src/api/payroll.ts:59  GET .../timeline -> ExecutionTraceStep[]
+frontend/src/types/payroll.ts:108  ExecutionTraceStep { step_name, status, duration_ms, error_message, created_at }
+frontend/src/components/payroll/PayrollTimeline.tsx — renders the flat step list.
+No grouping by attempt/invocation exists because no correlation ID exists to group by.

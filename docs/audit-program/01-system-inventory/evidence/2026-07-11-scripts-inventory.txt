@@ -1,0 +1,132 @@
+=== scripts/ ===
+total 296
+drwxr-xr-x@ 12 michaelemedo  staff    384 11 Jun 07:01 .
+drwxr-xr-x@ 54 michaelemedo  staff   1728 10 Jul 20:29 ..
+-rw-r--r--@  1 michaelemedo  staff   6148  9 Jun 16:05 .DS_Store
+-rw-r--r--   1 michaelemedo  staff   7951 26 May 08:38 export_linear_csv.py
+-rw-r--r--   1 michaelemedo  staff   5735 26 May 10:17 import_linear.py
+-rw-r--r--   1 michaelemedo  staff   6919 20 Feb 03:50 run_first_payroll_emp001.local_backup.py
+-rw-r--r--   1 michaelemedo  staff   8470 11 Jun 07:01 run_first_payroll_emp001.py
+-rw-r--r--   1 michaelemedo  staff   8151 11 Jun 07:01 seed_payroll_inputs.py
+-rw-r--r--   1 michaelemedo  staff   1458 11 Jun 07:01 show_config_tables.py
+-rw-r--r--   1 michaelemedo  staff  55433 11 Jun 07:01 simulate_payroll_components.py
+-rw-r--r--   1 michaelemedo  staff  36577 11 Jun 07:01 simulate_stepthrough.py
+
+=== backend/scripts/ ===
+total 160
+drwxr-xr-x  13 michaelemedo  staff    416 10 Jul 20:29 .
+drwxr-xr-x  12 michaelemedo  staff    384 11 Jun 07:01 ..
+-rw-r--r--   1 michaelemedo  staff   4666 10 Jul 20:29 backfill_rule_set_snapshots.py
+-rw-r--r--   1 michaelemedo  staff   2486 11 Jun 07:01 load_employee_contracts.py
+-rw-r--r--   1 michaelemedo  staff    839 11 Jun 07:01 load_grades.py
+-rw-r--r--   1 michaelemedo  staff  38884 11 Jun 07:01 simulate_payroll.py
+-rw-r--r--   1 michaelemedo  staff    706 11 Jun 07:01 test_execute_and_persist.py
+-rw-r--r--   1 michaelemedo  staff    311 11 Jun 07:01 test_export_netpay.py
+-rw-r--r--   1 michaelemedo  staff    520 11 Jun 07:01 test_export_paye.py
+-rw-r--r--   1 michaelemedo  staff    773 11 Jun 07:01 test_export_register.py
+-rw-r--r--   1 michaelemedo  staff   1409 11 Jun 07:01 test_persist.py
+-rw-r--r--   1 michaelemedo  staff   1138 11 Jun 07:01 test_run_batch_persist.py
+
+=== diff run_first_payroll_emp001.py vs .local_backup.py ===
+9d8
+< from datetime import date 
+166a166
+> 
+170,176d169
+<     cur.execute("SELECT workspace_id FROM workspace LIMIT 1;")
+<     row = cur.fetchone()
+<     if not row:
+<         raise Exception("❌ No workspace found. Insert one first.")
+<     workspace_id = str(row[0])
+<     print(f"🏢 Using workspace_id: {workspace_id}")
+< 
+204,206d196
+<     
+<     print("DEBUG payroll_result keys:", payroll_result.keys())
+<     print("DEBUG deductions:", payroll_result["deductions_jsonb"])
+211,225c201,203
+<     
+<     gross_components = payroll_result["gross_components_jsonb"]
+<     gross_pay = sum(
+<         component["amount"]
+<         for component in gross_components.values()
+<     )
+< 
+<     deductions = payroll_result["deductions_jsonb"]
+<     paye = deductions.get("PAYE", 0)
+< 
+<     net_pay = payroll_result["net_pay"]    
+<     
+<     print(f"💵 Gross Pay:        ₦{gross_pay:,.2f}")
+<     print(f"🧾 PAYE:             ₦{paye:,.2f}")
+<     print(f"🏦 Net Pay:          ₦{net_pay:,.2f}")
+---
+>     print(f"💵 Gross Pay:        ₦{payroll_result['gross_pay']:,}")
+>     print(f"📉 Total Deductions: ₦{payroll_result['total_deductions']:,}")
+>     print(f"🏦 Net Pay:          ₦{payroll_result['net_pay']:,}")
+228,230c206
+<     #---- Persist result ------#
+<     # Generate IDs
+<     payroll_run_id = str(uuid.uuid4())
+---
+>     # Persist result
+233,260c209
+<     print("🗂 Creating payroll_run record...")
+< 
+<     cur.execute("""
+<         INSERT INTO payroll_run (
+<             payroll_run_id,
+<             workspace_id,
+<             status,
+<             rules_context_snapshot,
+<             period_start,
+<             period_end,
+<             pay_date,
+<             total_gross_pay,
+<             total_deduction,
+<             total_net_pay
+<         )
+<         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+<     """, (
+<         payroll_run_id,
+<         workspace_id,
+<         "COMPLETED",
+<         json.dumps(result["rules_context_snapshot"], default=str),
+<         date(2026, 1, 1),
+<         date(2026, 1, 31),
+<         date(2026, 1, 31),
+<         payroll_result["calculations_snapshot_json"]["gross"],
+<         payroll_result["calculations_snapshot_json"]["paye"],
+<         payroll_result["calculations_snapshot_json"]["net"],
+<     ))
+---
+>     print("💾 Persisting payroll_result to database...")
+270c219,220
+<             calculations_snapshot_json
+---
+>             calculations_snapshot_json,
+>             created_at
+272c222
+<         VALUES (%s, %s, %s, %s, %s, %s, %s)
+---
+>         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+277,278c227,228
+<         json.dumps(payroll_result["gross_components_jsonb"], default=str),
+<         json.dumps(payroll_result["deductions_jsonb"], default=str),
+---
+>         json.dumps(payroll_result["gross_components"]),
+>         json.dumps(payroll_result["deductions"]),
+280c230,231
+<         json.dumps(payroll_result["calculations_snapshot_json"], default=str)
+---
+>         json.dumps(payroll_result["calculation_snapshot"]),
+>         datetime.utcnow()
+281a233
+> 
+diff exit code: 1
+
+=== last git log touching each ===
+2026-02-21 17:57:29 +0000 4085f6e Phase 1.5 complete – payroll execution + batch status foundation
+
+=== is scripts/ or backend/scripts/ referenced by app runtime? ===
+(none = neither script dir is imported by production app code)

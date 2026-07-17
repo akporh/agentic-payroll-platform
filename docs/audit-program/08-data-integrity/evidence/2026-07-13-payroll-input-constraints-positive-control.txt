@@ -1,0 +1,17 @@
+=== payroll_input: strong constraints ===
+Indexes:
+    "payroll_input_pkey" PRIMARY KEY, btree (payroll_input_id)
+    "idx_payroll_input_code" btree (input_code)
+    "idx_payroll_input_employee" btree (employee_id)
+    "idx_payroll_input_period_unclaimed" btree (workspace_id, reference_date) WHERE payroll_run_id IS NULL
+    "idx_payroll_input_run" btree (payroll_run_id)
+    "uq_payroll_input_unclaimed" UNIQUE, btree (workspace_id, employee_id, input_code, reference_date, source) WHERE payroll_run_id IS NULL
+Check constraints:
+    "ck_payroll_input_category" CHECK (input_category::text = ANY (ARRAY['EARNING'::character varying, 'DEDUCTION'::character varying, 'STANDARD'::character varying, 'PAYE_ONLY'::character varying]::text[]))
+    "ck_payroll_input_json_object" CHECK (input_json IS NULL OR jsonb_typeof(input_json) = 'object'::text)
+    "ck_payroll_input_quantity_non_negative" CHECK (quantity >= 0::numeric)
+Foreign-key constraints:
+    "fk_input_employee" FOREIGN KEY (employee_id) REFERENCES employee(employee_id)
+    "fk_input_run" FOREIGN KEY (payroll_run_id) REFERENCES payroll_run(payroll_run_id)
+    "fk_input_workspace" FOREIGN KEY (workspace_id) REFERENCES workspace(workspace_id)
+

@@ -1,0 +1,162 @@
+=== docs/analysis/ ===
+docs/analysis/0.0-highlights.md
+docs/analysis/0.1-capability-inventory.md
+docs/analysis/0.2-execution-flow.md
+docs/analysis/0.3-user-story-map.md
+docs/analysis/0.4-gap-outcomes.md
+docs/analysis/0.5-business-rules-catalogue.md
+docs/analysis/0.6-business-rules-executive-summary.md
+docs/analysis/0.7 prioritized-backlog.md
+docs/analysis/0.8 system-reality-report.md
+docs/analysis/phase1-userstory.md
+docs/analysis/reality-report-analysis.txt
+
+=== docs/architecture/ ===
+docs/architecture/agent-layer-architecture.html
+docs/architecture/extraction-signals.md
+
+=== docs/audit-program/ ===
+docs/audit-program/audit-state.md
+docs/audit-program/README.md
+docs/audit-program/WORKFLOW.md
+
+=== docs/audit/ ===
+docs/audit/2026-05-01-sprint-10-audit-review.md
+docs/audit/2026-05-02-sprint-11-audit-review.md
+
+=== docs/Buisness Specs & Designs (Drifted)/ ===
+docs/Buisness Specs & Designs (Drifted)/ARCHITECTURE_LOCK_PHASE1.md
+docs/Buisness Specs & Designs (Drifted)/ARCHITECTURE_LOCK_V1_1.md
+docs/Buisness Specs & Designs (Drifted)/ARCHITECTURE_LOCK.md
+docs/Buisness Specs & Designs (Drifted)/INFRASTRUCTURE_DECISIONS.md
+docs/Buisness Specs & Designs (Drifted)/payroll_engine_architecture.md
+docs/Buisness Specs & Designs (Drifted)/Phase 1 Visual Architecture for Nigerian Payroll Platform MVP.md
+docs/Buisness Specs & Designs (Drifted)/REPLIT_AGENT_GUARDRAILS.md
+docs/Buisness Specs & Designs (Drifted)/sprint_ready_backlog.md
+docs/Buisness Specs & Designs (Drifted)/Updated REPLIT_AGENT_GUARDRAILS.md
+
+=== docs/data/ ===
+docs/data/.DS_Store
+docs/data/ACME OT empl.numbers
+docs/data/ACME OT empl.xlsx
+docs/data/ACME TOT empl.xlsx
+
+=== docs/design/ ===
+docs/design/ui-decisions.md
+
+=== docs/planning/ ===
+docs/planning/.DS_Store
+docs/planning/to-plan
+
+=== docs/retro-reports/ ===
+docs/retro-reports/2026-05-10-sprint-14.md
+
+=== docs/security/ ===
+docs/security/2026-05-01-sprint-10-security-review.md
+docs/security/2026-05-02-sprint-11-security-review.md
+docs/security/2026-05-13-sprint-14-16-security-review.md
+
+=== docs/stories/ ===
+docs/stories/.DS_Store
+docs/stories/.gitkeep
+docs/stories/arch-council-sprint7-decisions.md
+docs/stories/client-b-sprint-10-engine-ot-foundations.md
+docs/stories/employee-page-enhancements.md
+docs/stories/fix-emp-reg5-enrollment-prepopulation.md
+docs/stories/fix-workspace-activation-cta.md
+docs/stories/nav-ux-employee-mismatch-badge.md
+docs/stories/phase1-sprint7-public-holiday-ui.md
+docs/stories/phase1-sprint7-public-holiday.md
+docs/stories/sprint-11-track-o-employee-schema-shift-lta.md
+docs/stories/sprint-12-track-m-n-statutory-proration.md
+docs/stories/sprint-13-track-m3-m5-track-s-security.md
+docs/stories/sprint-14-hire-proration-configurable.md
+docs/stories/sprint-16-timesheet-layer.md
+docs/stories/sprint-17-employee-crud.md
+docs/stories/sprint-17-employee-ux.md
+docs/stories/sprint-18-employee-refactor-phase1.md
+docs/stories/sprint-19-employee-refactor-phase2.md
+docs/stories/sprint-20-hr-readiness-phase3.md
+docs/stories/sprint-21-employee-registration-enrollment.md
+docs/stories/sprint-22-employee-upload-bulk-enroll.md
+docs/stories/sprint-23-upload-full-decoupling.md
+docs/stories/sprint-25-badge-realtime-update.md
+docs/stories/sprint-25a-employees-table-ux-fixes.md
+docs/stories/sprint-25b-no-longer-active-ux.md
+docs/stories/sprint-25c-edit-employee-contract-end-date.md
+docs/stories/sprint-25d-register-employee-contract-dates.md
+docs/stories/sprint-26-employee-registration-status-management.md
+docs/stories/sprint-27-smart-native-upload.md
+docs/stories/sprint-28-upload-error-visibility.md
+docs/stories/sprint-29-pipeline.md
+docs/stories/sprint-30-test-harness.md
+docs/stories/sprint-31-financial-engine-tests.md
+docs/stories/sprint-32-api-migration-tests.md
+docs/stories/sprint-8-workspace-config.md
+docs/stories/sprint-9-full-detail-export.md
+docs/stories/track-j-workspace-config-management.md
+
+=== docs/test-reports/ ===
+docs/test-reports/2026-04-14-sprint-7.md
+docs/test-reports/2026-04-15-gate3-gate4.md
+docs/test-reports/2026-04-21-sprint-7-wc12-wc13.md
+docs/test-reports/2026-04-21-sprint-8.md
+docs/test-reports/2026-04-21-track-j.md
+docs/test-reports/2026-05-01-sprint-10.md
+docs/test-reports/2026-05-02-sprint-11.md
+docs/test-reports/2026-05-03-sprint-12-m1-m2.md
+docs/test-reports/2026-05-10-sprint-14.md
+docs/test-reports/2026-05-13-sprint-16.md
+docs/test-reports/2026-05-26-employee-enhancements.md
+docs/test-reports/2026-05-26-nav-ux.md
+docs/test-reports/2026-05-27-sprint-17-full.md
+docs/test-reports/2026-05-27-sprint-17-partial.md
+docs/test-reports/2026-05-31-sprint-18.md
+docs/test-reports/2026-06-01-sprint-19.md
+docs/test-reports/2026-06-08-sprint-22.md
+docs/test-reports/2026-06-09-sprint-23.md
+docs/test-reports/2026-06-11-sprint-26.md
+docs/test-reports/2026-06-15-sprint-27-28.md
+docs/test-reports/2026-06-20-sprint-pay-tax-1.md
+docs/test-reports/2026-06-21-payroll-rule-versioning.md
+docs/test-reports/2026-07-04-sprint-a-rule-versioning-integrity.md
+
+=== docs/ux-design-brief/ ===
+docs/ux-design-brief/.DS_Store
+
+=== docs/ux-ui-artefacts/ ===
+
+=== docs/ux-ui-design-brief/ ===
+docs/ux-ui-design-brief/01-entity-map.md
+docs/ux-ui-design-brief/02-api-surface.md
+docs/ux-ui-design-brief/03-business-rules.md
+docs/ux-ui-design-brief/04-actors.md
+docs/ux-ui-design-brief/05-persona-sketches.md
+docs/ux-ui-design-brief/06-user-journey-maps.md
+docs/ux-ui-design-brief/07-screen-inventory.md
+docs/ux-ui-design-brief/08-data-sensitivity.md
+docs/ux-ui-design-brief/09-state-flows.md
+docs/ux-ui-design-brief/10-integration-touchpoints.md
+docs/ux-ui-design-brief/11-drift-log.md
+docs/ux-ui-design-brief/README.md
+
+=== docs/wrapper-command/ ===
+docs/wrapper-command/engineering-playbook.md
+docs/wrapper-command/payroll-component-Integrity-and-period-input-alignment
+docs/wrapper-command/Query-codebase.md
+docs/wrapper-command/run-architecture-check.md.txt
+
+=== docs/ root-level files ===
+docs/.DS_Store
+docs/.gitkeep
+docs/Employee Refactor Master Document (v1).md
+docs/Employee Refactor Master Document (v2) + Arch-Council.md
+docs/Employee Refactor Master Document (v3) + Arch-Council.md
+docs/Employee Refactor Master Document (v4) DELTA DOCUMENT.md
+docs/Employee Refactor Master Document (v5) execution spec.md
+docs/linear-import.csv
+docs/LOCAL_SETUP.md
+docs/ROADMAP.md
+docs/schema_dump.sql
+docs/system-capabilities.md
+docs/ui-gap-audit.md

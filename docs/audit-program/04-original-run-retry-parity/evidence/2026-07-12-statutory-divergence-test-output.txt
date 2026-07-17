@@ -1,0 +1,20 @@
+[1] statutory_rule A inserted: id=650384ed-36ff-4df9-a4f4-e80443071be1 effective_from=2026-05-01 rate=0.10
+[2] Employee A onboarded: 8e7024a2-3e1f-476b-ab32-3d9e2b138cbc
+[3] Employee B (broken) inserted: 2c01e698-7127-4fa1-a6a6-b482ff13148b
+[4] Original run created: e1db9d28-cb9a-4415-8e05-1760fd0d7b0a (TestClient completes the BackgroundTask synchronously)
+[4] payroll_run.status=PARTIAL statutory_effective_date=2026-05-31
+[4] rules_context_snapshot.statutory_rule = {'id': '650384ed-36ff-4df9-a4f4-e80443071be1', 'version': 9800, 'tax_bands': [{'rate': 0.1, 'lower_limit': 0.0, 'upper_limit': None}], 'rules_jsonb': {'pension': {'employee_rate': 0.08, 'employer_rate': 0.1}}, 'effective_from': '2026-05-01'}
+[4] Employee A result: status=SUCCESS PAYE=73600.0 net_pay=662400.00
+[4] Expected PAYE for Employee A under rule A (flat 0.10): 80000.00
+[5] statutory_rule B inserted AFTER original run: id=29c25b94-0912-4d51-85df-668db1d04bf8 effective_from=2026-05-15 (between rule A's 2026-05-01 and frozen statutory_effective_date 2026-05-31) rate=0.25
+[5] Live re-resolution (retry's exact query) now picks: id=29c25b94-0912-4d51-85df-668db1d04bf8 version=9801 effective_from=2026-05-15
+[6] Employee B's broken salary fixed
+[6] retry_failed_payroll_employees() returned: {'payroll_run_id': 'e1db9d28-cb9a-4415-8e05-1760fd0d7b0a', 'retried': 1, 'success': 1, 'still_failed': 0}
+[7] Employee B post-retry result: status=SUCCESS PAYE=36800.0 net_pay=331200.00
+[7] Expected PAYE for Employee B if rule A (10%) had been used (matching Employee A's original-run rule): 36800.00
+[7] Expected PAYE for Employee B if rule B (25%, the intervening insert) was used instead: 92000.00
+[VERDICT] DIVERGENCE NOT REPRODUCED: Employee B's retried PAYE matches rule A (the original run's rule), contradicting the 03-002 hypothesis under this test design.
+
+FINAL VERDICT: REJECTED
+
+[CLEANUP] All test-scoped rows deleted (workspace, employees, contracts, salary defs, payroll_run/result, snapshots, statutory_rule A+B, tax_band A+B, account). Verified via reverse-FK-order DELETE, matching tests/test_payroll_retry.py's pattern.

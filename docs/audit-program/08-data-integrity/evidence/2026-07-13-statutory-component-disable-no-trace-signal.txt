@@ -1,0 +1,13 @@
+=== 03-004 extension: disabled statutory components are filtered out BEFORE reaching the engine, with no trace signal or compliance guard ===
+backend/application/payroll_retry_service.py:251:    disabled_codes = {r[0] for r in override_rows if r[3] is False}
+backend/application/payroll_retry_service.py:252:    if disabled_codes:
+backend/application/payroll_retry_service.py:253:        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+backend/api/routes/payroll.py:452:    disabled_codes = {r[0] for r in override_rows if r[3] is False}
+backend/api/routes/payroll.py:453:    if disabled_codes:
+backend/api/routes/payroll.py:454:        component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
+
+=== zero live workspaces in local dev DB currently have a statutory_deduction component disabled (dev data, not production evidence) ===
+ workspace_id | component_code | is_active | component_class 
+--------------+----------------+-----------+-----------------
+(0 rows)
+

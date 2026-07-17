@@ -1,0 +1,77 @@
+=== salary-definition edit: no proactive lock indicator, relies on reactive 409 error surfaced via extractError ===
+  async function handleSave() {
+    if (!salaryDef) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await workspaceApi.updateSalaryDefinition(workspaceId, salaryDef.salary_definition_id, {
+        components_jsonb: components,
+      });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(extractError(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+
+=== extractError correctly surfaces backend 'detail' field ===
+export function extractError(e: unknown): string {
+  if (e instanceof Error) {
+    try {
+      const parsed = JSON.parse(e.message.replace(/^\d+ [^:]+: /, ''));
+      if (parsed?.detail) return String(parsed.detail);
+    } catch { /* fall through */ }
+    return e.message;
+  }
+  return 'An unexpected error occurred.';
+}
+
+=== backend D-ARCH-1 lock (from Stage 03/04 citations) ===
+@router.patch("/{workspace_id}/salary-definition/{salary_definition_id}")
+def patch_salary_definition(workspace_id: str, salary_definition_id: str, payload: dict):
+    """Update components_jsonb for a salary definition (WC-7).
+
+    Guards:
+    - D-ARCH-1: edit-lock if any run in SUBMITTED→APPROVED references an employee on this def.
+    - D-ARCH-5: workspace isolation via AND workspace_id = :wid.
+    - Validation: BASIC, HOUSING, TRANSPORT must be present; all amounts > 0.
+    """
+    db = SessionLocal()
+    try:
+        # D-ARCH-5: confirm ownership
+        existing = db.execute(
+            text("""
+                SELECT salary_definition_id FROM salary_definition
+                WHERE salary_definition_id = :id AND workspace_id = :wid
+            """),
+            {"id": salary_definition_id, "wid": workspace_id},
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Salary definition not found.")
+
+        # D-ARCH-1: edit-lock — check for in-flight runs where any employee uses this salary def.
+        # Goes payroll_run → employee (workspace match) → employee_contract to avoid joining
+        # through payroll_result, which has zero rows for SUBMITTED runs and bypasses the lock.
+        blocking = db.execute(
+            text("""
+                SELECT pr.payroll_run_id, pr.status
+                FROM payroll_run pr
+                JOIN employee e ON pr.workspace_id = e.workspace_id
+                JOIN employee_contract ec ON e.employee_id = ec.employee_id
+                WHERE ec.salary_definition_id = :sal_def_id
+                  AND pr.workspace_id = :wid
+                  AND pr.status IN ('SUBMITTED','PROCESSING','CALCULATED','PARTIAL','APPROVED')
+                LIMIT 1
+            """),
+            {"sal_def_id": salary_definition_id, "wid": workspace_id},
+        ).fetchone()
+        if blocking:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This salary definition cannot be edited while a payroll run is in progress or pending approval.",
+            )
+

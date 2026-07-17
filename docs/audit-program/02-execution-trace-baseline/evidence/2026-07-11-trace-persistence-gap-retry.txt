@@ -1,0 +1,33 @@
+=== tracer.step() call sites (persisted steps) across production code ===
+backend/domain/payroll/executor.py:127:            tracer.warn_persist(
+backend/domain/payroll/executor.py:184:        _tracer.info(
+backend/domain/payroll/executor.py:192:        _tracer.info(
+backend/domain/payroll/executor.py:226:        _tracer.info(f"  [dim]rules[/dim]  applying {len(payroll_rules)} workspace payroll rules")
+backend/domain/payroll/executor.py:313:                _tracer.info(
+backend/application/payroll_run_persister.py:71:    with tracer.step("Save payroll run header"):
+backend/application/payroll_run_persister.py:72:        tracer.info(
+backend/application/payroll_run_persister.py:88:    with tracer.step(f"Save {len(results)} employee results"):
+backend/application/payroll_run_persister.py:96:    with tracer.step(f"Save {len(audit_logs)} audit entries"):
+backend/application/payroll_run_persister.py:99:        tracer.info(f"{len(audit_logs)} audit log entries written")
+backend/application/payroll_run_persister.py:102:    with tracer.step(f"Save {len(events)} events"):
+backend/application/payroll_run_persister.py:105:        tracer.info(f"{len(events)} events written to event store")
+backend/domain/payroll/batch_processor.py:106:        tracer.info(f"[bold]Employee {short_id}[/bold]")
+backend/domain/payroll/batch_processor.py:114:            tracer.info(
+backend/domain/payroll/batch_processor.py:119:                tracer.info(
+backend/domain/payroll/batch_processor.py:153:            tracer.info(
+backend/domain/payroll/batch_processor.py:172:            tracer.warn(f"Employee {short_id} calculation failed: {e}")
+backend/application/payroll_run_service.py:75:        tracer.warn_persist(_step_name, _ctx_msg)
+backend/application/payroll_run_service.py:77:    tracer.info(
+backend/application/payroll_run_service.py:82:    tracer.info(
+backend/application/payroll_run_service.py:90:        tracer.info(
+backend/application/payroll_run_service.py:96:        tracer.info(
+backend/application/payroll_run_service.py:103:    with tracer.step("Execute payroll engine"):
+backend/application/payroll_run_service.py:123:    with tracer.step("Persist results"):
+backend/domain/payroll/run_executor.py:65:    with tracer.step("Transition: DRAFT → CALCULATING"):
+backend/domain/payroll/run_executor.py:83:    with tracer.step(f"Batch process: {len(employees)} employees (mode={execution_mode})"):
+backend/domain/payroll/run_executor.py:98:        tracer.info(
+backend/domain/payroll/run_executor.py:102:        tracer.info(
+backend/domain/payroll/run_executor.py:113:    with tracer.step(f"Transition: CALCULATING → {new_status.value}"):
+
+=== payroll_retry_service.py: grep for tracer.step across the whole file ===
+NO MATCHES — confirmed zero .step() calls in retry service

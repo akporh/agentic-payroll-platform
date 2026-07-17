@@ -10,6 +10,8 @@
 | ⬜ | Not started |
 | 🔮 | Future / Phase 3 |
 
+> **Phase numbering note:** "Phase 1" below covers all deterministic-engine work (Sprints 1–6 plus everything through Track O) — this is the "Phase 1 MVP" referenced in the project's `CLAUDE.md`. "Phase 2" is reserved exclusively for the AI Agent Layer (Tracks P–Y). Earlier versions of this file used "Phase 2" loosely for later deterministic-engine sprints too — that has been corrected (2026-07-10) to remove the collision.
+
 ---
 
 ## Summary Matrix
@@ -17,9 +19,9 @@
 | Phase | Onboarding (A1+A2) | Pay Events (A3) | Execution (A4) | Governance (A5) | Disbursement (A6) | Correctness & Audit (A7+A8+A9+A10) |
 |-------|--------------------|-----------------|----------------|-----------------|-------------------|--------------------------------------|
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
-| **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
-| **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
-| **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
+| **Phase 1a — Sprints 1–6 (Core MVP)** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
+| **Phase 1b — Sprints 7–8 (Operational Completeness)** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
+| **Phase 1c — Client B Sprint 10+ (Tracks K–O)** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
 | **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
 | **Sprint 15** | — | ⬜→🔜 (timesheet layer arch-council locked) | — | — | — | — |
@@ -194,7 +196,7 @@ Formal sprint work. All Sprint 1–6 items are now closed.
 
 ---
 
-## Phase 2 — Operational Completeness (Sprint 7+)
+## Phase 1b — Operational Completeness (Sprint 7+)
 
 Open items needed to make the platform production-ready for real clients.
 
@@ -269,7 +271,7 @@ Open items needed to make the platform production-ready for real clients.
 
 ---
 
-## Phase 2 Priority Order
+## Phase 1 Priority Order
 
 Reordered after arch-council review (April 2026). Defect fixes gate the feature tracks.
 
@@ -463,7 +465,7 @@ WI-08 must land before WI-03 can be safely implemented. WI-03 remains blocked un
 
 ---
 
-### Track O — Employee Schema & Complex Features (later Phase 2 sprint; arch-council per item)
+### Track O — Employee Schema & Complex Features (later Phase 1 sprint; arch-council per item)
 
 All items require arch-council pre-clearance before implementation begins. Entry gate: all of Tracks K–N complete.
 
@@ -564,19 +566,21 @@ navigating through the setup wizard.
 
 ---
 
-## Known Test Failures (Pre-existing — Live State as of Sprint A, 2026-07-04)
+## Known Test Failures (Live State as of Test Harness workstream, 2026-07-12)
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
+
+**Suite fully green as of 2026-07-12** (306 passed, 1 intentional Phase-2 skip) on both the dev DB and a fresh migrated DB. Enforced automatically by `.githooks/pre-push` and `.github/workflows/tests.yml` — see `docs/test-reports/test-harness/test-harness-checklist.md`.
 
 | # | Test | File | Root Cause | Fix Needed | Linked Item | Status |
 |---|------|------|------------|------------|-------------|--------|
 | TF-1 | `test_paid_transition_writes_audit_entry` | `tests/test_payroll_paid_lifecycle.py:418` | Test sent `actor_id` in body; endpoint now reads `X-Performed-By` header | — | Track I #35 (P2-2) | ✅ RESOLVED Sprint 10 |
 | TF-2 | `TestDailyRateDeduction::test_deduction_floored_at_zero` | `tests/test_rule_evaluator.py` | Test expected floor-at-zero; code now raises `ValueError` for `absent_days > working_days` | — | Execution correctness | ✅ RESOLVED Sprint 10 |
-| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ❌ RE-BROKEN — now superseded by TF-7 (same test, different failure point) |
-| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
-| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
-| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ❌ RE-BROKEN — confirmed Sprint A, now fails via TF-7's root cause instead |
-| TF-7 | `body["status"] == "success"` assertion (affects 4 files: `test_payroll_lock_and_approval.py`, `test_payroll_pipeline_e2e.py`, `test_payroll_partial_run_e2e.py`, `test_payroll_retry.py`) | see above | `POST /payroll/run` now returns the run object with `status: "DRAFT"` (execution backgrounded, Sprints 31–32) instead of a `"success"` envelope — all 4 tests assert the old shape | Update each assertion to check the actual current response shape (e.g. `body["status"] == "DRAFT"` + poll for `run_status`) | Sprint after PAY-TAX-1 | ❌ OPEN — confirmed still affects all 4 files as of Sprint A (2026-07-04), via `git stash` A/B comparison; not caused by Sprint A |
+| TF-3 | `test_payroll_approval_and_lock_e2e` | `tests/test_payroll_lock_and_approval.py` | Fixture `effective_from='1999-01-01'` collided with UNIQUE constraint; seed at `2026-01-01` won temporal query over fixture | Fixed Sprint 18: effective_from→`2026-04-01`; EXPECTED_NET corrected (no NHF workspace rule) | Sprint 18 | ✅ RESOLVED 2026-07-12 (test harness, commit `2a069d6`) — async contract fix via TF-7 |
+| TF-4 | `test_full_payroll_pipeline_e2e` | `tests/test_payroll_pipeline_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-02-01`; EXPECTED_NET/NHF corrected | Sprint 18 | ✅ RESOLVED 2026-07-12 (test harness, commit `2a069d6`) — async contract fix via TF-7 |
+| TF-5 | `test_partial_payroll_run_e2e` | `tests/test_payroll_partial_run_e2e.py` | Same root cause as TF-3 | Fixed Sprint 18: effective_from→`2026-03-01`; EXPECTED_NET corrected | Sprint 18 | ✅ RESOLVED 2026-07-12 (test harness, commit `2a069d6`) — async contract fix via TF-7 |
+| TF-6 | `test_payroll_retry_e2e` | `tests/test_payroll_retry.py` | Same root cause as TF-3; also: period_start/period_end NULL on run blocked P1-3 retry guard | Fixed Sprint 18: effective_from→`2026-02-15`; EXPECTED_NET_A/B corrected; route now persists computed period dates | Sprint 18 | ✅ RESOLVED 2026-07-12 (test harness, commit `2a069d6`) — async contract fix via TF-7 |
+| TF-7 | `body["status"] == "success"` assertion (affects 4 files: `test_payroll_lock_and_approval.py`, `test_payroll_pipeline_e2e.py`, `test_payroll_partial_run_e2e.py`, `test_payroll_retry.py`) | see above | `POST /payroll/run` now returns the run object with `status: "DRAFT"` (execution backgrounded, Sprints 31–32) instead of a `"success"` envelope — all 4 tests assert the old shape | Update each assertion to check the actual current response shape (e.g. `body["status"] == "DRAFT"` + poll for `run_status`) | Sprint after PAY-TAX-1 | ✅ RESOLVED 2026-07-12 (test harness, commit `2a069d6`) — all 4 tests now assert `status == "DRAFT"` + persisted DB state (no polling needed: TestClient completes BackgroundTasks before returning) |
 
 ---
 
@@ -997,7 +1001,7 @@ Arch-council finding: no JWT auth exists anywhere in the system. Must ship befor
 
 ## Phase 3 — Platform Scale (Future)
 
-Deferred until Phase 2 (including Tracks K–O and Agent Layer) is complete and a second client is onboarded.
+Deferred until Phase 1 (including Tracks K–O) and Phase 2 (Agent Layer) are complete and a second client is onboarded.
 
 - Employee payslip PDF generation and distribution (P4-1)
 - Snapshot replay endpoint (P4-2)

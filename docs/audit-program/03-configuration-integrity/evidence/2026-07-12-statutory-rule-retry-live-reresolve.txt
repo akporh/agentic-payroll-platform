@@ -1,0 +1,107 @@
+=== original run builds v2 snapshot including full statutory_rule content (id, version, effective_from, rules_jsonb, tax_bands) ===
+                    }
+
+            historical_rule_sets_list = list(hist_rs_map.values())
+        finally:
+            hist_db.close()
+
+    # ── Build rules context snapshot ──────────────────────────────────────────
+    # v2 (full content) when a rule set is resolved; v1 (ID-only) for legacy.
+    if rule_set_id:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id         = statutory_rule_id,
+            statutory_version         = statutory_version,
+            statutory_effective_from  = stat_effective_from,
+            statutory_rules_jsonb     = rules_jsonb,
+            statutory_tax_bands       = tax_bands,
+            rule_set_id               = rule_set_id,
+            rule_set_effective_from   = rule_set_effective_from,
+            rule_set_items            = rule_set_items_for_snapshot,
+            historical_rule_sets      = historical_rule_sets_list,
+        )
+    else:
+        rules_ctx_snapshot = build_rules_context_snapshot(
+            statutory_rule_id, statutory_version, payroll_rule_ids
+        )
+
+    # ── Public Holiday & rate-code context (C1 — PH-2, C4 — PH-8) ──────────────
+    workspace_payroll_config = get_workspace_payroll_config(workspace_id)
+    # PH_ADDITIVE has no engine implementation — treat as LEAVE_ABSORBS_PH.
+    if workspace_payroll_config.get("d3_leave_overlap_rule") == "PH_ADDITIVE":
+        logger.warning(
+            "workspace %s has d3_leave_overlap_rule=PH_ADDITIVE which is not implemented — "
+
+=== build_rules_context_snapshot v2 return shape ===
+        return {
+            "snapshot_version": 2,
+            "statutory_rule": {
+                "id":             statutory_rule_id,
+                "version":        statutory_version,
+                "effective_from": statutory_effective_from,
+                "rules_jsonb":    statutory_rules_jsonb,
+                "tax_bands":      statutory_tax_bands,
+            },
+            "rule_set": {
+                "id":             rule_set_id,
+                "effective_from": rule_set_effective_from,
+                "items":          rule_set_items,
+            },
+            "historical_rule_sets": historical_rule_sets,
+        }
+
+=== retry _build_shared_context re-resolves statutory_rule LIVE using only statutory_effective_date (frozen scalar), never reads original_snapshot['statutory_rule'] ===
+    # ── Statutory rule — temporal selection ──────────────────────────────────
+    # Use statutory_effective_date from the original run so that retry picks the
+    # same statutory rule as the run that created the snapshot.  Fall back to
+    # latest-version query for legacy runs without the column.
+    if statutory_effective_date:
+        stat_row = db.execute(
+            text("""
+                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+                FROM   statutory_rule sr
+                WHERE  sr.country_code    = :cc
+                  AND  sr.effective_from <= :as_of_date
+                ORDER  BY sr.effective_from DESC, sr.version DESC
+                LIMIT  1
+            """),
+            {"cc": country_code, "as_of_date": statutory_effective_date},
+        ).fetchone()
+    else:
+        raise ValueError(
+            f"Run {payroll_run_id} predates snapshot engine — open a correction run."
+        )
+
+    if stat_row is None:
+        raise ValueError(f"No statutory rule found for country_code '{country_code}'")
+
+    statutory_rule_id = str(stat_row[0])
+    statutory_version = stat_row[1]
+    rules_jsonb       = stat_row[2] or {}
+
+    pension_config = rules_jsonb.get("pension")
+    if not pension_config or "employee_rate" not in pension_config or "employer_rate" not in pension_config:
+        raise ValueError(
+            "Statutory rule is missing pension rates (employee_rate / employer_rate). "
+            "Run the pension rates migration."
+        )
+    pension_employee_rate = Decimal(str(pension_config["employee_rate"]))
+    pension_employer_rate = Decimal(str(pension_config["employer_rate"]))
+    rent_relief_cfg       = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
+    nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
+    health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+    dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    life_ins_rate         = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
+
+
+=== grep confirms zero reads of original_snapshot.get('statutory_rule') or ['statutory_rule'] anywhere in retry service ===
+96:        "statutory_rule_id"  — str
+152:                SELECT sr.statutory_rule_id, sr.version, sr.rules_jsonb
+153:                FROM   statutory_rule sr
+169:    statutory_rule_id = str(stat_row[0])
+192:            WHERE  statutory_rule_id = :sr_id
+195:        {"sr_id": statutory_rule_id},
+387:        "statutory_rule_id":      statutory_rule_id,
+674:                    statutory_rule_id       = shared_ctx["statutory_rule_id"],
+
+=== payroll_run table has no statutory_rule_id column (grep across all migrations for ADD COLUMN/create_table) ===
+NO MATCHES — confirmed no such column exists

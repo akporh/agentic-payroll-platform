@@ -1,0 +1,42 @@
+=== backend/scripts/test_*.py: import execute_and_persist_payroll_run (does not exist) ===
+backend/scripts/test_execute_and_persist.py:1:import uuid
+backend/scripts/test_execute_and_persist.py:2:from backend.application.payroll_run_service import execute_and_persist_payroll_run
+backend/scripts/test_run_batch_persist.py:1:import uuid
+backend/scripts/test_run_batch_persist.py:3:from backend.application.payroll_run_service import execute_and_persist_payroll_run
+
+=== actual function names defined in payroll_run_service.py ===
+19:def execute_and_persist(
+
+=== test_persist.py calls save_payroll_result(payroll_run_id, employee_id, dummy) — 3 positional args ===
+
+import uuid
+from backend.infra.repositories.payroll_result_repo import save_payroll_result
+from backend.infra.repositories.audit_log_repo import save_audit_log
+from backend.infra.repositories.event_store_repo import save_event
+
+dummy = {
+    "gross_components_jsonb": [{"code": "BASIC", "amount": 800000}],
+    "deductions_jsonb": {"PAYE": 84000},
+    "net_pay": 716000,
+    "calculations_snapshot_json": {
+        "gross": 800000,
+        "paye": 84000,
+        "net": 716000
+    },
+}
+
+payroll_run_id =  "bec9157b-a6db-49d8-a88c-99ab0b448aa7"
+employee_id = "92d4ee52-385a-4617-ab18-62f2e4c603ed"
+
+
+=== actual save_payroll_result signature requires status + payroll_output (5 required params) ===
+def save_payroll_result(
+    payroll_run_id: str,
+    employee_id: str,
+    status: str,
+    payroll_output: dict | None,
+    error_message: str | None,
+    component_trace: list | None = None,
+    employee_context: dict | None = None,
+    salary_inputs_snapshot: dict | None = None,
+):

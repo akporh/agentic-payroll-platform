@@ -1,0 +1,82 @@
+=== docs/ top-level with dates ===
+total 528
+drwxr-xr-x@ 31 michaelemedo  staff    992 11 Jul 05:57 .
+drwxr-xr-x@ 54 michaelemedo  staff   1728 10 Jul 20:29 ..
+-rw-r--r--@  1 michaelemedo  staff  14340 10 Jul 20:19 .DS_Store
+-rw-r--r--   1 michaelemedo  staff      0 11 Jun 07:01 .gitkeep
+drwxr-xr-x  13 michaelemedo  staff    416 11 Jun 07:01 analysis
+drwxr-xr-x@  4 michaelemedo  staff    128 10 Jul 20:29 architecture
+drwxr-xr-x   4 michaelemedo  staff    128 11 Jun 07:01 audit
+drwxr-xr-x   7 michaelemedo  staff    224 11 Jul 06:09 audit-program
+drwxr-xr-x  11 michaelemedo  staff    352 11 Jun 07:01 Buisness Specs & Designs (Drifted)
+drwxr-xr-x@ 10 michaelemedo  staff    320 13 Jun 07:44 data
+drwxr-xr-x   3 michaelemedo  staff     96 15 Jun 23:56 design
+-rw-r--r--@  1 michaelemedo  staff   5507 26 May 20:12 Employee Refactor Master Document (v1).md
+-rw-r--r--@  1 michaelemedo  staff   7587 26 May 20:44 Employee Refactor Master Document (v2) + Arch-Council.md
+-rw-r--r--@  1 michaelemedo  staff   6555 27 May 02:10 Employee Refactor Master Document (v3) + Arch-Council.md
+-rw-r--r--@  1 michaelemedo  staff   6233 26 May 21:24 Employee Refactor Master Document (v4) DELTA DOCUMENT.md
+-rw-r--r--@  1 michaelemedo  staff   6233 26 May 21:24 Employee Refactor Master Document (v5) execution spec.md
+-rw-r--r--@  1 michaelemedo  staff  24473 26 May 08:38 linear-import.csv
+-rw-r--r--   1 michaelemedo  staff   8047 11 Jun 07:01 LOCAL_SETUP.md
+drwxr-xr-x   6 michaelemedo  staff    192 11 Jun 07:01 planning
+drwxr-xr-x   3 michaelemedo  staff     96 11 Jun 07:01 retro-reports
+-rw-r--r--   1 michaelemedo  staff  72915 10 Jul 20:29 ROADMAP.md
+-rw-r--r--   1 michaelemedo  staff  61234 26 May 19:00 schema_dump.sql
+drwxr-xr-x   5 michaelemedo  staff    160 11 Jun 07:01 security
+drwxr-xr-x  41 michaelemedo  staff   1312 21 Jun 02:58 stories
+-rw-r--r--   1 michaelemedo  staff  14403 11 Jun 07:01 system-capabilities.md
+drwxr-xr-x  25 michaelemedo  staff    800 10 Jul 20:29 test-reports
+-rw-r--r--   1 michaelemedo  staff  28626 11 Jun 07:01 ui-gap-audit.md
+drwxr-xr-x   4 michaelemedo  staff    128 11 Jun 07:01 ux-design-brief
+drwxr-xr-x   3 michaelemedo  staff     96 11 Jun 07:01 ux-ui-artefacts
+drwxr-xr-x  14 michaelemedo  staff    448 11 Jun 07:01 ux-ui-design-brief
+drwxr-xr-x   6 michaelemedo  staff    192 11 Jun 07:01 wrapper-command
+
+=== docs/Buisness Specs & Designs (Drifted)/ ===
+total 248
+drwxr-xr-x  11 michaelemedo  staff    352 11 Jun 07:01 .
+drwxr-xr-x@ 31 michaelemedo  staff    992 11 Jul 05:57 ..
+-rw-r--r--@  1 michaelemedo  staff   4233 11 Jun 07:01 ARCHITECTURE_LOCK_PHASE1.md
+-rw-r--r--@  1 michaelemedo  staff   2669 11 Jun 07:01 ARCHITECTURE_LOCK_V1_1.md
+-rw-r--r--@  1 michaelemedo  staff   1223 11 Jun 07:01 ARCHITECTURE_LOCK.md
+-rw-r--r--@  1 michaelemedo  staff   2404 11 Jun 07:01 INFRASTRUCTURE_DECISIONS.md
+-rw-r--r--@  1 michaelemedo  staff  16819 11 Jun 07:01 payroll_engine_architecture.md
+-rw-r--r--@  1 michaelemedo  staff   5912 11 Jun 07:01 Phase 1 Visual Architecture for Nigerian Payroll Platform MVP.md
+-rw-r--r--   1 michaelemedo  staff   2076 11 Jun 07:01 REPLIT_AGENT_GUARDRAILS.md
+-rw-r--r--   1 michaelemedo  staff  67356 11 Jun 07:01 sprint_ready_backlog.md
+-rw-r--r--   1 michaelemedo  staff   1363 11 Jun 07:01 Updated REPLIT_AGENT_GUARDRAILS.md
+
+=== onboarding.py cites ARCHITECTURE_LOCK.md ===
+8:Reference: ARCHITECTURE_LOCK.md — Onboarding Pipeline.
+
+=== docs/ux-design-brief vs docs/ux-ui-design-brief ===
+gate-6
+---
+01-entity-map.md
+02-api-surface.md
+03-business-rules.md
+04-actors.md
+05-persona-sketches.md
+06-user-journey-maps.md
+07-screen-inventory.md
+08-data-sensitivity.md
+09-state-flows.md
+10-integration-touchpoints.md
+11-drift-log.md
+README.md
+
+=== docs/analysis dates ===
+total 1344
+drwxr-xr-x  13 michaelemedo  staff     416 11 Jun 07:01 .
+drwxr-xr-x@ 31 michaelemedo  staff     992 11 Jul 05:57 ..
+-rw-r--r--   1 michaelemedo  staff   35533 11 Jun 07:01 0.0-highlights.md
+-rw-r--r--   1 michaelemedo  staff  102530 11 Jun 07:01 0.1-capability-inventory.md
+-rw-r--r--   1 michaelemedo  staff  108363 11 Jun 07:01 0.2-execution-flow.md
+-rw-r--r--   1 michaelemedo  staff  189158 11 Jun 07:01 0.3-user-story-map.md
+-rw-r--r--   1 michaelemedo  staff   34072 11 Jun 07:01 0.4-gap-outcomes.md
+-rw-r--r--   1 michaelemedo  staff   20447 11 Jun 07:01 0.5-business-rules-catalogue.md
+-rw-r--r--   1 michaelemedo  staff   15612 11 Jun 07:01 0.6-business-rules-executive-summary.md
+-rw-r--r--   1 michaelemedo  staff   10072 11 Jun 07:01 0.7 prioritized-backlog.md
+-rw-r--r--   1 michaelemedo  staff   32233 11 Jun 07:01 0.8 system-reality-report.md
+-rw-r--r--   1 michaelemedo  staff    1743 11 Jun 07:01 phase1-userstory.md
+-rw-r--r--   1 michaelemedo  staff  115436 11 Jun 07:01 reality-report-analysis.txt

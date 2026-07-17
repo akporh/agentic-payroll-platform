@@ -422,8 +422,10 @@ def apply_payroll_rules(
             # If amount is zero and component_source is set, derive from the named salary component.
             # Rule output key is rule `name`; source key is `component_source` — no double-count
             # unless operator names the rule identically to the component (future validation story).
-            if amount == Decimal("0") and component_source:
+            fallback_fired = amount == Decimal("0") and bool(component_source)
+            if fallback_fired:
                 amount = components.get(component_source, Decimal("0"))
+            component_source_used = component_source if fallback_fired else None
             condition = resolved_defn.get("condition") or {}
             met, reason = _evaluate_condition(condition, employee_inputs)
             if met:
@@ -442,6 +444,7 @@ def apply_payroll_rules(
                     "rate_used":            str(amount),
                     "resolution_source":    resolution_meta["resolution_source"],
                     "warning":              resolution_meta.get("warning"),
+                    "component_source":     component_source_used,
                 })
             else:
                 trace.append({
@@ -458,6 +461,7 @@ def apply_payroll_rules(
                     "rate_used":            None,
                     "resolution_source":    resolution_meta["resolution_source"],
                     "warning":              resolution_meta.get("warning"),
+                    "component_source":     component_source_used,
                 })
 
         # ── ot_multiplier (C4 — PH-8) ─────────────────────────────────────────

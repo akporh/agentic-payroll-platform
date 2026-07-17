@@ -1,0 +1,6 @@
+'employee_number,employee_name,bank_name,account_number,net_pay\r\nEMP999,"=CMD(""calc"")!A1",Test Bank,000000000,100000.00\r\n'
+
+Leading char of employee_name cell as written: '"'
+'employee_number,employee_name,bank_name,account_number,net_pay\r\nEMP999,=1+1,Test Bank,000000000,100000.00\r\n'
+Parsed employee_name cell value: '=1+1'
+Leading char of actual cell value: '='

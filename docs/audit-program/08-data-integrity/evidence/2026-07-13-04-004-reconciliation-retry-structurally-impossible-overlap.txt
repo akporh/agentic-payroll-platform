@@ -1,0 +1,119 @@
+=== state machine: PARTIAL can only reach CALCULATED, never APPROVED directly ===
+ALLOWED_TRANSITIONS: dict[PayrollRunStatus, list[PayrollRunStatus]] = {
+    PayrollRunStatus.DRAFT: [PayrollRunStatus.CALCULATING, PayrollRunStatus.FAILED],
+    PayrollRunStatus.FAILED: [],
+    PayrollRunStatus.CALCULATING: [PayrollRunStatus.CALCULATED, PayrollRunStatus.PARTIAL],
+    PayrollRunStatus.PARTIAL: [PayrollRunStatus.CALCULATED],
+    PayrollRunStatus.CALCULATED: [PayrollRunStatus.APPROVED],
+    PayrollRunStatus.APPROVED: [PayrollRunStatus.LOCKED],
+    PayrollRunStatus.LOCKED: [PayrollRunStatus.PAID],
+    PayrollRunStatus.PAID: [],
+}
+"""Maps each status to its list of valid next statuses."""
+--
+    return next in ALLOWED_TRANSITIONS.get(current, [])
+
+
+def transition(current: PayrollRunStatus, next: PayrollRunStatus) -> PayrollRunStatus:
+    """Execute a state transition, raising on invalid moves.
+
+    Args:
+        current: The current status of the payroll run.
+        next: The proposed new status.
+
+    Returns:
+--
+            f"Allowed from {current.value}: {[s.value for s in ALLOWED_TRANSITIONS.get(current, [])]}"
+        )
+    return next
+
+=== reconciliation requires LOCKED status (Stage 07 citation, re-verified) ===
+        raise ValueError(f"Payroll run {payroll_run_id} not found.")
+
+    if row[1] != "LOCKED":
+        raise ValueError(
+            f"Reconciliation requires a LOCKED run. Current status: {row[1]}."
+        )
+
+
+=== approve_payroll_run only allows CALCULATED -> APPROVED via transition() validation ===
+def approve_payroll_run(payroll_run_id: str, performed_by: str = "admin@internal") -> dict:
+    """Transition a CALCULATED payroll run to APPROVED.
+
+    Args:
+        payroll_run_id: The run to approve.
+
+    Returns:
+        {"payroll_run_id": str, "status": "APPROVED"}
+
+    Raises:
+        ValueError: Run not found or not in CALCULATED state.
+    """
+
+    db = SessionLocal()
+
+    try:
+        run_row = db.execute(
+            text("""
+                SELECT workspace_id, status
+                FROM   payroll_run
+                WHERE  payroll_run_id = :run_id
+                FOR UPDATE
+            """),
+            {"run_id": payroll_run_id},
+        ).fetchone()
+
+        if run_row is None:
+            raise ValueError(f"Payroll run not found: {payroll_run_id}")
+
+        workspace_id = str(run_row[0])
+        current = PayrollRunStatus(run_row[1])
+
+        # Validates via state machine — raises ValueError if transition illegal
+        transition(current, PayrollRunStatus.APPROVED)
+
+
+=== retry_failed_payroll_employees requires status == PARTIAL, and LOCKED/APPROVED are explicitly rejected ===
+        current_status = run_row[1]
+        retry_strategy = run_row[2] or "PER_EMPLOYEE"
+
+        if current_status == "PAID":
+            raise ValueError("Cannot retry a PAID payroll run")
+
+        # Explicit guard for approved/locked runs — these are intentionally
+        # immutable by business rule, not just incidentally wrong status.
+        if current_status in ("APPROVED", "LOCKED"):
+            raise ValueError(
+                f"Payroll run is {current_status} and cannot be modified. "
+                f"Only PARTIAL runs are eligible for retry."
+            )
+
+        if current_status != "PARTIAL":
+            raise ValueError(
+                f"Only PARTIAL runs can be retried. "
+
+=== zero references to reconciliation anywhere in payroll_retry_service.py ===
+NO MATCHES
+
+=== insert_reconciliation guards against a second reconciliation row for the same run ===
+        db.commit()
+
+        return {
+            "id":              str(row[0]),
+            "payroll_run_id":  str(row[1]),
+            "expected_total":  row[2],
+            "actual_total":    row[3],
+            "status":          row[4],
+            "reconciled_at":   row[5].isoformat() if row[5] else None,
+            "created_at":      row[6].isoformat() if row[6] else None,
+        }
+
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError(
+            f"A reconciliation record already exists for run {payroll_run_id}."
+        ) from exc
+
+    finally:
+        db.close()
+

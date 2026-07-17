@@ -1,0 +1,36 @@
+=== 21 occurrences of detail=str(e)/str(exc) across backend/api/routes/ -- CLAUDE.md's own standing prohibition, violated at scale ===
+backend/api/routes/payroll.py:342:        raise HTTPException(status_code=422, detail=str(exc))
+backend/api/routes/payroll.py:846:        raise HTTPException(status_code=409, detail=str(exc))
+backend/api/routes/payroll.py:1161:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/payroll.py:1183:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/payroll.py:1203:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/payroll.py:1227:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/payroll.py:1333:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/workspace.py:93:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:180:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:663:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:768:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:1022:        raise HTTPException(status_code=409, detail=str(exc))
+backend/api/routes/workspace.py:1452:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:1477:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:1502:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:1598:        raise HTTPException(status_code=400, detail=str(e))
+backend/api/routes/workspace.py:1775:        raise HTTPException(status_code=409, detail=str(exc))
+backend/api/routes/workspace.py:1788:        raise HTTPException(status_code=403, detail=str(exc))
+backend/api/routes/workspace.py:1829:        raise HTTPException(status_code=409, detail=str(exc))
+backend/api/routes/workspace.py:1842:        raise HTTPException(status_code=400, detail=str(exc))
+backend/api/routes/workspace.py:2027:        raise HTTPException(status_code=400, detail=str(exc))
+
+=== representative confirmation: workspace.py:2020-2027 wraps a raw repository DB write in a broad except, leaking driver-level messages verbatim ===
+
+    try:
+        updated = _att_cfg_repo.upsert_attendance_policy(
+            workspace_id,
+            client_code.upper(),
+            **update_fields,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+=== CLAUDE.md's own standing rule ===

@@ -89,6 +89,19 @@ During bulk upload (`handleImport`), `grade_code` is **always null** — never t
 
 ---
 
+## Test Harness (2026-07-12)
+
+The suite is fully green (306 passed, 1 intentional Phase-2 skip) and enforced automatically. Do not close any sprint with a red suite.
+
+- **Run:** `python -m pytest -q` (needs Postgres at `DATABASE_URL`; ~10 s).
+- **Pre-push gate:** `.githooks/pre-push` runs pytest + `tsc --noEmit` before every push (`core.hooksPath` is set to `.githooks`). Emergency bypass: `--no-verify`.
+- **CI:** `.github/workflows/tests.yml` runs on push/PR to uat/main against a **fresh Postgres built from `alembic upgrade head`** — tests must not depend on dev-DB state. The local dev DB is confirmed drifted from migration truth (registry activation flips, missing constraints); CI is the arbiter.
+- **Fixture rules for new e2e tests:** declare registry activation via `tests/registry_state.py` (pin/restore in finally); statutory `effective_from` must be later than every migration seed (latest: 2026-05-01; e2e family uses 2026-05-10..21 — pick an unused date, they collide on a UNIQUE constraint); direct `INSERT INTO employee` must include `employee_number`.
+- **Standing rule:** every bug fix ships with a regression test named for the invariant it protects.
+- Progress/history: `docs/test-reports/test-harness/test-harness-checklist.md`.
+
+---
+
 ## Sprint State
 
 - Sprints 1–21: closed
@@ -110,36 +123,13 @@ During bulk upload (`handleImport`), `grade_code` is **always null** — never t
 
 ## Automated Delivery Workflow
 
-### Sprint Sequence (follow every sprint, in order)
+Follow the global sprint sequence in `~/.claude/CLAUDE.md`'s "Sprint Workflow" section (steps 1–17) for every sprint in this repository. Stage applicability, entry conditions, dependencies, and completion criteria for the auto-invoked review/audit/test gates are authoritative in `docs/sprints/STAGE-REGISTRY.md` and `docs/sprints/WORKFLOW.md` (per D2, `docs/diagnostics/2026-07-12-nonlinear-icm-sprint-workflow-implementation-plan.md`) — not restated here. If this file and the registry ever appear to disagree on a stage the registry models, the registry governs; fix the discrepancy in one place rather than maintaining two versions.
 
-1. `/roadmap` — orient: what's done, what's next, what's deferred
-2. `/pm` — scope stories + write acceptance criteria before plan mode
-3. `/ux-designer` — define flows and IA (frontend track only)
-4. `/architect` — for any structural or cross-layer design work
-5. Explicit user confirmation of scope
-6. Plan mode — research, write plan file, get approval
-7. `/arch-council` — mandatory before ExitPlanMode on any data contract risk
-8. Implementation
-9. `/simplify` — code quality pass on all changed files
-10. `/verify` — run the app, observe live end-to-end behavior (API-to-frontend boundary touched only; skip for backend-only or migration-only sprints)
-11. `/ui-designer` — visual design and polish review (frontend track only)
-12. `/frontend-designer` — broader frontend review (frontend track only)
-13. `/security` — any sprint that adds or modifies API routes (auto-invoked, see below)
-14. `/auditor` — any sprint that touches calculations or statutory rules (auto-invoked, see below)
-15. `/tester` — verification against acceptance criteria from step 2
-16. `/retro` — update skill checklists
-17. `/save-session` — safe exit
+### Frontend sub-steps (not modeled as independent registry stages)
 
-### Auto-Invoke Rules (Claude must invoke without being asked)
+Per `STAGE-REGISTRY.md`'s "Not modeled as a registry stage" note, `/ux-designer`, `/ui-designer`, and `/frontend-designer` are real, invoked steps folded into the `architecture`/`implementation` stages' conditions rather than given their own registry rows. This repository's concrete trigger, kept here since the registry only states it abstractly:
 
-- At the start of every new sprint session, invoke `/roadmap` before asking the user what to work on.
-- When the user says "let's scope sprint", "what's next", or "start sprint", invoke `/pm` immediately — do not summarise the backlog manually.
 - When a sprint plan includes any file under `frontend/src/`, invoke `/ux-designer` before plan mode, then `/ui-designer` and `/frontend-designer` after implementation — do not wait to be asked.
-- When a sprint plan includes any structural or cross-layer design, invoke `/architect` before plan mode — do not wait to be asked.
-- When a sprint plan or implementation touches both `backend/api/routes/` and any file under `frontend/src/`, invoke `/verify` after `/simplify` — run the app and confirm end-to-end behavior before the review gates. Do not invoke for backend-only or migration-only sprints.
-- When a sprint plan or implementation touches `backend/api/routes/`, invoke `/security` automatically after implementation — do not wait to be asked.
-- When a sprint plan or implementation touches `sequential_executor.py`, `rule_evaluator.py`, `executor.py`, or any file under `migrations/versions/` that alters a statutory rule or calculation, invoke `/auditor` after `/security` — do not wait to be asked.
-- When the user says "done", "sprint complete", or "close sprint", invoke `/retro` — do not skip.
 
 ### Hook-Enforced Guards (fires automatically on every file save)
 

@@ -1,0 +1,56 @@
+=== payroll_result: three-layer immutability, correctly excludes PARTIAL (so retry's DELETE+INSERT is allowed) ===
+Triggers:
+    trg_prevent_calculated_result_delete BEFORE DELETE ON payroll_result FOR EACH ROW EXECUTE FUNCTION prevent_payroll_result_mutation()
+    trg_prevent_calculated_result_update BEFORE UPDATE ON payroll_result FOR EACH ROW EXECUTE FUNCTION prevent_payroll_result_mutation()
+    trg_prevent_paid_result_delete BEFORE DELETE ON payroll_result FOR EACH ROW EXECUTE FUNCTION prevent_result_modification_if_paid()
+    trg_prevent_paid_result_update BEFORE UPDATE ON payroll_result FOR EACH ROW EXECUTE FUNCTION prevent_result_modification_if_paid()
+    trg_snapshot_immutable BEFORE UPDATE OF calculations_snapshot_json ON payroll_result FOR EACH ROW WHEN (old.calculations_snapshot_json IS DISTINCT FROM new.calculations_snapshot_json) EXECUTE FUNCTION prevent_snapshot_update()
+
+CREATE OR REPLACE FUNCTION public.prevent_payroll_result_mutation()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+        DECLARE
+            v_run_id UUID;
+            v_status TEXT;
+        BEGIN
+            -- Works for both UPDATE (NEW is available) and DELETE (NEW is NULL)
+            v_run_id := COALESCE(NEW.payroll_run_id, OLD.payroll_run_id);
+
+            SELECT status INTO v_status
+            FROM   payroll_run
+            WHERE  payroll_run_id = v_run_id;
+
+            IF v_status IN ('CALCULATED', 'APPROVED', 'LOCKED', 'PAID') THEN
+                RAISE EXCEPTION
+                    'Payroll results are immutable after calculation. '
+                    'Run % has status %.',
+                    v_run_id,
+                    v_status;
+            END IF;
+
+            -- Allow the operation
+            RETURN COALESCE(NEW, OLD);
+        END;
+        $function$
+
+=== payroll_run: only protected once PAID -- APPROVED and LOCKED runs' own totals/period fields have no DB-level immutability guard ===
+Triggers:
+    trg_enforce_payroll_readiness BEFORE INSERT ON payroll_run FOR EACH ROW EXECUTE FUNCTION enforce_payroll_readiness()
+    trg_enforce_payroll_run_initial_status BEFORE INSERT ON payroll_run FOR EACH ROW EXECUTE FUNCTION enforce_payroll_run_initial_status()
+    trg_enforce_workspace_live BEFORE INSERT ON payroll_run FOR EACH ROW EXECUTE FUNCTION enforce_workspace_live_before_payroll()
+    trg_prevent_paid_run_delete BEFORE DELETE ON payroll_run FOR EACH ROW WHEN (old.status::text = 'PAID'::text) EXECUTE FUNCTION prevent_paid_payroll_run_update()
+    trg_prevent_paid_run_update BEFORE UPDATE ON payroll_run FOR EACH ROW WHEN (old.status::text = 'PAID'::text) EXECUTE FUNCTION prevent_paid_payroll_run_update()
+    trg_run_snapshot_immutable BEFORE UPDATE OF rules_context_snapshot ON payroll_run FOR EACH ROW WHEN (old.rules_context_snapshot IS DISTINCT FROM new.rules_context_snapshot) EXECUTE FUNCTION prevent_run_snapshot_update()
+    trg_validate_payroll_status_transition BEFORE UPDATE OF status ON payroll_run FOR EACH ROW WHEN (old.status::text IS DISTINCT FROM new.status::text) EXECUTE FUNCTION validate_payroll_status_transition()
+
+CREATE OR REPLACE FUNCTION public.prevent_paid_payroll_run_update()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+    BEGIN
+        RAISE EXCEPTION 
+            'Payroll run % is PAID and cannot be modified',
+            OLD.payroll_run_id;
+    END;
+    $function$

@@ -1,0 +1,28 @@
+=== load_grades.py / load_employee_contracts.py import 'from backend.infra.db import get_session' ===
+backend/scripts/load_grades.py:1:import json
+backend/scripts/load_grades.py:2:import uuid
+backend/scripts/load_grades.py:3:from backend.infra.db import get_session
+backend/scripts/load_grades.py:4:from sqlalchemy import text
+backend/scripts/load_employee_contracts.py:1:import json
+backend/scripts/load_employee_contracts.py:2:import uuid
+backend/scripts/load_employee_contracts.py:3:from sqlalchemy import text
+backend/scripts/load_employee_contracts.py:4:from backend.infra.db import get_session
+
+=== backend/infra/db/__init__.py is empty — get_session does not exist there ===
+(empty file confirmed above — 0 bytes / no output)
+
+=== backend/infra/db/session.py only exports SessionLocal, not get_session ===
+import os
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base
+
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg2://michaelemedo@localhost:5432/payroll_dev")
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800)
+SessionLocal = sessionmaker(bind=engine)
+
+Base = declarative_base()

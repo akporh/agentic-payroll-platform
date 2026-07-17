@@ -1,0 +1,39 @@
+=== backend/app/ contents (finding 01-001) ===
+backend/app
+backend/app/.gitkeep
+
+=== CLAUDE.md architecture table — does not list backend/app ===
+## Architecture
+
+| Layer | Location |
+|-------|----------|
+| API routes | `backend/api/routes/` |
+| Application services | `backend/application/` |
+| Domain logic (pure) | `backend/domain/payroll/` |
+| Repositories (raw SQL) | `backend/infra/repositories/` |
+| DB models | `backend/infra/db/models/` |
+| Migrations | `migrations/versions/` |
+| Frontend pages | `frontend/src/pages/` |
+| Frontend API client | `frontend/src/api/payroll.ts` |
+| Frontend types | `frontend/src/types/payroll.ts` |
+
+Domain code must never import infrastructure. Routes must never contain business logic.
+
+
+=== services/ and database/migrations/ — empty check (finding 01-003) ===
+--- services/payroll-engine ---
+total 0
+drwxr-xr-x  2 michaelemedo  staff   64 13 Feb 05:05 .
+drwxr-xr-x  6 michaelemedo  staff  192 13 Feb 05:45 ..
+--- services/api-gateway ---
+total 0
+drwxr-xr-x  2 michaelemedo  staff   64 13 Feb 05:05 .
+drwxr-xr-x  6 michaelemedo  staff  192 13 Feb 05:45 ..
+--- services/shared ---
+total 0
+drwxr-xr-x  2 michaelemedo  staff   64 13 Feb 05:05 .
+drwxr-xr-x  6 michaelemedo  staff  192 13 Feb 05:45 ..
+--- database/migrations ---
+total 0
+drwxr-xr-x  2 michaelemedo  staff   64 13 Feb 05:05 .
+drwxr-xr-x  4 michaelemedo  staff  128 13 Feb 05:08 ..

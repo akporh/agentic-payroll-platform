@@ -1,0 +1,174 @@
+=== admin.py routes ===
+10:@router.get("/admin", response_class=HTMLResponse)
+17:@router.get("/admin/onboarding", response_class=HTMLResponse)
+24:@router.get("/admin/payroll", response_class=HTMLResponse)
+
+=== employees.py routes ===
+119:@router.get("/{workspace_id}/employees/{employee_id}")
+131:@router.patch("/{workspace_id}/employees/{employee_id}")
+159:@router.post("/{workspace_id}/employees/{employee_id}/contracts", status_code=201)
+223:@router.patch("/{workspace_id}/employee-contracts/{contract_id}")
+
+=== health.py routes ===
+15:@router.get("/health")
+
+=== onboarding.py routes ===
+45:@router.post("/onboarding/upload")
+90:@router.post("/onboarding/preview")
+146:@router.post("/onboarding/commit")
+
+=== onboarding_validation.py routes ===
+148:@router.post("/onboarding/validate")
+
+=== payroll_input.py routes ===
+95:@router.get("/{workspace_id}/payroll/input-codes")
+131:@router.post("/{workspace_id}/payroll/input-codes/by-date")
+173:@router.get("/{workspace_id}/payroll/inputs")
+180:@router.post("/{workspace_id}/payroll/inputs")
+247:@router.post("/{workspace_id}/payroll/inputs/bulk")
+393:@router.get("/workspaces/{workspace_id}/payroll/inputs/issues")
+472:@router.patch("/{workspace_id}/payroll/inputs/{input_id}")
+492:@router.delete("/{workspace_id}/payroll/inputs/{input_id}")
+
+=== payroll.py routes (all 26) ===
+40:@router.post("/payroll/run")
+884:@router.post("/{workspace_id}/payroll/run")
+975:@router.get("/{workspace_id}/payroll/runs")
+1009:@router.get("/{workspace_id}/payroll/runs/{run_id}")
+1042:@router.get("/{workspace_id}/payroll/runs/{run_id}/results")
+1117:@router.post("/payroll/run/{run_id}/retry")
+1144:@router.post("/payroll/run/{run_id}/approve")
+1164:@router.post("/payroll/run/{run_id}/lock")
+1184:@router.post("/payroll/run/{run_id}/pay")
+1208:@router.post("/payroll/run/{run_id}/reconcile")
+1236:@router.get("/payroll/run/{run_id}/reconcile")
+1265:@router.get("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+1274:@router.post("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+1290:@router.patch("/{workspace_id}/payroll/runs/{run_id}/reconciliation")
+1309:@router.get("/{workspace_id}/payroll/runs/{run_id}/timeline")
+1316:@router.get("/{workspace_id}/payroll/ops/legacy-executor-stats")
+1334:@router.get("/{workspace_id}/payroll/runs/{run_id}/audit")
+1427:@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/bank-upload")
+1458:@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/paye")
+1498:@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/pension")
+1564:@router.get("/{workspace_id}/payroll/runs/{run_id}/exports/full-detail")
+1651:@router.post("/workspaces/{workspace_id}/timesheet/upload")
+1667:@router.post("/workspaces/{workspace_id}/timesheet/derive")
+1676:@router.post("/workspaces/{workspace_id}/timesheet/approve")
+1688:@router.get("/workspaces/{workspace_id}/timesheet/status")
+1697:@router.get("/workspaces/{workspace_id}/timesheet/audit/{employee_id}")
+
+=== workspace.py routes (all 42) ===
+51:@router.post("/workspace")
+98:@router.get("/workspaces")
+133:@router.get("/workspace/info")
+167:@router.post("/{workspace_id}/transition")
+185:@router.get("/{workspace_id}/onboarding-status")
+194:@router.get("/{workspace_id}/employees")
+280:@router.post("/{workspace_id}/employees")
+438:@router.post("/{workspace_id}/employees/{employee_id}/enroll")
+522:@router.post("/{workspace_id}/employees/bulk-enroll")
+592:@router.patch("/{workspace_id}/employees/contracts")
+668:@router.patch("/{workspace_id}/employees/{employee_id}/contract")
+773:@router.get("/{workspace_id}/salary-definitions")
+802:@router.get("/{workspace_id}/designations")
+821:@router.post("/{workspace_id}/salary-definitions")
+855:@router.post("/{workspace_id}/pay-cycle")
+887:@router.post("/{workspace_id}/grade")
+913:@router.post("/{workspace_id}/designation")
+939:@router.post("/{workspace_id}/salary-definition")
+992:@router.post("/{workspace_id}/payroll-rule")
+1045:@router.post("/{workspace_id}/component-metadata")
+1059:@router.get("/{workspace_id}/platform-components")
+1097:@router.get("/{workspace_id}/component-overrides")
+1124:@router.get("/{workspace_id}/configuration")
+1270:@router.patch("/{workspace_id}/component-overrides/{component_code}")
+1377:@router.patch("/{workspace_id}/pay-cycle")
+1457:@router.patch("/{workspace_id}/grade/{grade_code}")
+1482:@router.patch("/{workspace_id}/designation/{designation_code}")
+1507:@router.patch("/{workspace_id}/salary-definition/{salary_definition_id}")
+1603:@router.patch("/{workspace_id}/payroll-rule/{rule_id}")
+1643:@router.delete("/{workspace_id}/payroll-rule/{rule_id}")
+1696:@router.get("/workspaces/{workspace_id}/payroll-config")
+1713:@router.put("/workspaces/{workspace_id}/payroll-config")
+1744:@router.get("/workspaces/{workspace_id}/rate-codes")
+1762:@router.post("/workspaces/{workspace_id}/rate-codes", status_code=201)
+1778:@router.delete("/workspaces/{workspace_id}/rate-codes/{code}", status_code=200)
+1800:@router.get("/workspaces/{workspace_id}/public-holidays")
+1819:@router.post("/workspaces/{workspace_id}/public-holidays", status_code=201)
+1832:@router.delete("/workspaces/{workspace_id}/public-holidays/{holiday_id}", status_code=200)
+1870:@router.get("/workspaces/{workspace_id}/attendance-codes")
+1890:@router.post("/workspaces/{workspace_id}/attendance-codes", status_code=201)
+1947:@router.patch("/workspaces/{workspace_id}/attendance-codes/{client_code}")
+1992:@router.patch("/workspaces/{workspace_id}/attendance-policies/{client_code}")
+
+=== router registration / prefixes in app entrypoint ===
+backend/api/routes/employees.py:30:router = APIRouter()
+backend/api/routes/admin.py:5:router = APIRouter()
+backend/api/routes/payroll_input.py:30:router = APIRouter()
+backend/api/routes/onboarding_validation.py:19:router = APIRouter()
+backend/api/routes/health.py:12:router = APIRouter()
+backend/api/routes/onboarding.py:28:router = APIRouter()
+backend/api/routes/workspace.py:42:router = APIRouter()
+backend/api/routes/payroll.py:37:router = APIRouter()
+backend/api/main.py
+     1	"""
+     2	FastAPI application entry point.
+     3	
+     4	Creates the app instance and registers versioned API routers.
+     5	No business logic lives here — this is purely the HTTP entry layer.
+     6	
+     7	Reference: ARCHITECTURE_LOCK.md — API Layer.
+     8	"""
+     9	
+    10	import os
+    11	from fastapi import FastAPI
+    12	from fastapi.middleware.cors import CORSMiddleware
+    13	from fastapi.templating import Jinja2Templates
+    14	from fastapi.staticfiles import StaticFiles
+    15	from backend.api.routes.health import router as health_router
+    16	from backend.api.routes.onboarding import router as onboarding_router
+    17	from backend.api.routes.onboarding_validation import router as onboarding_validation_router
+    18	from backend.api.routes import admin
+    19	from backend.api.routes import payroll
+    20	from backend.api.routes import payroll_input
+    21	from backend.api.routes import workspace
+    22	from backend.api.routes import employees
+    23	
+    24	app = FastAPI(
+    25	    title="Agentic Payroll Platform",
+    26	    description="Phase 1 MVP — Deterministic payroll engine for Nigerian payroll processing",
+    27	    version="1.0.0",
+    28	)
+    29	
+    30	# ---------------------------------------------------------------------------
+    31	# CORS — required so the Vercel-hosted frontend can call this backend.
+    32	# ALLOWED_ORIGINS env var: comma-separated list of allowed origins.
+    33	# Defaults to "*" for UAT/preview. Tighten to the Vercel URL in production.
+    34	# Example: ALLOWED_ORIGINS=https://payroll.example.com,https://payroll-git-main.vercel.app
+    35	# ---------------------------------------------------------------------------
+    36	_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+    37	_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
+    38	
+    39	app.add_middleware(
+    40	    CORSMiddleware,
+    41	    allow_origins=_origins,
+    42	    allow_credentials=False,
+    43	    allow_methods=["*"],
+    44	    allow_headers=["*"],
+    45	)
+    46	
+    47	templates = Jinja2Templates(directory="backend/api/templates")
+    48	
+    49	
+    50	app.include_router(admin.router)
+    51	app.mount("/static", StaticFiles(directory="backend/api/static"), name="static")
+    52	
+    53	
+    54	app.include_router(health_router, prefix="/api/v1")
+    55	app.include_router(onboarding_router, prefix="/api/v1")
+    56	app.include_router(onboarding_validation_router, prefix="/api/v1")
+    57	app.include_router(payroll.router, prefix="/api/v1")
+    58	app.include_router(payroll_input.router, prefix="/api/v1")
+    59	app.include_router(workspace.router, prefix="/api/v1")
+    60	app.include_router(employees.router, prefix="/api/v1")

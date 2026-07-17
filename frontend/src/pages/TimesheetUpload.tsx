@@ -14,6 +14,13 @@ import {
 import { useWorkspaceContext } from '../context/WorkspaceContext';
 import { extractError } from '../utils/errorUtils';
 
+// Advisory only — backend/api/routes/payroll.py's MAX_TIMESHEET_UPLOAD_BYTES
+// is the authoritative limit. This constant exists purely for early user
+// feedback (skip the network round-trip for an obviously oversized file);
+// it must never be relied on as enforcement, and any divergence between the
+// two must never weaken the backend check.
+const MAX_TIMESHEET_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
 function firstOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -62,6 +69,10 @@ export function TimesheetUpload() {
   async function handleUpload() {
     const file = fileRef.current?.files?.[0];
     if (!file || !workspaceId) return;
+    if (file.size > MAX_TIMESHEET_UPLOAD_BYTES) {
+      toast.show('error', 'File too large — max 10 MB. Please split the upload or contact support.');
+      return;
+    }
     setUploading(true);
     setUploadError(null);
     setUploadResult(null);
@@ -71,7 +82,13 @@ export function TimesheetUpload() {
       toast.show('success', 'Timesheet uploaded successfully.');
       loadStatus();
     } catch (e) {
-      setUploadError(extractError(e));
+      const message = extractError(e);
+      setUploadError(message);
+      if (message.includes('too large')) {
+        // Backend rejected on size (413) despite the advisory pre-check —
+        // still surface it as a toast, matching the pre-check's UX.
+        toast.show('error', message);
+      }
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';

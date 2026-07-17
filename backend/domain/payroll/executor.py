@@ -176,6 +176,12 @@ def _run_sequential(
     # Each event carries its own reference_date for per-event rate resolution.
     full_context["employee_inputs"] = inputs or {}
 
+    # Surface is_first_paid_month (per_employee_context_json) to the sequential
+    # executor's ctx — the Development Levy cadence gate reads it directly.
+    # Frozen on retry: employee_context here is the snapshot restored by
+    # get_employee_context_from_result, not a live re-query (DEC-04/plan Story 1).
+    full_context["is_first_paid_month"] = bool((employee_context or {}).get("is_first_paid_month", False))
+
     # Extract period context; fall back to v1-compatible MONTHLY defaults when absent.
     # Log the resolved period so the trace shows input → normalization result.
     _period_from_ctx = full_context.get("period")

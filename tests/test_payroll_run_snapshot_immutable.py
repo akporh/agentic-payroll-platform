@@ -33,6 +33,7 @@ from sqlalchemy.exc import InternalError
 
 from backend.api.main import app
 from backend.infra.db.models import Account, Workspace
+from tests.registry_state import pin_registry_state, restore_registry_state
 from backend.infra.db.session import SessionLocal
 
 client = TestClient(app)
@@ -49,6 +50,11 @@ def test_run_snapshot_is_immutable():
     component_metadata_id = uuid.uuid4()
 
     db = SessionLocal()
+    # Expected amounts assume neither NHF nor rent relief deducts — declare
+    # that registry state rather than assume it (fresh migrated DBs ship both active).
+    registry_prior = pin_registry_state(
+        db, {"NHF_CONTRIBUTION": False, "RENT_RELIEF": False},
+    )
 
     try:
         # -------------------------------------------------------------------
@@ -69,7 +75,7 @@ def test_run_snapshot_is_immutable():
             text("""
                 INSERT INTO statutory_rule
                     (statutory_rule_id, state, version, rules_jsonb, country_code, effective_from)
-                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-03-15')
+                VALUES (:id, 'NATIONAL', 9995, '{"pension": {"employee_rate": 0.08, "employer_rate": 0.10}}', 'NG', '2026-05-14')
             """),
             {"id": statutory_rule_id},
         )
@@ -172,7 +178,12 @@ def test_run_snapshot_is_immutable():
         assert snapshot is not None, "rules_context_snapshot must not be NULL"
         assert snapshot["statutory_rule"]["id"] == str(statutory_rule_id)
         assert snapshot["statutory_rule"]["version"] == 9995
-        assert isinstance(snapshot["payroll_rules"], list)
+        # 04-001 remediation: v2 statutory content is always frozen now, even for a
+        # workspace whose PENSION rule has no effective_from (no rule_set published).
+        # See docs/audit-program/05-snapshot-integrity/findings.md §9.
+        assert snapshot.get("snapshot_version") == 2
+        assert snapshot["rule_set"] is None
+        assert isinstance(snapshot["statutory_rule"]["tax_bands"], list)
 
         original_snapshot = snapshot
 
@@ -206,6 +217,7 @@ def test_run_snapshot_is_immutable():
 
     finally:
         db.rollback()
+        restore_registry_state(db, registry_prior)
         # Bypass immutability triggers so teardown succeeds at any lifecycle state.
         db.execute(text("SET LOCAL session_replication_role = replica"))
 
