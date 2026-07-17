@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-17 by the controller on Stage 06's closure — critic PASS, re-critic addendum in `06-compliance-controls/outputs/critic-review.md`)
+awaiting-critic (executor pass complete 2026-07-17; 3 confirmed findings F-07-01..03, all 9 outputs produced, evidence pinned at `ea1590a`; R5 resolved by DEC-07-03)
 
 ## Objective
 
@@ -172,4 +172,4 @@ Stage 07 is ready for the critic only when:
 
 ## Next action
 
-**Run the Stage 07 primary-executor pass per `RUNBOOK.md`.**
+**Run the independent critic per `CRITIC.md`** — save the report to `outputs/critic-review.md`, then apply the controller disposition per `RUNBOOK.md`.
