@@ -19,6 +19,11 @@ _None currently recorded._
 | DQ-007 | Single-operator segregation-of-duties waiver for C12 statutory approvals — proposer ≠ approver may be operationally impossible for a small bureau; options incl. compensating controls (`06-compliance-controls/outputs/statutory-change-control-design.md` §8). Must resolve before C12 build authorisation. **Context amendment (Stage 07, 2026-07-17):** decide together with whether MFA enrollment for approval-capable operators becomes a *hard* C12 launch gate — R5 is resolved as step-up re-auth (DEC-07-03, `07-security-identity/outputs/approval-security-design.md` §3); password-only step-up is the floor, and both questions are risk-appetite calls on the same approval action | 06 (amended 07) | human reviewer (pre-C12 build; surfaces at Stage 13) | forwarded |
 | DQ-008 | Legal confirmation of audit/evidence retention period — source document asserts 7 years without cited basis; statutory minimum and any data-protection maximum need professional confirmation (`06-compliance-controls/outputs/agent-tool-audit-standard.md` §2). Gates retention-enforcing mechanisms only; "keep at least 7y" is the working floor meanwhile | 06 | human reviewer + Stage 08 | forwarded |
 
+## Visibility items (not queued decisions)
+
+- **DEC-07-04** — audit-tamper residual-risk acceptance (in-DB controls don't bind a DB superuser; external anchoring judged disproportionate) — flagged for review at Stage 10/13.
+- **DEC-08-09** — Stage 08's C12 correction mechanics commit Phase 3 to proposing a **data-contract change**: `statutory_rule` UNIQUE widens from `(country_code, effective_from)` to `(country_code, effective_from, version)` (resolution stays total-ordered; the tie-break already exists in code, F-08-01). Flagged by the Stage 08 critic for the next human-reviewer touchpoint, pre-build authorisation; goes through the repo's standing `/arch-council` gate at Phase 3.
+
 ## Evidence gaps
 
 | ID | Gap | Owner stage | Blocking? |

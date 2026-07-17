@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-17; all 10 outputs produced, findings/decisions/queue updated; evidence pinned at `573be0d`)
+closed (2026-07-17 — critic PASS with zero blocking corrections, D-003 automatic closure; report + controller disposition in `outputs/critic-review.md`)
 
 ## Objective
 
@@ -118,4 +118,4 @@ Stage 08 is ready for the critic only when:
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md`** (report → `outputs/critic-review.md`), then controller disposition.
+**None — stage closed.** Continue the loop at Stage 09 (`review-state.md`).

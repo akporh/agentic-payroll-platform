@@ -55,7 +55,7 @@ Capability-scoped registries (SS-4): each capability constructs its session from
 - **Params**: `run_id: UUID`, `employee_id?: UUID`, `limit?: int ≤ 100`.
 - **Scoping**: through `payroll_run.workspace_id` via `run_id` (results carry no workspace column — declared join path).
 - **Returns**: per row `{employee_id, status, gross_pay, net_pay, component_trace: [...] | null}` — all amounts strings.
-- **Nulls**: `component_trace_jsonb IS NULL` (legacy-executor rows) → `component_trace: null` with sibling `trace_available: false` — a distinct, explicit state (matrix rule 4). The wrapper's null-handling is independent of the HTTP-layer coercion at `payroll.py:1129` (which coerces to `[]` — a tool must not inherit that ambiguity; see `remediation-designs.md` §6 for the repo-layer guard).
+- **Nulls**: `component_trace_jsonb IS NULL` (legacy-executor rows) → `component_trace: null` with sibling `trace_available: false` — a distinct, explicit state (matrix rule 4). The wrapper's null-handling is independent of the HTTP-layer coercion at `payroll.py:1163` (`r[7] or []`, which coerces to `[]` — a tool must not inherit that ambiguity; see `remediation-designs.md` §6 for the repo-layer guard).
 
 ### 3.5 `explain_component_trace` (C5)
 - **Params**: `run_id: UUID`, `employee_id: UUID`.

@@ -86,6 +86,11 @@ Stage 04 (Outcome Discovery) introduced no new sources — its evidence base is 
 ### S-04 note (Stage 06)
 Stage 06 re-read `docs/architecture/agent-layer-architecture.html` (S-04, live read 2026-07-15) only for the `agent_session_log`/retention design (lines 496, 938, 1150–1151) — excerpts saved in the Stage 06 evidence file §7. Treated as stated intent only, unchanged status ("NEEDS REVISION", D-02-01).
 
+### Codebase re-read notes (Stages 07–08)
+
+- **Stage 07 (2026-07-17)**: fresh direct reads of the route surface, CORS configuration, and `workspace_info()` callers at commit `ea1590a`; excerpts in `07-security-identity/evidence/`.
+- **Stage 08 (2026-07-17)**: fresh direct reads at commit `573be0d` (clean tree) for mechanism grounding — statutory resolution query, persister transaction boundaries, actor-input sites, reconciliation/decorative routes, executor purity, `simulate_payroll.py` precedent; excerpts in `08-technical-architecture/evidence/08-code-grounding-excerpts.md`. Stage 08 also re-read S-04 (`agent-layer-architecture.html`, live read 2026-07-17) for the Track P/V/X/Y mechanism proposals — design under review, not authority, unchanged status.
+
 ## Next action
 
-**Stage 06 executor pass complete — critic review, then Stage 07.**
+**Stage 08 closed — register current through Stage 08. Next entries due from Stage 09's consulted sources.**
