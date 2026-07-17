@@ -49,7 +49,7 @@ _None._
 
 ### F-09-04: The existing IA provides the patterns the new surfaces need — and contains no platform-level area
 
-- **Current implementation**: Two-tier navigation (DD-1): TopBar (logo | workspace picker | user menu — including an unwired `userName` avatar) + workspace sidebar with numeric badge support on nav items, capped at 99+ (`frontend/src/design-system/components/Navigation.tsx:4-11,215,238,244,306-311`). The router (`frontend/src/router.tsx`) defines only the bureau dashboard (`/`) and `/workspaces/:workspaceId/*` — no platform-level admin routes exist. `NativeUploadFlow`/`ColumnMappingPanel` are shared components consumed by two pages.
+- **Current implementation**: Two-tier navigation (DD-1): TopBar (logo | workspace picker | user menu — including an unwired `userName` avatar) + workspace sidebar with numeric badge support on nav items, capped at 99+ (`frontend/src/design-system/components/Navigation.tsx:4-11,215,238,244,306-311`). The router (`frontend/src/router.tsx`) defines only the bureau dashboard (`/`) and `/workspaces/:workspaceId/*` — no platform-level admin routes exist. `NativeUploadFlow`/`ColumnMappingPanel` are shared components consumed by three pages (`Employees.tsx:1610`, `PayrollInputsBulkUpload.tsx:513`, `PayrollResults.tsx:443` — the reconciliation comparison upload; corrected per critic RC-1).
 - **Intended design**: n/a — this is grounding, not a gap claim.
 - **Identified gap**: None (informational). Consequences drawn in the outputs: the queue/pending-action badges and the notification bell reuse existing chrome patterns; C12 requires the platform's first platform-level area (one-off structural cost — `stage-11-handoff.md` §3); C13 extends live shared components rather than new surfaces.
 - **Evidence**: `frontend/src/design-system/components/Navigation.tsx`, `frontend/src/router.tsx`, component grep — all read this session at `7d36020`; excerpts in `evidence/09-frontend-grounding-excerpts.md` §§1, 5, 6.
@@ -66,4 +66,4 @@ _None._
 
 ## Next action
 
-**Stage executor pass complete — awaiting independent critic per `CRITIC.md`.**
+**None — stage closed 2026-07-17 on critic PASS (F-09-04 corrected per critic RC-1 pre-closure).**

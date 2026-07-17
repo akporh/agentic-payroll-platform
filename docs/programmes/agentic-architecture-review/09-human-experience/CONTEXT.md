@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-17 — all 9 outputs produced, 4 confirmed findings F-09-01–04, 14 executor design conclusions DEC-09-01–14, zero human decisions; frontend claims verified at commit `7d36020` with excerpts in `evidence/09-frontend-grounding-excerpts.md`)
+closed (2026-07-17 — independent critic **PASS**, `outputs/critic-review.md`; three non-blocking corrections RC-1–3 applied by the controller pre-closure; zero blocking human decisions; automatic closure per D-003)
 
 ## Objective
 
@@ -79,4 +79,4 @@ Ready for the critic only when: every Q1–Q9 has a design answer or explicitly-
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md` → `outputs/critic-review.md`.**
+**None — stage closed. Stage 10 (Evaluation & Assurance) is open; see `10-evaluation-assurance/CONTEXT.md`.**

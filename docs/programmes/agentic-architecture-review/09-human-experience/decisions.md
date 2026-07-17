@@ -5,7 +5,7 @@ Stage-local log of human decisions made during this stage. Master log: `_core/HU
 ## Gate
 
 - **Stage opened**: 2026-07-17 (context-ready on Stage 08 closure; executor pass same day)
-- **Stage closed**: pending critic
+- **Stage closed**: 2026-07-17 (critic PASS, D-003 automatic closure; RC-1–3 applied by controller pre-closure)
 
 ## Human decisions log
 
@@ -34,4 +34,4 @@ Recorded for downstream traceability; each is grounded in a binding input, not a
 
 ## Next action
 
-**Independent critic per `CRITIC.md`.**
+**None — stage closed.**

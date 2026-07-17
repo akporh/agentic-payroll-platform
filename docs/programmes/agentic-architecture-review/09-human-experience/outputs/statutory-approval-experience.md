@@ -45,4 +45,4 @@ Application is a separate step (mechanism §3), immediate in the happy path: aft
 
 ## 7. Notifications
 
-C11 detections and state transitions fan out as notification pointers to `PLATFORM_ADMIN` operators (CRITICAL for detected changes with near effective dates, WARNING otherwise). Pointers only; the decision lives here.
+C11 detections and state transitions fan out as notification pointers to `PLATFORM_ADMIN` operators (CRITICAL for detected changes with near effective dates, WARNING otherwise). Pointers only; the decision lives here. **How platform-level rows travel through the workspace-scoped notification table is an open implementation-specification item** (`notification-experience.md` §3, per critic RC-2) — whatever fan-out rule Phase 3 picks, pointers to this surface reach admins only.

@@ -4,7 +4,7 @@ Designs the mapping-review → dry-run → commit flow. **Mechanisms rendered**:
 
 ## 1. Where the flow lives
 
-C13/C14 extend the **existing** import surfaces — `NativeUploadFlow` + `ColumnMappingPanel` (`frontend/src/components/shared/`, consumed by Employees and PayrollInputsBulkUpload — evidence file §5) — not a new parallel wizard. The portfolio decision (§7) already anchors C13 in "the existing upload UI"; this stage keeps that literally: the flow is a staged full-page sequence inside the workspace's existing import entry points. (Not a modal wizard: SlideOvers are single-step per ui-decisions, and the repo's wizard-modal pattern doesn't exist; full-page staged flow follows the existing WorkspaceSetup precedent.)
+C13/C14 extend the **existing** import surfaces — `NativeUploadFlow` + `ColumnMappingPanel` (`frontend/src/components/shared/`, consumed by three pages: Employees, PayrollInputsBulkUpload, and PayrollResults' reconciliation comparison upload — evidence file §5) — not a new parallel wizard. Because the shared components have three consuming surfaces, any C13 change to them regression-tests all three, not just the onboarding path (carried into `stage-11-handoff.md` §3 sizing). The portfolio decision (§7) already anchors C13 in "the existing upload UI"; this stage keeps that literally: the flow is a staged full-page sequence inside the workspace's existing import entry points. (Not a modal wizard: SlideOvers are single-step per ui-decisions, and the repo's wizard-modal pattern doesn't exist; full-page staged flow follows the existing WorkspaceSetup precedent.)
 
 Stages, each a distinct page state with an explicit progress header (Upload → Review mapping → Dry run → Commit):
 

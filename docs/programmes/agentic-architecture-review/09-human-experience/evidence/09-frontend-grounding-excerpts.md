@@ -61,7 +61,7 @@ Run Type select options (lines ~199–202): `REGULAR` and `ADJUSTMENT` only. Ret
 
 ## 5. Upload flow components
 
-`frontend/src/components/shared/NativeUploadFlow.tsx` and `frontend/src/components/shared/ColumnMappingPanel.tsx` exist and are consumed by `pages/Employees.tsx` and `pages/PayrollInputsBulkUpload.tsx` (grep this session) — the mapping panel C13 extends is a live, shared component, not a page-local widget.
+`frontend/src/components/shared/NativeUploadFlow.tsx` and `frontend/src/components/shared/ColumnMappingPanel.tsx` exist and are consumed by **three** pages: `pages/Employees.tsx:1610`, `pages/PayrollInputsBulkUpload.tsx:513`, and `pages/PayrollResults.tsx:443` (the reconciliation old-system comparison upload) — grep re-verified after critic RC-1. The mapping panel C13 extends is a live, shared component with three consuming surfaces, not a page-local widget.
 
 ## 6. Router structure
 
