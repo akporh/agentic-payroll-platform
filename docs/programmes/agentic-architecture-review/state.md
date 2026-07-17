@@ -1,6 +1,6 @@
 # State — Agentic Architecture Review Programme
 
-*Last updated: 2026-07-15 (D-003 adopted: decision-gated continuous execution). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
+*Last updated: 2026-07-17 (Stage 06 critic REVISE corrections applied; decision-queue reference refreshed per RC-3). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
 
 ## Current phase
 
@@ -26,8 +26,8 @@ See `review-state.md` (authoritative — this file deliberately carries no stage
 
 ## Blocked or outstanding decisions
 
-- None blocking at programme level. Non-blocking forwarded items and evidence gaps live in `decision-queue.md` (currently DQ-001–003, EG-001–003 — none blocking).
+- None blocking at programme level. Non-blocking forwarded items and evidence gaps live in `decision-queue.md` (currently DQ-001–008, EG-001–003 — none blocking; DQ-006/007/008 were forwarded by Stage 06).
 
 ## Next permitted action
 
-**Continue the continuous Phase 1 loop per `RUNBOOK.md`** — Stage 05 closed 2026-07-15 (critic PASS); Stage 06 is `context-ready`, so the next loop action is the Stage 06 primary-executor pass (see `review-state.md`). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.
+**Continue the continuous Phase 1 loop per `RUNBOOK.md`** — see `review-state.md` for the authoritative stage position and next loop action (as of 2026-07-17: Stage 06 closed on critic PASS after one REVISE cycle; Stage 07 is `context-ready`, so the next loop action is the Stage 07 primary-executor pass). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.

@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-15 by the controller on Stage 05's closure, from the Stage 03 → 06 and Stage 05 → 06 handoffs and binding decisions; validated against `WORKFLOW.md`'s automatic-opening conditions)
+closed (2026-07-17 — independent critic PASS after one REVISE cycle: RC-1/RC-2/RC-3 corrections applied and verified by a narrow re-critic pass, addendum in `outputs/critic-review.md`; 0 blocking human decisions; DQ-006/007/008 remain queued as non-blocking. Primary executor pass completed 2026-07-15: all 9 outputs produced, 5 confirmed findings F-06-01–05, 0 draft, 0 parked. Context originally populated 2026-07-15 by the controller on Stage 05's closure.)
 
 ## Objective
 
@@ -158,4 +158,4 @@ Stage 06 is ready for the critic only when:
 
 ## Next action
 
-**Run the primary executor on this context** (fresh session preferred, per D-004 session independence).
+**None — stage closed 2026-07-17.** Stage 07 is open (`07-security-identity/CONTEXT.md`); later stages may cite F-06-01–05 and this stage's outputs.

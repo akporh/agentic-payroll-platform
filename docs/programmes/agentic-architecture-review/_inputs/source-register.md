@@ -76,6 +76,16 @@ Stage 04 (Outcome Discovery) introduced no new sources — its evidence base is 
 - **Snapshot basis**: live read, 2026-07-13
 - **Notes**: This is a separate, independently-run audit workstream investigating much of the same codebase. Per `_core/EVIDENCE-STANDARD.md`, its findings were never cited as standalone evidence — every reference to it in this stage's outputs (findings 03-002, 06-003, 06-007, 07-002, 09-000, 09-002, 09-004) is used only as corroboration alongside this stage's own independent direct code re-read, never as a substitute for it. Where the two investigations' independently-derived conclusions matched exactly (e.g. the reconciliation workspace-scoping gap, the FULL_RUN UI mismatch, the absence of authentication), this is noted as cross-validation, not as this review outsourcing its evidence-gathering.
 
+### S-08: Repository codebase, re-verified at a later commit (Stage 06)
+- **Type**: code
+- **Location**: `backend/api/routes/payroll.py`, `backend/application/{payroll_approval_service,payroll_retry_service,reconciliation_service}.py`, `backend/infra/repositories/{audit_log_repo,event_store_repo}.py`, `backend/infra/db/models/statutory_rule.py`, `backend/domain/payroll/audit_events.py`, `migrations/versions/` (baseline `5aa34350e00f`, statutory seeds `e4f5a6b7c8d9`/`de1f2a3b4c5d`, trigger migrations, `ea05e71efbd7`)
+- **First consulted**: 2026-07-11 (Stage 01); re-read 2026-07-15, Stage 06
+- **Snapshot basis**: git commit `265db103cfb6a6b490c8655d5ceb4b776303e6fe`, branch `uat`
+- **Notes**: Stage 06 consumed Stage 05's confirmed platform facts without re-verification (per its `CONTEXT.md`), and performed fresh direct reads only for its own new control claims: actor-attribution sources (F-06-01), audit-write transactionality (F-06-02), audit-table immutability/retention absence (F-06-03), and statutory_rule provenance schema (F-06-04). Absence claims (no triggers on audit tables, no retention mechanism) are grep sweeps duplicated into `06-compliance-controls/evidence/06-attribution-and-audit-integrity-excerpts.md` per the evidence standard.
+
+### S-04 note (Stage 06)
+Stage 06 re-read `docs/architecture/agent-layer-architecture.html` (S-04, live read 2026-07-15) only for the `agent_session_log`/retention design (lines 496, 938, 1150–1151) — excerpts saved in the Stage 06 evidence file §7. Treated as stated intent only, unchanged status ("NEEDS REVISION", D-02-01).
+
 ## Next action
 
-**Complete Stage 05 platform readiness review.**
+**Stage 06 executor pass complete — critic review, then Stage 07.**
