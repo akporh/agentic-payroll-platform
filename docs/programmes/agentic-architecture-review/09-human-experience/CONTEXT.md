@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-17 by the controller on Stage 08's closure — critic PASS, report in `08-technical-architecture/outputs/critic-review.md`)
+awaiting-critic (executor pass complete 2026-07-17 — all 9 outputs produced, 4 confirmed findings F-09-01–04, 14 executor design conclusions DEC-09-01–14, zero human decisions; frontend claims verified at commit `7d36020` with excerpts in `evidence/09-frontend-grounding-excerpts.md`)
 
 ## Objective
 
@@ -79,4 +79,4 @@ Ready for the critic only when: every Q1–Q9 has a design answer or explicitly-
 
 ## Next action
 
-**Run the Stage 09 primary-executor pass per `RUNBOOK.md`.**
+**Run the independent critic per `CRITIC.md` → `outputs/critic-review.md`.**
