@@ -1087,6 +1087,7 @@ def list_platform_components(workspace_id: str):
                 "component_code": row[0],
                 "label": (row[1] or {}).get("label", row[0]),
                 "component_class": row[2],
+                "workspace_override_key": ((row[1] or {}).get("engine_behavior") or {}).get("workspace_override_key"),
             }
             for row in rows
         ]
@@ -1267,12 +1268,38 @@ def get_workspace_configuration(workspace_id: str):
         db.close()
 
 
+_OVERRIDE_AMOUNT_MAX = Decimal("10000000")
+
+
+def _validate_override_amount(value) -> None:
+    """Reject a malformed/out-of-range override amount at the API boundary.
+
+    Per this repo's standing rule, never leak str(e) — a bad Decimal()
+    construction below is caught and converted to a generic 422 message.
+    """
+    try:
+        amount = Decimal(str(value))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Override amount must be a valid number.")
+    if amount < 0 or amount > _OVERRIDE_AMOUNT_MAX:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Override amount must be between 0 and {_OVERRIDE_AMOUNT_MAX}.",
+        )
+
+
 @router.patch("/{workspace_id}/component-overrides/{component_code}")
 def patch_component_override(workspace_id: str, component_code: str, payload: dict):
     """Update (or create) a component override for a workspace.
 
     Accepts any subset of: overrides_json, is_active, proration_strategy.
     Uses ON CONFLICT DO UPDATE so repeated calls are idempotent.
+
+    overrides_json is merged into the existing value key-by-key, never
+    replaced wholesale — a PATCH that only carries the key(s) being changed
+    must not silently destroy unrelated keys already stored for this
+    component (e.g. component_class/flat_amount alongside an amount
+    override). See docs/sprints/dev-levy-rule-pct/plan.md, Story 1.
 
     Guards:
     - D-ARCH-2: Statutory deduction components cannot be disabled.
@@ -1299,15 +1326,15 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
             raise HTTPException(status_code=404, detail="Workspace not found")
         country_code = country_row[0]
 
-        valid_code = db.execute(
+        meta_row = db.execute(
             text("""
-                SELECT 1 FROM component_metadata
+                SELECT metadata_json FROM component_metadata
                 WHERE component_code = :code AND country_code = :country
                 LIMIT 1
             """),
             {"code": code_upper, "country": country_code},
         ).fetchone()
-        if not valid_code:
+        if not meta_row:
             raise HTTPException(
                 status_code=422,
                 detail=f"Component '{code_upper}' is not valid for country '{country_code}'.",
@@ -1319,6 +1346,33 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
         # Re-enable this block to restore the restriction in future.
 
         has_overrides = "overrides_json" in payload
+        incoming_overrides = payload.get("overrides_json") or {}
+
+        # Validate the amount field, if this component has a configured
+        # workspace_override_key and the payload sets a (non-deletion) value.
+        override_key = ((meta_row[0] or {}).get("engine_behavior") or {}).get("workspace_override_key")
+        if override_key and override_key in incoming_overrides and incoming_overrides[override_key] is not None:
+            _validate_override_amount(incoming_overrides[override_key])
+
+        existing_row = db.execute(
+            text("""
+                SELECT overrides_json FROM client_component_metadata
+                WHERE workspace_id = :wid AND component_code = :code
+            """),
+            {"wid": workspace_id, "code": code_upper},
+        ).fetchone()
+        existing_overrides = (existing_row[0] if existing_row else None) or {}
+        if has_overrides:
+            merged_overrides = {**existing_overrides, **incoming_overrides}
+            # A key explicitly set to null in the payload is a delete request —
+            # reverts that key to "no override" (statutory default), distinct
+            # from an explicit 0 which is preserved. This is what lets the UI
+            # "leave blank to use the statutory default" actually clear a
+            # previously-set value under merge-not-replace semantics.
+            merged_overrides = {k: v for k, v in merged_overrides.items() if v is not None}
+        else:
+            merged_overrides = existing_overrides
+
         db.execute(
             text("""
                 INSERT INTO client_component_metadata
@@ -1328,9 +1382,7 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
                      COALESCE(:is_active, true),
                      :proration)
                 ON CONFLICT (workspace_id, component_code) DO UPDATE
-                SET overrides_json     = CASE WHEN :has_overrides
-                                              THEN EXCLUDED.overrides_json
-                                              ELSE client_component_metadata.overrides_json END,
+                SET overrides_json     = CAST(:overrides AS jsonb),
                     is_active          = COALESCE(EXCLUDED.is_active, client_component_metadata.is_active),
                     proration_strategy = COALESCE(EXCLUDED.proration_strategy, client_component_metadata.proration_strategy),
                     updated_at         = NOW()
@@ -1338,10 +1390,9 @@ def patch_component_override(workspace_id: str, component_code: str, payload: di
             {
                 "wid": workspace_id,
                 "code": code_upper,
-                "overrides": json.dumps(payload.get("overrides_json", {})),
+                "overrides": json.dumps(merged_overrides),
                 "is_active": payload.get("is_active"),
                 "proration": payload.get("proration_strategy"),
-                "has_overrides": has_overrides,
             },
         )
         db.commit()

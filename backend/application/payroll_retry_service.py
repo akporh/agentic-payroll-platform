@@ -194,6 +194,7 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     nhf_rate              = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
     health_ins_amount     = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
     dev_levy_amount       = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    dev_levy_cadence      = str(rules_jsonb.get("development_levy", {}).get("cadence") or "ANNUAL").upper()
     life_ins_rate         = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # ── Tax bands — from the frozen snapshot, same ordering/values as the
@@ -252,8 +253,8 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 
-    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
-        dev_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "DEVELOPMENT_LEVY" in client_overrides and "annual_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        dev_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["annual_amount"]))
     if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
         health_ins_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 
@@ -368,6 +369,7 @@ def _build_shared_context(db, workspace_id: str, payroll_run_id: str) -> dict:
         "nhf_rate":                         nhf_rate,
         "health_insurance_employee_amount": health_ins_amount,
         "development_levy_amount":          dev_levy_amount,
+        "development_levy_cadence":         dev_levy_cadence,
         "life_insurance_employer_rate":     life_ins_rate,
         "client_meta":                      client_meta,
         "period":                           period_ctx,

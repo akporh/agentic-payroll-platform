@@ -73,6 +73,7 @@ interface PlatformComponent {
   component_code: string;
   label: string;
   component_class: string | null;
+  workspace_override_key: string | null;
 }
 
 interface WorkspaceConfiguration {
@@ -789,46 +790,87 @@ const PRORATION_OPTIONS = [
   { value: 'fixed_30',      label: 'Fixed 30-Day Month' },
 ];
 
+// DEVELOPMENT_LEVY is the only component with per-component helper copy today
+// (DEC-08/DEC-09) — keyed by workspace_override_key so it stays coupled to the
+// key it describes, not the component_code.
+const OVERRIDE_AMOUNT_HELP: Record<string, string> = {
+  annual_amount:
+    'Deducted once per year — in January, and again in a new hire’s first paid month if different.',
+};
+const OVERRIDE_AMOUNT_PLACEHOLDER: Record<string, string> = {
+  annual_amount: 'Leave blank to use the statutory default (₦100/year)',
+};
+
 function EditComponentOverrideSlideOver({
   open,
   workspaceId,
   override: co,
+  platformComponent,
   onClose,
   onSaved,
 }: {
   open: boolean;
   workspaceId: string;
   override: ComponentOverride | null;
+  platformComponent: PlatformComponent | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [isActive, setIsActive] = useState(true);
   const [prorationStrategy, setProrationStrategy] = useState('work_days');
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
+  // Tracked separately from rateValues so a blank field can be told apart
+  // from "operator explicitly typed 0" on save (DEC-09).
+  const [amountValue, setAmountValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const overrideKey = platformComponent?.workspace_override_key ?? null;
 
   useEffect(() => {
     if (open && co) {
       setIsActive(co.is_active);
       setProrationStrategy(co.proration_strategy ?? 'work_days');
+      const overridesJson = co.overrides_json ?? {};
+      const { [overrideKey ?? '']: amountFromOverrides, ...restEntries } = overridesJson as Record<string, unknown>;
       setRateValues(
         Object.fromEntries(
-          Object.entries(co.overrides_json ?? {}).map(([k, v]) => [k, String(v)])
+          Object.entries(overrideKey ? restEntries : overridesJson).map(([k, v]) => [k, String(v)])
         )
+      );
+      setAmountValue(
+        overrideKey && amountFromOverrides !== undefined ? String(amountFromOverrides) : ''
       );
       setError(null);
     }
-  }, [open, co]);
+  }, [open, co, overrideKey]);
 
   async function handleSave() {
     if (!co) return;
     setSaving(true);
     setError(null);
-    const builtOverrides: Record<string, number> = {};
+    const builtOverrides: Record<string, number | null> = {};
     for (const [k, v] of Object.entries(rateValues)) {
       const n = parseFloat(v);
       if (!isNaN(n)) builtOverrides[k] = n;
+    }
+    // Key presence, never a truthy check — an explicit "0" must be written,
+    // while a blank field sends `null` (delete request — the backend drops
+    // the key on merge) so it resolves back to the statutory default rather
+    // than being coerced to zero, and so a previously-set value is actually
+    // clearable under merge-not-replace semantics (DEC-09).
+    if (overrideKey) {
+      if (amountValue.trim() === '') {
+        builtOverrides[overrideKey] = null;
+      } else {
+        const n = parseFloat(amountValue);
+        if (isNaN(n)) {
+          setError('Amount must be a valid number.');
+          setSaving(false);
+          return;
+        }
+        builtOverrides[overrideKey] = n;
+      }
     }
     try {
       await workspaceApi.updateComponentOverride(workspaceId, co.component_name, {
@@ -886,6 +928,17 @@ function EditComponentOverrideSlideOver({
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </SelectField>
+
+        {overrideKey && (
+          <NumberInput
+            label="Amount Override"
+            currency
+            value={amountValue}
+            onChange={(e) => setAmountValue(e.target.value)}
+            placeholder={OVERRIDE_AMOUNT_PLACEHOLDER[overrideKey] ?? 'Leave blank to use the statutory default'}
+            hint={OVERRIDE_AMOUNT_HELP[overrideKey] ?? `Key: ${overrideKey}`}
+          />
+        )}
 
         {rateEntries.length > 0 && (
           <div>
@@ -1117,16 +1170,20 @@ const RULE_TYPE_OPTIONS = [
   { value: 'UNIT_RATE', label: 'Unit × Rate' },
   { value: 'OT_MULTIPLIER', label: 'OT Multiplier (Rate Code)' },
   { value: 'FIXED_AMOUNT', label: 'Fixed Amount' },
-  { value: 'PERCENTAGE_OF_GROSS', label: 'Percentage of Gross' },
+  { value: 'PERCENTAGE_OF_BASIC', label: 'Percentage of Basic (%)' },
   { value: 'ALLOWANCE', label: 'Allowance' },
 ];
 
-// calculation_method values recognised by the rule evaluator
+// calculation_method values recognised by the rule evaluator.
+// PERCENTAGE_OF_BASIC maps to the existing generic percentage_of_sum method
+// (base_components: ["BASIC"]) — there is no dedicated calculation_method
+// for it, and none should be added (RULE-PCT-1: engine already supports
+// this, the gap was UI-only).
 const RULE_TYPE_METHOD: Record<string, string> = {
   UNIT_RATE: 'unit_multiplier',
   OT_MULTIPLIER: 'ot_multiplier',
   FIXED_AMOUNT: 'fixed_amount',
-  PERCENTAGE_OF_GROSS: 'percentage_of_gross',
+  PERCENTAGE_OF_BASIC: 'percentage_of_sum',
   ALLOWANCE: 'fixed_amount',
 };
 
@@ -1245,16 +1302,27 @@ function RuleFields({
       />
     );
   }
-  if (ruleType === 'PERCENTAGE_OF_GROSS') {
+  if (ruleType === 'PERCENTAGE_OF_BASIC') {
     return (
       <NumberInput
-        label="Percentage (%)"
+        label="Percentage of Basic (%)"
         required
         value={values.percentage ?? ''}
         onChange={(e) => onChange('percentage', e.target.value)}
         placeholder="e.g. 5 for 5%"
-        hint="Applied as a percentage of gross pay."
+        hint="Applied as a percentage of the employee's BASIC salary, prorated for mid-month hires."
       />
+    );
+  }
+  // A percentage_of_sum rule outside the standard "percentage of basic"
+  // shape (base_components other than exactly ["BASIC"]) — not editable
+  // through this form; render read-only rather than the wrong field set.
+  if (originalMethod === 'percentage_of_sum' && ruleType !== 'PERCENTAGE_OF_BASIC') {
+    return (
+      <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-3 text-xs text-gray-600">
+        <p className="font-semibold text-gray-500 uppercase tracking-wide mb-1">Non-standard percentage rule</p>
+        <p>This rule&rsquo;s base_components isn&rsquo;t the standard [&quot;BASIC&quot;] shape. Editing via this form isn&rsquo;t supported.</p>
+      </div>
     );
   }
   return null;
@@ -1264,12 +1332,14 @@ function AddPayrollRuleSlideOver({
   open,
   workspaceId,
   rateCodes,
+  salaryDefinitions,
   onClose,
   onSaved,
 }: {
   open: boolean;
   workspaceId: string;
   rateCodes: RateCode[];
+  salaryDefinitions: SalaryDefinition[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1292,6 +1362,16 @@ function AddPayrollRuleSlideOver({
     }
   }, [open]);
 
+  // Percentage-of-basic is earnings-only (PM decision) — switching category
+  // away from EARNING while it's selected must not leave an invalid combo.
+  function handleCategoryChange(newCategory: 'EARNING' | 'DEDUCTION') {
+    setRuleCategory(newCategory);
+    if (newCategory !== 'EARNING' && calcMethod === 'PERCENTAGE_OF_BASIC') {
+      setCalcMethod('UNIT_RATE');
+      setFieldValues({});
+    }
+  }
+
   function handleCalcMethodChange(newType: string) {
     setCalcMethod(newType);
     setFieldValues({});
@@ -1302,6 +1382,15 @@ function AddPayrollRuleSlideOver({
   }
 
   function buildDefinition(): Record<string, unknown> {
+    if (calcMethod === 'PERCENTAGE_OF_BASIC') {
+      const pct = parseFloat(fieldValues.percentage ?? '');
+      return {
+        calculation_method: 'percentage_of_sum',
+        rate: isNaN(pct) ? 0 : pct / 100,
+        base_components: ['BASIC'],
+        prorate_on_hire: true,
+      };
+    }
     const method = RULE_TYPE_METHOD[calcMethod] ?? calcMethod.toLowerCase();
     const def: Record<string, unknown> = { calculation_method: method };
     for (const [k, v] of Object.entries(fieldValues)) {
@@ -1311,9 +1400,17 @@ function AddPayrollRuleSlideOver({
     return def;
   }
 
+  const workspaceHasBasicComponent = salaryDefinitions.some((sd) =>
+    sd.components.some((c) => c.component_name === 'BASIC')
+  );
+
   async function handleSave() {
     if (!ruleName.trim()) { setError('Rule name is required.'); return; }
     if (!effectiveFrom) { setError('Effective date is required.'); return; }
+    if (calcMethod === 'PERCENTAGE_OF_BASIC' && !workspaceHasBasicComponent) {
+      setError('This workspace has no salary definition with a BASIC component — a percentage-of-basic rule would always compute ₦0. Add a BASIC component to a salary definition first.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -1358,7 +1455,7 @@ function AddPayrollRuleSlideOver({
         <SelectField
           label="Category"
           value={ruleCategory}
-          onChange={(v) => setRuleCategory(v as 'EARNING' | 'DEDUCTION')}
+          onChange={(v) => handleCategoryChange(v as 'EARNING' | 'DEDUCTION')}
         >
           <option value="EARNING">Earning</option>
           <option value="DEDUCTION">Deduction</option>
@@ -1375,11 +1472,19 @@ function AddPayrollRuleSlideOver({
           value={calcMethod}
           onChange={handleCalcMethodChange}
         >
-          {RULE_TYPE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          {RULE_TYPE_OPTIONS
+            .filter((o) => o.value !== 'PERCENTAGE_OF_BASIC' || ruleCategory === 'EARNING')
+            .map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
         </SelectField>
         <RuleFields ruleType={calcMethod} values={fieldValues} onChange={setField} rateCodes={rateCodes} />
+        {calcMethod === 'PERCENTAGE_OF_BASIC' && !workspaceHasBasicComponent && (
+          <AlertBanner
+            variant="warning"
+            description="No salary definition in this workspace has a BASIC component yet — this rule would compute ₦0 for every employee until one does."
+          />
+        )}
       </div>
     </SlideOver>
   );
@@ -1390,9 +1495,11 @@ function AddPayrollRuleSlideOver({
 const METHOD_TO_RULE_TYPE: Record<string, string> = {
   unit_multiplier: 'UNIT_RATE',
   fixed_amount: 'FIXED_AMOUNT',
-  percentage_of_gross: 'PERCENTAGE_OF_GROSS',
   ot_multiplier: 'OT_MULTIPLIER',
   daily_rate_deduction: 'UNIT_RATE',
+  // percentage_of_sum is intentionally absent here — it maps to
+  // PERCENTAGE_OF_BASIC only for the standard base_components === ["BASIC"]
+  // shape, handled explicitly below (not a static method->type lookup).
 };
 
 function EditPayrollRuleSlideOver({
@@ -1425,12 +1532,27 @@ function EditPayrollRuleSlideOver({
       const def = rule.rule_definition_json ?? {};
       const method = String(def.calculation_method ?? '');
       setOriginalMethod(method);
-      setRuleType(METHOD_TO_RULE_TYPE[method] ?? 'UNIT_RATE');
-      const initial: Record<string, string> = {};
-      for (const [k, v] of Object.entries(def)) {
-        if (k !== 'calculation_method') initial[k] = String(v ?? '');
+
+      const baseComponents = def.base_components;
+      const isPercentageOfBasic =
+        method === 'percentage_of_sum' &&
+        Array.isArray(baseComponents) &&
+        baseComponents.length === 1 &&
+        baseComponents[0] === 'BASIC';
+
+      if (isPercentageOfBasic) {
+        setRuleType('PERCENTAGE_OF_BASIC');
+        // Display conversion: rate 0.05 -> "5" (never 0.05) — method itself
+        // stays read-only, only the percent display differs from the stored rate.
+        setFieldValues({ percentage: String(Number(def.rate ?? 0) * 100) });
+      } else {
+        setRuleType(METHOD_TO_RULE_TYPE[method] ?? 'UNIT_RATE');
+        const initial: Record<string, string> = {};
+        for (const [k, v] of Object.entries(def)) {
+          if (k !== 'calculation_method') initial[k] = String(v ?? '');
+        }
+        setFieldValues(initial);
       }
-      setFieldValues(initial);
       setError(null);
     }
   }, [open, rule]);
@@ -1440,6 +1562,15 @@ function EditPayrollRuleSlideOver({
   }
 
   function buildDefinition(): Record<string, unknown> {
+    if (ruleType === 'PERCENTAGE_OF_BASIC') {
+      const pct = parseFloat(fieldValues.percentage ?? '');
+      return {
+        calculation_method: 'percentage_of_sum',
+        rate: isNaN(pct) ? 0 : pct / 100,
+        base_components: ['BASIC'],
+        prorate_on_hire: true,
+      };
+    }
     const def: Record<string, unknown> = { calculation_method: originalMethod };
     for (const [k, v] of Object.entries(fieldValues)) {
       const n = parseFloat(v);
@@ -2828,6 +2959,9 @@ export function WorkspaceConfig() {
         open={editOverride !== null}
         workspaceId={workspaceId}
         override={editOverride}
+        platformComponent={
+          platformComponents.find((pc) => pc.component_code === editOverride?.component_name) ?? null
+        }
         onClose={() => setEditOverride(null)}
         onSaved={loadConfig}
       />
@@ -2848,6 +2982,7 @@ export function WorkspaceConfig() {
         open={addRuleOpen}
         workspaceId={workspaceId}
         rateCodes={rateCodes}
+        salaryDefinitions={config?.salary_definitions ?? []}
         onClose={() => setAddRuleOpen(false)}
         onSaved={loadConfig}
       />

@@ -251,7 +251,7 @@ export const workspaceApi = {
   }) => api.patch<{ status: string }>(`/${workspaceId}/component-overrides/${encodeURIComponent(componentCode)}`, payload),
 
   getPlatformComponents: (workspaceId: string) =>
-    api.get<Array<{ component_code: string; label: string; component_class: string }>>(
+    api.get<Array<{ component_code: string; label: string; component_class: string; workspace_override_key: string | null }>>(
       `/${workspaceId}/platform-components`
     ),
 };

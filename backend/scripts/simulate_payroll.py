@@ -665,6 +665,13 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
         rent_relief_cfg   = rules_jsonb.get("reliefs", {}).get("rent_relief", {})
         nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
         health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
+        # NOTE (dev-levy-rule-pct): this script does not model the DEV-LEVY-1
+        # cadence gate (ANNUAL default — applies only in January or an
+        # employee's first paid month; sequential_executor.py's
+        # _handle_development_levy_flat is the source of truth). The amount
+        # shown here is always the flat statutory/override amount as if
+        # cadence=MONTHLY — a debugging/simulation aid, not a production path,
+        # so this divergence is flagged rather than fixed in this pass.
         development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
         life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
     finally:
@@ -676,8 +683,8 @@ def simulate(employee_id=None, employee_number=None, workspace_id=None,
     meta_map        = {m["component_code"]: m for m in all_platform_meta}
 
     # Apply flat-amount client_component_metadata overrides (mirrors production payroll.py)
-    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
-        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    if "DEVELOPMENT_LEVY" in client_overrides and "annual_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["annual_amount"]))
     if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
         health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
 

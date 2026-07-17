@@ -583,6 +583,12 @@ def run(employee_id: str, workspace_id: str | None = None,
     # Read from component_metadata (client_meta already merges global defaults + workspace overrides)
     nhf_rate                         = Decimal(str(client_meta.get("NHF_CONTRIBUTION", {}).get("employee_rate", "0.025")))
     health_insurance_employee_amount = Decimal(str(client_meta.get("HEALTH_INSURANCE_EMPLOYEE", {}).get("employee_amount", "0")))
+    # NOTE (dev-levy-rule-pct): this script does not model the DEV-LEVY-1
+    # cadence gate (ANNUAL default — applies only in January or an
+    # employee's first paid month; sequential_executor.py's
+    # _handle_development_levy_flat is the source of truth) — a
+    # debugging/simulation aid, not a production path, so this divergence is
+    # flagged rather than fixed in this pass.
     development_levy_amount          = Decimal(str(client_meta.get("DEVELOPMENT_LEVY", {}).get("amount", "0")))
     life_insurance_employer_rate     = Decimal(str(client_meta.get("LIFE_INSURANCE", {}).get("employer_rate", "0")))
 

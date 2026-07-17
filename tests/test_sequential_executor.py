@@ -482,6 +482,31 @@ class TestBuildRuntimeComponentRegistry:
         entry = next(m for m in result if m["component_code"] == "WEEKEND_PAY")
         assert entry["component_class"] == "earning"
 
+    def test_percentage_of_sum_rule_added_as_earning(self):
+        """Audit finding, dev-levy-rule-pct sprint (2026-07-16): percentage_of_sum
+        was excluded from Source 2 synthesis, so any newly-created percentage_of_sum
+        rule (RULE-PCT-1 / PERCENTAGE_OF_BASIC) traced as "applied" but its amount
+        never reached GROSS_PAY/NET_PAY — silently dropped from the payslip. Fixed
+        by adding "percentage_of_sum" to the method whitelist here."""
+        rules = [{
+            "rule_name": "HAZARD_ALLOWANCE",
+            "rule_definition_json": {
+                "calculation_method": "percentage_of_sum",
+                "rate": 0.05,
+                "base_components": ["BASIC"],
+                "prorate_on_hire": True,
+            },
+            "rule_type": "EARNING",
+        }]
+        result = build_runtime_component_registry(self.PLATFORM, rules, {})
+        codes = {m["component_code"]: m for m in result}
+        assert "HAZARD_ALLOWANCE" in codes
+        entry = codes["HAZARD_ALLOWANCE"]
+        assert entry["component_class"]    == "earning"
+        assert entry["calculation_method"] == "salary_component"
+        assert entry["execution_priority"] == RULE_COMPONENT_PRIORITY
+        assert entry["is_active"] is True
+
 
 class TestRuleInjectedEarningInGrossPay:
     """Integration test: rule-injected earning flows through unified registry into GROSS_PAY."""
@@ -523,6 +548,42 @@ class TestRuleInjectedEarningInGrossPay:
         out = run_sequential_payroll(SALARY, unified, context)
         assert out["results"]["GROSS_PAY"] == Decimal("500000.00")
 
+    def test_percentage_of_sum_rule_injected_earning_included_in_gross_pay(self):
+        """Full-pipeline regression for the audit finding above: a percentage_of_sum
+        rule's pre-computed value (as apply_payroll_rules would inject it into
+        salary_components) must flow through the unified registry into results{}
+        and GROSS_PAY, not just component_trace_jsonb. Before the fix, this
+        component silently vanished between salary_components and results{}."""
+        salary = {
+            "BASIC":             Decimal("300000"),
+            "HOUSING":           Decimal("150000"),
+            "TRANSPORT":         Decimal("50000"),
+            "HAZARD_ALLOWANCE":  Decimal("15000"),  # 5% of BASIC, rule-injected
+        }
+        rules = [{
+            "rule_name": "HAZARD_ALLOWANCE",
+            "rule_definition_json": {
+                "calculation_method": "percentage_of_sum",
+                "rate": 0.05,
+                "base_components": ["BASIC"],
+                "prorate_on_hire": True,
+            },
+            "rule_type": "EARNING",
+        }]
+        unified = build_runtime_component_registry(COMPONENT_METADATA, rules, {})
+
+        context = {
+            "tax_bands":              TAX_BANDS,
+            "pension_employee_rate":  Decimal("0.08"),
+            "pension_employer_rate":  Decimal("0.10"),
+            "nhf_rate":               Decimal("0.025"),
+        }
+        out = run_sequential_payroll(salary, unified, context)
+
+        assert "HAZARD_ALLOWANCE" in out["results"]
+        assert out["results"]["HAZARD_ALLOWANCE"] == Decimal("15000")
+        assert out["results"]["GROSS_PAY"] == Decimal("515000.00")  # 300k+150k+50k+15k
+
 
 # ---------------------------------------------------------------------------
 # T4.2 — Flat-amount statutory deductions: Health Insurance & Development Levy
@@ -558,13 +619,20 @@ class TestFlatAmountStatutoryDeductions:
         assert out["results"]["HEALTH_INSURANCE_EMPLOYEE"] == Decimal("5000")
 
     def test_development_levy_uses_amount_key(self):
-        out = self._run_with({"development_levy_amount": Decimal("1000")})
+        # cadence=MONTHLY isolates the amount-key contract from the DEV-LEVY-1
+        # cadence gate (covered separately in TestDevelopmentLevyCadence) — this
+        # test's BASE_CONTEXT period (March) would otherwise resolve to ₦0.
+        out = self._run_with({
+            "development_levy_amount":  Decimal("1000"),
+            "development_levy_cadence": "MONTHLY",
+        })
         assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("1000")
 
     def test_flat_deductions_reduce_net_pay(self):
         out = self._run_with({
             "health_insurance_employee_amount": Decimal("5000"),
             "development_levy_amount":          Decimal("1000"),
+            "development_levy_cadence":          "MONTHLY",
         })
         # Baseline NET_PAY is 386,500 (see module docstring); both flat
         # statutory deductions must be swept by net_formula.
@@ -577,3 +645,81 @@ class TestFlatAmountStatutoryDeductions:
         out = self._run_with({"health_insurance_amount": Decimal("5000")})  # wrong key
         assert out["results"]["HEALTH_INSURANCE_EMPLOYEE"] == Decimal("0")
         assert out["results"]["NET_PAY"] == Decimal("386500.00")
+
+
+# ---------------------------------------------------------------------------
+# DEV-LEVY-1 — Development Levy cadence gate (DEC-04)
+#
+# INVARIANT PROTECTED:
+#   The levy applies when EITHER (a) the run period contains January OR
+#   (b) ctx["is_first_paid_month"] is true — evaluated with OR, never elif.
+#   Cadence-absent default is ANNUAL, not MONTHLY (a silent MONTHLY default
+#   would 12× overcharge every workspace that never set the key).
+# ---------------------------------------------------------------------------
+
+class TestDevelopmentLevyCadence:
+
+    def _run_with(self, extra_ctx):
+        context = {**BASE_CONTEXT, **extra_ctx}
+        return run_sequential_payroll(
+            salary_components=SALARY,
+            component_metadata=FLAT_STATUTORY_METADATA,
+            context=context,
+        )
+
+    def test_january_period_applies_levy_regardless_of_first_paid_month(self):
+        out = self._run_with({
+            "development_levy_amount": Decimal("100"),
+            "period": build_period_context("2026-01-01", "2026-01-31"),
+            "is_first_paid_month": False,
+        })
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("100")
+
+    def test_first_paid_month_applies_levy_in_non_january_period(self):
+        out = self._run_with({
+            "development_levy_amount": Decimal("100"),
+            "is_first_paid_month": True,
+        })
+        # BASE_CONTEXT period is March — trigger (b) alone must still apply.
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("100")
+
+    def test_neither_trigger_yields_zero_with_not_applied_trace(self):
+        out = self._run_with({
+            "development_levy_amount": Decimal("100"),
+            "is_first_paid_month": False,
+        })
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("0")
+        trace_entry = next(t for t in out["trace"] if t["component"] == "DEVELOPMENT_LEVY")
+        assert trace_entry["status"] == "not_applied"
+
+    def test_december_hire_charged_again_in_following_january(self):
+        # Regression for DEC-04: NOT a double-charge bug — one charge per
+        # calendar year for each of the two independent triggers.
+        december_run = self._run_with({
+            "development_levy_amount": Decimal("100"),
+            "period": build_period_context("2025-12-01", "2025-12-31"),
+            "is_first_paid_month": True,
+        })
+        january_run = self._run_with({
+            "development_levy_amount": Decimal("100"),
+            "period": build_period_context("2026-01-01", "2026-01-31"),
+            "is_first_paid_month": False,
+        })
+        assert december_run["results"]["DEVELOPMENT_LEVY"] == Decimal("100")
+        assert january_run["results"]["DEVELOPMENT_LEVY"] == Decimal("100")
+
+    def test_cadence_absent_defaults_to_annual_not_monthly(self):
+        # No development_levy_cadence key at all, non-January, not first paid
+        # month — must resolve to ₦0 (ANNUAL default), never ₦100 (which
+        # would imply the dangerous MONTHLY-as-silent-default).
+        out = self._run_with({"development_levy_amount": Decimal("100")})
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("0")
+
+    def test_explicit_monthly_cadence_applies_every_period(self):
+        out = self._run_with({
+            "development_levy_amount":  Decimal("100"),
+            "development_levy_cadence": "MONTHLY",
+            "is_first_paid_month":      False,
+        })
+        # BASE_CONTEXT period is March — MONTHLY must apply regardless.
+        assert out["results"]["DEVELOPMENT_LEVY"] == Decimal("100")

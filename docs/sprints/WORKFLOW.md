@@ -27,6 +27,8 @@ Every stage in a sprint's `state.md` carries exactly one of these statuses:
 
 `skipped` vs. `not-applicable` is a real distinction, not a style choice. A `skipped` stage remains a candidate for later activation if new evidence changes the picture (e.g. implementation turns out to touch a status enum after all, so `arch-council` — previously thought not-applicable — must be re-evaluated). `not-applicable` means the stage's precondition structurally cannot occur this sprint and does not need re-evaluating unless the sprint's scope itself changes.
 
+**Update `state.md` in the same turn the work finishes, not later.** The turn that completes a stage's substantive work (writing the code, running the review, producing the evidence) must also write that stage's terminal status into `state.md` — do not defer this as bookkeeping to "do later." A stage left at `eligible`/`active`/`not-started` after its work is actually done is invisible to every downstream dependency check and to `retro`'s Sprint Workspace Close Gate, which will then have to catch and correct it retroactively (`dev-levy-rule-pct` sprint, 2026-07-17 — `implementation` and `verification` were both found stale this way).
+
 ## Eligibility rule
 
 A stage becomes `eligible` the moment every stage ID in its `depends_on` list is `complete`, `skipped`, or `not-applicable` — **never** on `active` or `blocked`. This is the only eligibility rule; there is no separate "soft" eligibility.

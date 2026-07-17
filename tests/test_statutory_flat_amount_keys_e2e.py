@@ -180,9 +180,23 @@ def test_flat_amount_keys_flow_from_rules_jsonb_to_result():
         db.commit()
 
         # --- run payroll (async contract: DRAFT + run_id) -------------------
+        # Pinned to an explicit January period (dev-levy-rule-pct housekeeping):
+        # once the levy's cadence gate ships, a wall-clock-default period would
+        # make this test month-sensitive/flaky (₦0 levy outside January /
+        # first-paid-month). RULES_JSONB carries no "cadence" key, so it
+        # resolves to the ANNUAL default — January is one of its two triggers.
+        # January 2027 (not 2026) deliberately: this test's statutory_rule row
+        # is seeded with effective_from='2026-05-17' — the temporal resolution
+        # query (payroll.py) picks the highest effective_from <= period_end, so
+        # the period must land after that date or this fixture's rules_jsonb
+        # would be silently skipped in favour of an earlier statutory row.
         run_resp = client.post(
             "/api/v1/payroll/run",
-            json={"workspace_id": str(workspace_id)},
+            json={
+                "workspace_id": str(workspace_id),
+                "period_start": "2027-01-01",
+                "period_end":   "2027-01-31",
+            },
         )
         assert run_resp.status_code == 200, run_resp.text
         run_body = run_resp.json()

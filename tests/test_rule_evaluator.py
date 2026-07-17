@@ -325,6 +325,106 @@ class TestFixedAmount:
 
 
 # ---------------------------------------------------------------------------
+# percentage_of_sum (RULE-PCT-1 — "percentage of basic" UI path)
+#
+# No new calculation_method was added for this story: PERCENTAGE_OF_BASIC in
+# the UI maps to the existing percentage_of_sum method with
+# base_components=["BASIC"]. These tests protect the engine contract that
+# UI path relies on.
+# ---------------------------------------------------------------------------
+
+class TestPercentageOfSum:
+
+    def test_happy_path_percentage_of_basic(self):
+        """5% of BASIC=100000 -> 5000.00, applied."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100000")},
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.05, base_components=["BASIC"])],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert components["HAZARD_ALLOWANCE"] == Decimal("5000.00")
+        assert trace[0]["status"] == "applied"
+        assert trace[0]["base_components"] == ["BASIC"]
+
+    def test_rounds_half_up_to_two_decimal_places(self):
+        """rate x base_total that lands on a half-cent rounds up (ROUND_HALF_UP)."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100001")},
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.005, base_components=["BASIC"])],
+            employee_inputs={},
+            client_meta={},
+        )
+        # 100001 * 0.005 = 500.005 -> ROUND_HALF_UP -> 500.01 (not banker's 500.00)
+        assert components["HAZARD_ALLOWANCE"] == Decimal("500.01")
+
+    def test_empty_base_components_not_applied(self):
+        """base_components=[] -> not_applied with a misconfiguration note, never a crash."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100000")},
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.05, base_components=[])],
+            employee_inputs={},
+            client_meta={},
+        )
+        assert "HAZARD_ALLOWANCE" not in components
+        assert trace[0]["status"] == "not_applied"
+        assert "base_components" in trace[0]["note"]
+
+    def test_eligibility_gate_blocks_when_context_falsy(self):
+        """eligibility_field resolves falsy in employee_context -> not_applied."""
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100000")},
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.05, base_components=["BASIC"],
+                                 eligibility_field="is_hazard_role")],
+            employee_inputs={},
+            employee_context={"is_hazard_role": False},
+            client_meta={},
+        )
+        assert "HAZARD_ALLOWANCE" not in components
+        assert trace[0]["status"] == "not_applied"
+        assert trace[0]["eligibility_field"] == "is_hazard_role"
+
+    def test_eligibility_gate_applies_when_context_truthy(self):
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100000")},
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.05, base_components=["BASIC"],
+                                 eligibility_field="is_hazard_role")],
+            employee_inputs={},
+            employee_context={"is_hazard_role": True},
+            client_meta={},
+        )
+        assert components["HAZARD_ALLOWANCE"] == Decimal("5000.00")
+        assert trace[0]["status"] == "applied"
+
+    def test_prorate_on_hire_flag_does_not_prorate_within_rule_evaluator(self):
+        """prorate_on_hire=True is a pass-through flag for the executor's later
+        proration pass (executor.py ~line 270) — apply_payroll_rules itself
+        always computes off the full-month base_components snapshot it is
+        given. Proration and rule evaluation are a fixed two-step order
+        (rules -> proration -> gross sweep); this test protects against ever
+        collapsing that into a single step and double-applying or
+        pre-applying proration inside the rule evaluator.
+        """
+        components, trace = apply_payroll_rules(
+            salary_components={"BASIC": Decimal("100000")},  # full-month BASIC
+            payroll_rules=[_rule("HAZARD_ALLOWANCE", "percentage_of_sum",
+                                 rate=0.05, base_components=["BASIC"],
+                                 prorate_on_hire=True)],
+            employee_inputs={},
+            client_meta={},
+        )
+        # Full-month amount, unprorated — mid-month-hire proration is applied
+        # by a later executor stage, not here.
+        assert components["HAZARD_ALLOWANCE"] == Decimal("5000.00")
+        assert trace[0]["status"] == "applied"
+
+
+# ---------------------------------------------------------------------------
 # Inactive / unknown rules
 # ---------------------------------------------------------------------------
 

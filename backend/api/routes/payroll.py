@@ -236,8 +236,36 @@ def run_payroll(
          "period_start_date": _period_start_date},
     ).fetchall()
     _union_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _union_rows}
+
+    # ── Bulk-load is_first_paid_month for all employees (DEV-LEVY-1 cadence trigger b) ──
+    # An employee's own first ever SUCCESS payroll_result for this workspace, strictly
+    # before this run's period_start. Computed once at run creation (not per-run-retry
+    # re-query) and threaded through per_employee_context_json so retry reproduces the
+    # same value from the frozen snapshot rather than re-evaluating against live data.
+    _first_paid_rows = db.execute(
+        text("""
+            SELECT e.employee_id,
+                   NOT EXISTS (
+                       SELECT 1
+                       FROM payroll_result pr
+                       JOIN payroll_run r ON pr.payroll_run_id = r.payroll_run_id
+                       WHERE pr.employee_id = e.employee_id
+                         AND r.workspace_id = :workspace_id
+                         AND r.period_start < :this_period_start
+                         AND pr.status = 'SUCCESS'
+                   ) AS is_first_paid_month
+            FROM employee e
+            WHERE e.employee_id = ANY(CAST(:ids AS uuid[]))
+        """),
+        {"ids": _emp_ids, "workspace_id": workspace_id, "this_period_start": _period_start_date},
+    ).fetchall()
+    _first_paid_map: dict[str, bool] = {str(r[0]): bool(r[1]) for r in _first_paid_rows}
+
     for emp in employees:
-        emp["employee_context"] = {"is_union_member": _union_map.get(emp["employee_id"], False)}
+        emp["employee_context"] = {
+            "is_union_member":      _union_map.get(emp["employee_id"], False),
+            "is_first_paid_month":  _first_paid_map.get(emp["employee_id"], False),
+        }
 
     # ── A1-A2: Statutory rule — temporal selection using statutory_effective_date ─
     # SELECT the rule whose effective_from is <= statutory_effective_date,
@@ -279,6 +307,7 @@ def run_payroll(
     nhf_rate                         = Decimal(str(rules_jsonb.get("nhf", {}).get("employee_rate", "0.025")))
     health_insurance_employee_amount = Decimal(str(rules_jsonb.get("health_insurance", {}).get("employee_amount", "0")))
     development_levy_amount          = Decimal(str(rules_jsonb.get("development_levy", {}).get("amount", "0")))
+    development_levy_cadence         = str(rules_jsonb.get("development_levy", {}).get("cadence") or "ANNUAL").upper()
     life_insurance_employer_rate     = Decimal(str(rules_jsonb.get("life_insurance", {}).get("employer_rate", "0")))
 
     # --- Load Tax Bands (scoped to the selected statutory rule) ---
@@ -453,9 +482,13 @@ def run_payroll(
     if disabled_codes:
         component_metadata = [m for m in component_metadata if m["component_code"] not in disabled_codes]
 
-    # Apply flat-amount overrides for workspace-configurable components
-    if "DEVELOPMENT_LEVY" in client_overrides and "monthly_amount" in client_overrides["DEVELOPMENT_LEVY"]:
-        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["monthly_amount"]))
+    # Apply flat-amount overrides for workspace-configurable components.
+    # Key presence (`in`), never a truthy check — an explicit annual_amount: 0
+    # override must resolve to ₦0, distinct from "no override, use statutory
+    # default" (DEC-09). `Decimal("0")` is falsy, so a truthy check here would
+    # silently discard a deliberate zero-override.
+    if "DEVELOPMENT_LEVY" in client_overrides and "annual_amount" in client_overrides["DEVELOPMENT_LEVY"]:
+        development_levy_amount = Decimal(str(client_overrides["DEVELOPMENT_LEVY"]["annual_amount"]))
 
     if "HEALTH_INSURANCE_EMPLOYEE" in client_overrides and "employee_monthly_amount" in client_overrides["HEALTH_INSURANCE_EMPLOYEE"]:
         health_insurance_employee_amount = Decimal(str(client_overrides["HEALTH_INSURANCE_EMPLOYEE"]["employee_monthly_amount"]))
@@ -806,6 +839,7 @@ def run_payroll(
         "nhf_rate":                         nhf_rate,
         "health_insurance_employee_amount": health_insurance_employee_amount,
         "development_levy_amount":          development_levy_amount,
+        "development_levy_cadence":         development_levy_cadence,
         "life_insurance_employer_rate":     life_insurance_employer_rate,
         "client_meta":                      client_meta,
         "period":                           period_ctx,
