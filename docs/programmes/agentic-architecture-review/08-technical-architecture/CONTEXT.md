@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-17 by the controller on Stage 07's closure — critic PASS, report in `07-security-identity/outputs/critic-review.md`)
+awaiting-critic (executor pass complete 2026-07-17; all 10 outputs produced, findings/decisions/queue updated; evidence pinned at `573be0d`)
 
 ## Objective
 
@@ -118,4 +118,4 @@ Stage 08 is ready for the critic only when:
 
 ## Next action
 
-**Run the Stage 08 primary-executor pass per `RUNBOOK.md`.**
+**Run the independent critic per `CRITIC.md`** (report → `outputs/critic-review.md`), then controller disposition.
