@@ -10,6 +10,8 @@
 | ⬜ | Not started |
 | 🔮 | Future / Phase 3 |
 
+> **Phase numbering note:** "Phase 1" below covers all deterministic-engine work (Sprints 1–6 plus everything through Track O) — this is the "Phase 1 MVP" referenced in the project's `CLAUDE.md`. "Phase 2" is reserved exclusively for the AI Agent Layer (Tracks P–Y). Earlier versions of this file used "Phase 2" loosely for later deterministic-engine sprints too — that has been corrected (2026-07-10) to remove the collision.
+
 ---
 
 ## Summary Matrix
@@ -17,9 +19,9 @@
 | Phase | Onboarding (A1+A2) | Pay Events (A3) | Execution (A4) | Governance (A5) | Disbursement (A6) | Correctness & Audit (A7+A8+A9+A10) |
 |-------|--------------------|-----------------|----------------|-----------------|-------------------|--------------------------------------|
 | **Sprint 0 — Foundation** | 10✅ 4⚠️ 1⬜ | 6✅ | 8✅ | 10✅ | 1✅ | 11✅ 1⚠️ |
-| **Phase 1 — Sprints 1–6** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
-| **Phase 2 — Sprints 7–8** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
-| **Phase 2 — Client B Sprint 10+** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
+| **Phase 1a — Sprints 1–6 (Core MVP)** | 4✅ | 2✅ | 8✅ | 6✅ | 6✅ | 6✅ |
+| **Phase 1b — Sprints 7–8 (Operational Completeness)** | 17✅ 2⚠️ 1🔜 2⬜ | — | 18✅ | 1⚠️ | 4✅ | 4✅ 2⬜ |
+| **Phase 1c — Client B Sprint 10+ (Tracks K–O)** | 6✅ 2⬜ (Tracks L+O) | — | 4✅ 3✅ 3⬜ 2🔜 1🔮 (Tracks K+M+N+O) | — | — | 1⬜ (Track N) |
 | **Sprint 13** | — | — | 3✅ (M3/M4/M5) | — | — | 3✅ (S1/S2/S3) |
 | **Sprint 14** | 1✅ (WorkspaceConfig P2 fix) | — | 1✅ (hire proration P1 — N2-partial resolved) | — | — | — |
 | **Sprint 15** | — | ⬜→🔜 (timesheet layer arch-council locked) | — | — | — | — |
@@ -194,7 +196,7 @@ Formal sprint work. All Sprint 1–6 items are now closed.
 
 ---
 
-## Phase 2 — Operational Completeness (Sprint 7+)
+## Phase 1b — Operational Completeness (Sprint 7+)
 
 Open items needed to make the platform production-ready for real clients.
 
@@ -269,7 +271,7 @@ Open items needed to make the platform production-ready for real clients.
 
 ---
 
-## Phase 2 Priority Order
+## Phase 1 Priority Order
 
 Reordered after arch-council review (April 2026). Defect fixes gate the feature tracks.
 
@@ -463,7 +465,7 @@ WI-08 must land before WI-03 can be safely implemented. WI-03 remains blocked un
 
 ---
 
-### Track O — Employee Schema & Complex Features (later Phase 2 sprint; arch-council per item)
+### Track O — Employee Schema & Complex Features (later Phase 1 sprint; arch-council per item)
 
 All items require arch-council pre-clearance before implementation begins. Entry gate: all of Tracks K–N complete.
 
@@ -568,7 +570,7 @@ navigating through the setup wizard.
 
 Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` before recording.
 
-**Suite fully green as of 2026-07-12** (306 passed, 1 intentional Phase-2 skip) on both the dev DB and a fresh migrated DB. Enforced automatically by `.githooks/pre-push` and `.github/workflows/tests.yml` — see `docs/test-harness-checklist.md`.
+**Suite fully green as of 2026-07-12** (306 passed, 1 intentional Phase-2 skip) on both the dev DB and a fresh migrated DB. Enforced automatically by `.githooks/pre-push` and `.github/workflows/tests.yml` — see `docs/test-reports/test-harness/test-harness-checklist.md`.
 
 | # | Test | File | Root Cause | Fix Needed | Linked Item | Status |
 |---|------|------|------------|------------|-------------|--------|
@@ -999,7 +1001,7 @@ Arch-council finding: no JWT auth exists anywhere in the system. Must ship befor
 
 ## Phase 3 — Platform Scale (Future)
 
-Deferred until Phase 2 (including Tracks K–O and Agent Layer) is complete and a second client is onboarded.
+Deferred until Phase 1 (including Tracks K–O) and Phase 2 (Agent Layer) are complete and a second client is onboarded.
 
 - Employee payslip PDF generation and distribution (P4-1)
 - Snapshot replay endpoint (P4-2)

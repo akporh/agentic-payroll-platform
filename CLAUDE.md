@@ -98,7 +98,7 @@ The suite is fully green (306 passed, 1 intentional Phase-2 skip) and enforced a
 - **CI:** `.github/workflows/tests.yml` runs on push/PR to uat/main against a **fresh Postgres built from `alembic upgrade head`** — tests must not depend on dev-DB state. The local dev DB is confirmed drifted from migration truth (registry activation flips, missing constraints); CI is the arbiter.
 - **Fixture rules for new e2e tests:** declare registry activation via `tests/registry_state.py` (pin/restore in finally); statutory `effective_from` must be later than every migration seed (latest: 2026-05-01; e2e family uses 2026-05-10..21 — pick an unused date, they collide on a UNIQUE constraint); direct `INSERT INTO employee` must include `employee_number`.
 - **Standing rule:** every bug fix ships with a regression test named for the invariant it protects.
-- Progress/history: `docs/test-harness-checklist.md`.
+- Progress/history: `docs/test-reports/test-harness/test-harness-checklist.md`.
 
 ---
 
