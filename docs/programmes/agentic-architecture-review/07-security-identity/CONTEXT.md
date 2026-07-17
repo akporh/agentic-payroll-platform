@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-17; 3 confirmed findings F-07-01..03, all 9 outputs produced, evidence pinned at `ea1590a`; R5 resolved by DEC-07-03)
+closed (2026-07-17 — critic PASS with zero blocking corrections, `outputs/critic-review.md`; the one non-blocking evidence-precision item (route-sweep denominator) was verified and corrected pre-closure; D-003 automatic closure; Stage 08 opened context-ready)
 
 ## Objective
 
@@ -172,4 +172,4 @@ Stage 07 is ready for the critic only when:
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md`** — save the report to `outputs/critic-review.md`, then apply the controller disposition per `RUNBOOK.md`.
+**None — stage closed.** The programme's next action is the Stage 08 primary-executor pass (see `review-state.md`).

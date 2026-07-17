@@ -18,7 +18,7 @@ _None._
 
 ### F-07-01: Decorative workspace scoping extends beyond reconciliation — two further routes accept and discard `workspace_id`
 - **Affected capability(ies)**: C1 (route-hardening scope), C8 (closure-evidence bar), every consumer of the isolation control statement
-- **Current implementation**: an exhaustive sweep of all 72 `{workspace_id}` routes (evidence file §1) found five — not three — routes whose `workspace_id` appears only in path and signature: the F-05-03 reconciliation trio (re-resolved at `ea1590a` to `payroll.py:1327/1336/1352`) **plus** `get_run_timeline` (`payroll.py:1372` → `get_trace_steps(run_id)`, `execution_trace_repo.py:102` filters on `run_id` only) and `legacy_executor_stats` (`payroll.py:1378` → `get_legacy_executor_stats()`, no parameters — platform-wide aggregates including other workspaces' `run_id` values in its `by_run` breakdown, `execution_trace_repo.py:45-58`). Spot-checks confirmed the remaining low-occurrence routes thread `workspace_id` through.
+- **Current implementation**: an exhaustive sweep of all 70 `{workspace_id}` routes (evidence file §1; denominator corrected from 72 per the critic's independent recount) found five — not three — routes whose `workspace_id` appears only in path and signature: the F-05-03 reconciliation trio (re-resolved at `ea1590a` to `payroll.py:1327/1336/1352`) **plus** `get_run_timeline` (`payroll.py:1372` → `get_trace_steps(run_id)`, `execution_trace_repo.py:102` filters on `run_id` only) and `legacy_executor_stats` (`payroll.py:1378` → `get_legacy_executor_stats()`, no parameters — platform-wide aggregates including other workspaces' `run_id` values in its `by_run` breakdown, `execution_trace_repo.py:45-58`). Spot-checks confirmed the remaining low-occurrence routes thread `workspace_id` through.
 - **Intended design**: sibling routes in the same file enforce `WHERE payroll_run_id = :rid AND workspace_id = :wid` (Stage 05's contrast set); the path shape itself asserts workspace scoping. No documented intent permits a workspace-pathed route to ignore the parameter.
 - **Identified gap**: any caller can read any run's execution-trace steps (step names, error messages, durations) cross-workspace, and platform-wide run statistics under a workspace-scoped path — the same false-attestation pattern Stage 06 classified as control-failure-shaped (F-06-05), now confirmed as a recurring scaffolding habit rather than a reconciliation one-off.
 - **Evidence**: `evidence/07-route-scoping-and-identity-excerpts.md` §§1–3
@@ -75,4 +75,4 @@ _None._
 
 ## Next action
 
-**Stage 07 marked `awaiting-critic` — run the independent critic per `CRITIC.md`.**
+**None — stage closed 2026-07-17 on critic PASS** (`outputs/critic-review.md`; all load-bearing citations independently re-verified; route-sweep denominator corrected to 70 pre-closure). F-07-01–03 are safe to cite from later stages.

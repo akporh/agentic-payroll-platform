@@ -5,7 +5,7 @@ Stage-local log. Master log for human decisions: `_core/HUMAN-DECISIONS.md`. Ent
 ## Gate
 
 - **Stage opened**: 2026-07-17 (context-ready on Stage 06 closure; executor pass same day)
-- **Stage closed**: pending critic (D-003 automatic closure on PASS + no blocking decision)
+- **Stage closed**: 2026-07-17 (critic PASS, no blocking decision — D-003 automatic closure). The critic classified DEC-07-02/03 as properly-delegated executor conclusions and DEC-07-04 plus the DQ-007 MFA amendment as correctly-forwarded non-blocking items.
 
 ## Decisions log
 
@@ -26,4 +26,4 @@ F-07-01 rates below F-05-03 (Critical) deliberately: same pattern, materially lo
 
 ## Next action
 
-**Stage 07 marked `awaiting-critic` — run the independent critic per `CRITIC.md`.**
+**None — stage closed.**

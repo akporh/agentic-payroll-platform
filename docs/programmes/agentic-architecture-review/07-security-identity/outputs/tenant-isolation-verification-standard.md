@@ -13,7 +13,7 @@ Beneath both layers, C1 provides the enforcement floor (F-05-01/F-06-05: without
 
 ## 2. Why the verification standard must be route-exhaustive: the pattern recurred
 
-Stage 06 required "a negative-path check for every route that presents as workspace-scoped" (§3.3) on the strength of the three reconciliation routes. This stage's exhaustive sweep of all 72 `{workspace_id}` routes (evidence file §1) found **two further routes** that accept and discard `workspace_id`:
+Stage 06 required "a negative-path check for every route that presents as workspace-scoped" (§3.3) on the strength of the three reconciliation routes. This stage's exhaustive sweep of all 70 `{workspace_id}` routes (evidence file §1; denominator corrected per the critic's recount) found **two further routes** that accept and discard `workspace_id`:
 
 - `get_run_timeline` (`payroll.py:1372`) — returns any run's execution-trace steps cross-workspace (evidence §2)
 - `legacy_executor_stats` (`payroll.py:1378`) — returns **platform-wide** run statistics including other workspaces' run IDs, under a workspace-scoped path (evidence §3)
