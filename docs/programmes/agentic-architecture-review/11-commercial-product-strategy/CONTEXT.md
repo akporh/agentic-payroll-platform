@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-18: all 7 outputs produced, 2 confirmed findings, 8 executor conclusions DEC-11-01–08, DQ-005 dispositioned/closed, EG-004/EG-005 recorded; evidence pinned at `4abafdc` + live-read excerpts in `evidence/11-business-context-excerpts.md`)
+closed (2026-07-18 — independent critic **PASS**, zero required corrections, zero blocking decisions; report in `outputs/critic-review.md`; closed automatically per D-003)
 
 ## Objective
 
@@ -73,4 +73,4 @@ Ready for the critic only when: every Q1–Q8 has an answer or explicitly-classi
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md`** → `outputs/critic-review.md`; then controller disposition per `RUNBOOK.md`.
+**None — stage closed.** Continue the loop at Stage 12 (`12-target-direction/CONTEXT.md`).

@@ -6,7 +6,7 @@ Stage-local log. Master log for human decisions: `_core/HUMAN-DECISIONS.md`. Ent
 
 - **Stage opened (in-progress)**: 2026-07-18
 - **Executor pass complete (awaiting-critic)**: 2026-07-18
-- **Stage closed**: not yet
+- **Stage closed**: 2026-07-18 (critic PASS, zero required corrections — D-003 automatic closure; two non-blocking critic observations noted in `outputs/critic-review.md`: O3 phrasing traceability, competitive framing in `positioning-and-claims.md` §4 to stay conditional at Stage 12)
 
 ## Executor conclusions log
 
@@ -40,4 +40,4 @@ _None — zero material product/risk/compliance choices were resolved by the exe
 
 ## Next action
 
-**Awaiting independent critic per `CRITIC.md`.**
+**None — stage closed on critic PASS.**
