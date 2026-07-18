@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-18 by the controller on Stage 10's closure — critic PASS, zero required corrections, report in `10-evaluation-assurance/outputs/critic-review.md`)
+awaiting-critic (executor pass complete 2026-07-18: all 7 outputs produced, 2 confirmed findings, 8 executor conclusions DEC-11-01–08, DQ-005 dispositioned/closed, EG-004/EG-005 recorded; evidence pinned at `4abafdc` + live-read excerpts in `evidence/11-business-context-excerpts.md`)
 
 ## Objective
 
@@ -73,4 +73,4 @@ Ready for the critic only when: every Q1–Q8 has an answer or explicitly-classi
 
 ## Next action
 
-**Run the Stage 11 primary-executor pass per `RUNBOOK.md`.** Recommend a fresh session (D-004).
+**Run the independent critic per `CRITIC.md`** → `outputs/critic-review.md`; then controller disposition per `RUNBOOK.md`.

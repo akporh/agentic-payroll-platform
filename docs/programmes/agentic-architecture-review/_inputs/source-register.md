@@ -103,6 +103,17 @@ Stage 06 re-read `docs/architecture/agent-layer-architecture.html` (S-04, live r
 
 Beyond S-09, Stage 10 consumed only prior confirmed findings, gate registers, Stage 07–09 handoffs/designs, and the Stage 04 measurement framework — all programme-internal, already registered via their producing stages' evidence. No new external sources.
 
+### S-10: Sandy business-context documents (Stage 11 re-read)
+- **Type**: documentation
+- **Location**: `Clients/Sandy/CLAUDE.md` (business phases/intent); `Clients/Sandy/_PRODUCT/EP-004_phase2-agentic/FEAT-020_ai-payroll-engine_FUTURE.md`, `FEAT-021_saas-multi-tenant_FUTURE.md` (Phase 2 product stubs — same files as S-05, re-verified)
+- **First consulted**: 2026-07-12 (Stage 02, as S-02/S-05); re-read 2026-07-18, Stage 11
+- **Snapshot basis**: live read 2026-07-18; excerpts duplicated into `11-commercial-product-strategy/evidence/11-business-context-excerpts.md` (files sit outside the git repository, so excerpt duplication is the durable record per the evidence standard)
+- **Notes**: Treated strictly as documented *intent* (evidence type 4) — never as demand evidence. Grounds F-11-01 (FEAT-021 still an unscoped stub) and, via the §4 absence sweep, F-11-02 (no registered type-5 commercial-demand evidence anywhere in the programme). Repo-internal citations in Stage 11 are pinned at commit `4abafdc`, branch `uat`, clean tree.
+
+### Stage 11 note
+
+Beyond S-10, Stage 11 consumed only programme-internal inputs (Stage 02/04/05/09/10 confirmed findings, outputs and handoffs; the gate/evidence/residual-risk registers; `decision-queue.md`) — all already registered via their producing stages. No new external sources; no business fact was taken from an unregistered source (gaps recorded as EG-004/EG-005 instead).
+
 ## Next action
 
-**Register current through Stage 10 executor pass. Next entries due from Stage 11's consulted sources.**
+**Register current through Stage 11 executor pass. Next entries due from Stage 12's consulted sources.**
