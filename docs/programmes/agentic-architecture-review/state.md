@@ -1,6 +1,6 @@
 # State — Agentic Architecture Review Programme
 
-*Last updated: 2026-07-17 (Stage 08 closed on critic PASS; Stage 09 opened context-ready). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
+*Last updated: 2026-07-18 (Stage 10 executor pass complete — awaiting-critic; note: this file had gone stale at "Stage 09 next" while Stage 09 closed — corrected here per the staleness rule). This file owns **phase-level** state only. Stage-level state lives in `review-state.md` — the single source of truth for "where is the review" — and is never duplicated here.*
 
 ## Current phase
 
@@ -30,4 +30,4 @@ See `review-state.md` (authoritative — this file deliberately carries no stage
 
 ## Next permitted action
 
-**Continue the continuous Phase 1 loop per `RUNBOOK.md`** — see `review-state.md` for the authoritative stage position and next loop action (as of 2026-07-17: Stage 08 closed on critic PASS — zero blocking corrections; Stage 09 is `context-ready`, so the next loop action is the Stage 09 primary-executor pass). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.
+**Continue the continuous Phase 1 loop per `RUNBOOK.md`** — see `review-state.md` for the authoritative stage position and next loop action (as of 2026-07-18: Stages 09 closed on critic PASS; Stage 10 executor pass complete and `awaiting-critic`, so the next loop action is the Stage 10 independent critic). The next mandatory human stop is whichever comes first: a blocking decision surfaced by a stage, or the Stage 13 final approval pack. Phase 2 authorisation remains a separate human gate after that.

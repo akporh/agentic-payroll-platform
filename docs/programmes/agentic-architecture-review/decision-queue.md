@@ -21,16 +21,16 @@ _None currently recorded._
 
 ## Visibility items (not queued decisions)
 
-- **DEC-07-04** — audit-tamper residual-risk acceptance (in-DB controls don't bind a DB superuser; external anchoring judged disproportionate) — flagged for review at Stage 10/13.
+- **DEC-07-04** — audit-tamper residual-risk acceptance (in-DB controls don't bind a DB superuser; external anchoring judged disproportionate) — flagged for review at Stage 10/13. **Stage 10 review performed 2026-07-18: reaffirmed on unchanged facts (DEC-10-16, `10-evaluation-assurance/outputs/residual-risk-register.md` §3), explicitly bounded to the current deployment shape — multi-tenant commercialisation re-opens it as a human decision (RR-1 trigger (c)). Stage 13 visibility touchpoint stands.**
 - **DEC-08-09** — Stage 08's C12 correction mechanics commit Phase 3 to proposing a **data-contract change**: `statutory_rule` UNIQUE widens from `(country_code, effective_from)` to `(country_code, effective_from, version)` (resolution stays total-ordered; the tie-break already exists in code, F-08-01). Flagged by the Stage 08 critic for the next human-reviewer touchpoint, pre-build authorisation; goes through the repo's standing `/arch-council` gate at Phase 3.
 
 ## Evidence gaps
 
 | ID | Gap | Owner stage | Blocking? |
 |---|---|---|---|
-| EG-001 | Onboarding mapping time and error-rate baseline | 04/05 | no — instrument before C13/C14 launch |
-| EG-002 | Parallel-run agreement-rate baseline | 04/05 | no — instrument before C13/C14 launch |
-| EG-003 | Time-to-go-live baseline | 04/05 | no — instrument before C13/C14 launch |
+| EG-001 | Onboarding mapping time and error-rate baseline | 04/05 | no — instrument before C13/C14 launch. **Capture protocol designed 2026-07-18 (Stage 10, baseline B1: `10-evaluation-assurance/outputs/evidence-chain-and-baselines.md` B §2) — requires a real onboarding under the current flow; unrecoverable if the next onboarding happens after C13 ships (Stage 11 sequencing note)** |
+| EG-002 | Parallel-run agreement-rate baseline | 04/05 | no — instrument before C13/C14 launch. **Capture protocol designed 2026-07-18 (Stage 10, baseline B2, same doc) — same real-onboarding dependency as EG-001** |
+| EG-003 | Time-to-go-live baseline | 04/05 | no — instrument before C13/C14 launch. **Capture protocol designed 2026-07-18 (Stage 10, baseline B3, same doc) — retrospectively computable now from engagement records + `payroll_run` history** |
 
 ## Rules
 

@@ -92,6 +92,17 @@ Stage 06 re-read `docs/architecture/agent-layer-architecture.html` (S-04, live r
 - **Stage 08 (2026-07-17)**: fresh direct reads at commit `573be0d` (clean tree) for mechanism grounding — statutory resolution query, persister transaction boundaries, actor-input sites, reconciliation/decorative routes, executor purity, `simulate_payroll.py` precedent; excerpts in `08-technical-architecture/evidence/08-code-grounding-excerpts.md`. Stage 08 also re-read S-04 (`agent-layer-architecture.html`, live read 2026-07-17) for the Track P/V/X/Y mechanism proposals — design under review, not authority, unchanged status.
 - **Stage 09 (2026-07-17)**: fresh direct reads of the frontend surface at commit `7d36020` (clean tree) for IA/surface grounding — `router.tsx`, `MainLayout.tsx`, design-system `Navigation.tsx`/`Layout.tsx`, `PayrollResults.tsx` (tabs + audit adapter), `RunPayroll.tsx` (run-type/retry options), shared upload components, `docs/design/ui-decisions.md` (standing UI decisions log, binding input); excerpts in `09-human-experience/evidence/09-frontend-grounding-excerpts.md`. Stage 05's frontend claims (F-05 §§1–2) were re-verified against this later commit rather than carried over. No new external sources.
 
+### S-09: Repository test/CI infrastructure (Stage 10)
+- **Type**: code
+- **Location**: `.github/workflows/tests.yml`, `frontend/package.json`, `tests/` (tree listing + collect run), `docs/test-reports/test-harness/test-harness-checklist.md`, `CLAUDE.md` (Test Harness section)
+- **First consulted**: 2026-07-17, Stage 10
+- **Snapshot basis**: git commit `e4ad484`, branch `uat`, clean tree; transient command outputs (pytest collect count 328, full run 327 passed / 1 skipped, find/grep counts) duplicated into `10-evaluation-assurance/evidence/10-ci-and-harness-excerpts.md` per the evidence standard
+- **Notes**: Grounds F-10-01 (no frontend test harness), F-10-02 (no CI schedule seam), F-10-03 (documented suite size stale). The test-harness checklist and `CLAUDE.md` were used as documented intent and cross-checked against the workflow file / package.json / test tree directly — the T4.5 park corroborates F-10-01 but the finding rests on the direct reads.
+
+### Stage 10 note
+
+Beyond S-09, Stage 10 consumed only prior confirmed findings, gate registers, Stage 07–09 handoffs/designs, and the Stage 04 measurement framework — all programme-internal, already registered via their producing stages' evidence. No new external sources.
+
 ## Next action
 
-**Register current through Stage 09 executor pass. Next entries due from Stage 10's consulted sources.**
+**Register current through Stage 10 executor pass. Next entries due from Stage 11's consulted sources.**
