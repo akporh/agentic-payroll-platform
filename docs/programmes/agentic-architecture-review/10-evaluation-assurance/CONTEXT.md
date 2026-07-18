@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-18; was context-ready 2026-07-17, populated by the controller on Stage 09's closure — critic PASS, report in `09-human-experience/outputs/critic-review.md`)
+closed (2026-07-18 — critic PASS, zero required corrections, `outputs/critic-review.md`; D-003 automatic closure. Executor pass complete 2026-07-18; was context-ready 2026-07-17.)
 
 ## Objective
 
@@ -71,4 +71,4 @@ Ready for the critic only when: every Q1–Q9 has a design answer or explicitly-
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md` → `outputs/critic-review.md`.**
+**None — stage closed 2026-07-18 on critic PASS. Stage 11 is context-ready.**

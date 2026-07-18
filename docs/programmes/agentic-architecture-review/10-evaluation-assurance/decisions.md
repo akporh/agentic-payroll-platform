@@ -5,7 +5,7 @@ Stage-local log. Master log for human decisions: `_core/HUMAN-DECISIONS.md`.
 ## Gate
 
 - **Stage opened**: 2026-07-17 (context-ready on Stage 09's closure, D-003 automatic progression)
-- **Stage closed**: not yet — awaiting-critic
+- **Stage closed**: 2026-07-18 (critic PASS, zero required corrections — D-003 automatic closure)
 
 ## Human decisions made this stage
 
@@ -36,4 +36,4 @@ Recorded per the extended-field pattern: design conclusions within inherited bin
 
 ## Next action
 
-**Independent critic per `CRITIC.md` → `outputs/critic-review.md`.**
+**None — stage closed 2026-07-18 on critic PASS.**
