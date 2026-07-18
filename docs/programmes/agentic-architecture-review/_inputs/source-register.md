@@ -114,6 +114,10 @@ Beyond S-09, Stage 10 consumed only prior confirmed findings, gate registers, St
 
 Beyond S-10, Stage 11 consumed only programme-internal inputs (Stage 02/04/05/09/10 confirmed findings, outputs and handoffs; the gate/evidence/residual-risk registers; `decision-queue.md`) — all already registered via their producing stages. No new external sources; no business fact was taken from an unregistered source (gaps recorded as EG-004/EG-005 instead).
 
+### Stage 12 note
+
+Stage 12 (Target Direction, executor pass 2026-07-18) introduced no new sources — it is a pure synthesis stage consuming programme-internal inputs only (Stage 02/03/04/05/09/10/11 confirmed findings, outputs and handoffs; the gate/evidence/residual-risk registers; `decision-queue.md`), all already registered via their producing stages. One re-read: **S-04** (`docs/architecture/agent-layer-architecture.html`, live read 2026-07-18) solely to state the revision's disposition (`12-target-direction/outputs/source-document-disposition.md`) — unchanged status ("Arch-council reviewed 2026-06-11", pill "NEEDS REVISION"), treated as stated intent only per D-02-01. No new code exploration; no repo-code citations beyond prior stages' confirmed findings. Repository HEAD at the time of the pass: `33a4651`, branch `uat`, clean tree.
+
 ## Next action
 
-**Register current through Stage 11 executor pass. Next entries due from Stage 12's consulted sources.**
+**Register current through Stage 12 executor pass. Next entries due from Stage 13's consulted sources (if any).**

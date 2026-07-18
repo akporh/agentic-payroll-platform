@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-18 by the controller on Stage 11's closure — critic PASS, zero required corrections, report in `11-commercial-product-strategy/outputs/critic-review.md`)
+awaiting-critic (executor pass complete 2026-07-18 — all 7 outputs produced, 0 findings, 5 executor synthesis conclusions DEC-12-01–05; context populated 2026-07-18 by the controller on Stage 11's closure — critic PASS, zero required corrections, report in `11-commercial-product-strategy/outputs/critic-review.md`)
 
 ## Objective
 
@@ -75,4 +75,4 @@ Ready for the critic only when: every Q1–Q7 has an answer; the fork is stated 
 
 ## Next action
 
-**Run the Stage 12 primary-executor pass per `RUNBOOK.md`.** Recommend a fresh session (D-004).
+**Run the independent critic per `CRITIC.md` → `outputs/critic-review.md`.** Recommend a fresh session/context for the critic pass (D-004).
