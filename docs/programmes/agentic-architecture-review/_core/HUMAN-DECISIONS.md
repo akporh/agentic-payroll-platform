@@ -104,4 +104,4 @@ Stage gate approvals (permission to move a stage from `in-progress` to `gated-cl
 
 ## Next action
 
-**Stage 04 is complete. Await approval to begin Stage 05 — Platform Readiness.**
+**No gate approvals due.** From D-003 (2026-07-15, recorded in programme `decisions.md`) onward, stages 05+ close automatically on critic PASS with no blocking decision — no per-stage `HD-GATE` entries are created for them (their closure records live in `review-state.md` and each stage's `outputs/critic-review.md`). The next entry expected in this log is the **Stage 13 final roadmap approval** (and the decisions packed with it: DQ-007 + MFA, the source-document disposition, and any items the human reviewer resolves at that touchpoint). *(Stale pre-D-003 next-action line corrected 2026-07-18, flagged informationally by the Stage 12 critic.)*

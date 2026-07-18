@@ -1,6 +1,6 @@
 # Stage 12 Output: Direction-Level Success Measures (Q5)
 
-A deliberately small set of direction KPIs that tell the human reviewer whether the direction is *working* once builds land. All are drawn from the Stage 04 measurement framework and the B1–B6 baseline set — **selection and arrangement only; no new metric is invented here**. Every KPI honours the binding prohibitions; §3 restates them as hard guards.
+A deliberately small set of direction KPIs that tell the human reviewer whether the direction is *working* once builds land. K1–K5 are drawn from the Stage 04 measurement framework and the B1–B6 baseline set; K6 is drawn from the Stage 10 launch-gate evidence register and standing-controls artifacts (its row states its sources) — **selection and arrangement only; no new metric is invented here**. Every KPI honours the binding prohibitions; §3 restates them as hard guards.
 
 ## 1. The six direction KPIs
 

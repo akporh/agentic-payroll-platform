@@ -6,7 +6,7 @@ Stage-local log of decisions during this stage. Master log for human decisions: 
 
 - **Stage opened (context-ready)**: 2026-07-18 (controller, on Stage 11's automatic closure per D-003)
 - **Executor pass complete (awaiting-critic)**: 2026-07-18
-- **Stage closed**: not yet
+- **Stage closed**: 2026-07-18 (critic PASS, zero required corrections, D-003 automatic closure; K6 provenance precision applied by controller pre-closure)
 
 ## Human decisions made during this stage
 
@@ -24,4 +24,4 @@ Classification per `CRITIC.md` taxonomy noted per entry.
 
 ## Next action
 
-**Independent critic per `CRITIC.md` → `outputs/critic-review.md`.**
+**Stage closed.** Next decisions arise at Stage 13's final human approval gate.

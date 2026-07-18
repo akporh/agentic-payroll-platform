@@ -1,0 +1,83 @@
+# Stage 12 Independent Critic Review
+
+Independent critic pass per `CRITIC.md`, 2026-07-18. Fresh session (D-004); no executor conversational context. Reviewed at repository HEAD `6c32612` (branch `uat`, clean tree). This is the first synthesis stage the critic has reviewed — the review's centre of gravity is therefore traceability (arrangement vs. invention), fork discipline, and preservation of binding decisions, rather than repo-code citation checking.
+
+## Verdict
+
+**PASS**
+
+Zero required corrections. One non-blocking precision item is recommended for controller application pre-closure (§ Required corrections). No blocking human decision prevents closure — every genuine decision is correctly framed and staged for the Stage 13 gate, which is where D-02-01 and the queue already scheduled them.
+
+## Scope reviewed
+
+- Stage contract and state: `12-target-direction/CONTEXT.md` (all Q1–Q7 requirements, constraints, exclusions, completion criteria), `findings.md`, `decisions.md` (DEC-12-01–05), `review-state.md`, `state.md`, `decision-queue.md`, `POLICY.md`, `WORKFLOW.md`, `RUNBOOK.md`, `_core/HUMAN-DECISIONS.md`, `_inputs/source-register.md` (Stage 12 note).
+- All 7 executor outputs under `12-target-direction/outputs/`.
+- Binding inputs re-read in full to verify load-bearing citations independently rather than trusting them: Stage 11's `stage-12-handoff.md`, `stage-13-handoff.md`, `commercial-value-map.md`, `positioning-and-claims.md`, `product-scope-boundaries.md`, `sequencing-economics.md`, `pre-build-decision-logistics.md`, and its `critic-review.md` (carried instructions); Stage 10's `stage-12-handoff.md`, `launch-gate-evidence-register.md` (ET taxonomy, blocked-row rule, ratchet, CG-12/C7/C9 rows), `residual-risk-register.md` (RR-1 trigger set and reaffirmation boundary); Stage 02's `non-negotiable-product-principles.md` and findings F-02-03/04/08; Stage 03's `agent-capability-matrix.md` (all 15 dispositions); Stage 04's `measurement-framework.md` and `product-opportunity-map.md` (K4's second component); Stage 05's `capability-readiness-matrix.md` (readiness-order grounding).
+- The source document S-04: `docs/architecture/agent-layer-architecture.html` text-extracted and checked claim-by-claim against `source-document-disposition.md` (details in Evidence-quality below). Byte-compared against the `frontend/public/architecture/` mirror.
+- Working-tree and commit hygiene: `git status` (clean), `git show --stat 6c32612` (13 files, all inside the programme folder), `git log` on both HTML copies (last touched `9644d91`/pre-programme — **the source document is unmodified**).
+
+## Strengths
+
+1. **The fork is framed with unusual cleanliness.** `target-direction-statement.md` §5 states the executor-safe default ("single-bureau excellence with a SaaS-ready posture") and separates the active-SaaS alternative as the F-11-01 three-part human bundle, reproducing `product-scope-boundaries.md` §2.2's structure (product/market + RR-1 re-open + scope) without additions or softening. RR-1 trigger (c) discipline (DEC-10-16, DEC-11-04) is intact: nothing in any output proposes, assumes, or leans toward multi-tenant operation — I checked the trigger's own wording in `residual-risk-register.md` §3 ("if Stage 11/12 propose multi-tenant SaaS commercialisation") and Stage 12 does not fire it. The "SaaS-ready posture" claim is confined to the substrate observation §2.2 explicitly marked "requiring no decision".
+2. **Synthesis discipline held — arrangement, not invention.** Every load-bearing claim I traced resolved to a confirmed finding, binding decision, or recorded handoff fact. No business/market/competitive fact was invented: `product-direction-narrative.md` §4 not only carries the Stage 11 critic's instruction ("keep competitor characterisations conditional/definitional") but strengthens it in-text ("defined here conditionally as…") and drops Stage 11's own absolute "none can say" in favour of "the platform's counter is…". Capability-led vs demand-led language discipline (F-11-02/EG-005) is maintained in the statement (§2), narrative (§5), and KPIs (§2: "no KPI here measures willingness-to-pay").
+3. **The source-document disposition is factually accurate against a live read of the HTML.** I independently re-extracted the document and verified every structural claim (see Evidence-quality). The disposition decides nothing that is Stage 13's — §1 and §6 consistently frame supersede-and-replace as a recommendation whose approval "resolves D-02-01" only when Stage 13 records it, and application (rewriting both HTML copies) is correctly deferred to Phase 3 as a write outside this programme's authorised paths.
+4. **Binding decisions are preserved, not paraphrased into something weaker.** D-03-01's dispositions appear intact in `capability-end-state-map.md` — all 15 capabilities, the 7-deterministic/5-AI/2-blocked/1-rejected split matching the matrix's own overlapping labelling (C15 both deferred and reclassified, correctly presented both ways), the C9 rejection with its ET-2 design-absence evidence, and the deliberate not-do list (§2) covering every boundary from D-02-03, D-04-01, DQ-008, and the Stage 11 classifications. The posture constraints P-A–P-H are all citation-grounded and none relaxes a gate; P-H correctly restates RR-1's bounded reaffirmation rather than extending it.
+5. **The KPI set honours every prohibition, restated as operational guards.** K1–K5 trace to named measurement-framework entries (C11→C12, C13/C14, C7's three D-04-01 governance metrics plus the dismiss-without-review fatigue signal, the cross-cutting exception and grounding metrics) and the correct B-anchors (B5/W5, B1–B3/W2, B6/W3). §3's five guards match the prohibition set exactly, including the subtle ones: anchorless-absolute-values-only reporting when a B-window is missed, and no KPI defined for blocked capabilities (verified against the register's own rule, `launch-gate-evidence-register.md` line 35).
+
+## Required corrections
+
+**None required for closure.** One non-blocking precision item, recommended for controller application pre-closure (consistent with the Stage 07–11 pattern):
+
+- **`12-target-direction/outputs/direction-kpis.md` §preamble (and mirrored in DEC-12-03's wording): the provenance sentence overclaims for K6.** "All are drawn from the Stage 04 measurement framework and the B1–B6 baseline set" is true of K1–K5 but not K6, whose own source column honestly cites the Stage 10 launch-gate evidence register ("done = row green") and `standing-assurance-controls.md` — binding Stage 10 artifacts, not the Stage 04 framework. K6 itself is sound (it converts a binding rule into a compliance signal, invents nothing, violates no prohibition, and CONTEXT's objective only requires measures "consistent with the measurement framework"), but the blanket sentence contradicts the table one paragraph below it, and this stage's entire authority rests on precise provenance claims. Fix: scope the sentence to K1–K5 and name the Stage 10 register as K6's binding source. One-sentence edit; no KPI changes.
+
+Informational, not a Stage 12 defect: `_core/HUMAN-DECISIONS.md`'s "Next action" line still reads "Await approval to begin Stage 05" — stale since D-003 replaced per-stage gate approvals. Pre-existing, outside Stage 12's writes; worth a hygiene sweep before the Stage 13 pack is assembled from that file.
+
+## Decision classification
+
+Every open question touching this stage, classified per the taxonomy:
+
+| Question | Classification | Assessment |
+|---|---|---|
+| Single-bureau vs active-SaaS trajectory (the fork) | **non-blocking-forwarded-decision** (to Stage 13; becomes blocking-human-decision only if the roadmap is asked to serve the SaaS ambition) | Correctly framed, never resolved; DEC-12-01's "not-a-decision" self-classification is honest — the executor adopted the default CONTEXT Q1 explicitly mandated, and the genuine choice remains fully open and staged |
+| Source-document disposition (supersede-and-replace, DEC-12-04) | **non-blocking-forwarded-decision** (to Stage 13's approval gate, where D-02-01 already scheduled it) | Correct; recommending a disposition is exactly the authority D-02-01 granted this stage ("this stage's synthesis is the formal revision path") |
+| KPI set size/composition (DEC-12-03) | **implementation-specification** | Correct — Stage 13 may trim/extend from the same binding sources |
+| DEC-12-02 (end-state map = portfolio realised) and DEC-12-05 (Tech Decisions currency flag) | **not-a-decision** | Both honest: pure arrangement of D-03-01, and a flag that changes nothing (§5 explicitly "not a proposal to change them") |
+| DQ-006 / DQ-007(+MFA) / DQ-008 | **blocking-human-decision** at their respective pre-build gates; non-blocking for Stage 12 closure | Unchanged by this stage; placements in `stage-13-handoff.md` §3 match `pre-build-decision-logistics.md` exactly |
+| EG-004 (next-onboarding timing), EG-005 (demand evidence) | **evidence-gap** | Correctly carried, not papered over; K2 and the narrative both condition on them |
+| DEC-08-09 (statutory UNIQUE widening), RR-1 visibility | **not-a-decision** at this stage (visibility items) | Correctly carried with their existing framing; no re-decision attempted |
+| Multi-operator promotion to C12 prerequisite | contingent **non-blocking-forwarded-decision** (rides DQ-007) | Correctly kept conditional in statement §3 and handoff §3 |
+
+No artificial approval gates were created; no material product, risk, or compliance choice was made by the executor. The zero-human-decisions record in `decisions.md` is accurate.
+
+## Evidence-quality assessment
+
+**Source-document disposition — independently re-verified against the HTML** (text-extracted from `docs/architecture/agent-layer-architecture.html`, live read this session):
+
+- Status header "Arch-council reviewed 2026-06-11" and pill "NEEDS REVISION": present, once each. ✓
+- Five tracks P/V/W/X/Y with the labels the disposition table gives them (P — Authentication; V — Agent Foundation; W — Operator Chat Agent, Phase 2A; X — Proactive Agents, Phase 2B; Y — Autonomous Agents, Phase 2C): all present verbatim. Phase ladder 2A→2B→2C with 2C = "Autonomous… minimal operator prompting… Not planned until Phase 2B is proven in production": verbatim match to disposition §2. ✓
+- **Trace Agent X4 exists only as diagram boxes** (`TraceAgent[Trace Agent X4]` in the Proactive Agents subgraph and `TraceA[Trace Agent]` in the final-state diagram) — no card, no spec. Confirms both the disposition's removal claim and C9's original Stage 03 characterisation. ✓
+- Blocking Conditions (5): no-auth / NDPR-PII / outbox+event-gaps / explain_component_trace slot-filling / agent_session_log-after-auth — matches disposition §3's five carried-and-strengthened items one-for-one. ✓
+- Tool Definitions (V5): exactly 10 read-only tools listed, including `get_reconciliation` — supersession by Stage 08's 11 contracts with the D-02-02 block is accurately stated. ✓
+- Technology Decisions table under "Key Decisions — All decisions locked by arch-council review on 2026-06-11": eight rows including "Tool granularity — Narrow domain-shaped tools" — DEC-12-05's enumeration is accurate, including the tool-granularity row I initially suspected was from a different table. ✓
+- Y1 ("Proposes migration. Requires operator approval") / Y2 ("Interprets messy Excel… dry-run payroll before committing") / Y3 ("Deferred until in-app notifications are proven in production"): the Y1→C11+C12, Y2→C13+C14, Y3→C15 mappings and the "C12 is a capability the source document does not name at all" claim are all accurate (C12 appears nowhere in the document; the Stage 03 matrix confirms "not named in the source document at all"). ✓
+- Ordering rules (Track P first; V1+V2 together; W3 rate limiting in Sprint A2; W5 after Track P; confirmation protocol before 2B planning), sprint labels A2/A3/A4, GAP-1–6 register, security invariants (JWT-only workspace_id, PII strip list, structured JSON envelopes, Decimal-as-string, 2A read-only), W5's uncited "7yr retention": all present as the disposition describes. F-02-08's "directionally right, no longer the authority" characterisation is a fair carry. ✓
+- **The document is untouched**: working tree clean; commit `6c32612` wrote only the 13 programme files; both HTML copies last modified pre-programme (`9644d91`) and byte-identical to each other. ✓
+
+**Handoff-chain verification**: `stage-13-handoff.md` §2's value-priority signal is a verbatim match to Stage 11's `stage-13-handoff.md` §4; the §3 placement table matches `pre-build-decision-logistics.md` §3 row-for-row with only the added direction-note column; the §4 near-term list defers to Stage 11's §3 unchanged. No constraint is restated with weakened force; the DQ-007→multi-operator-promotion consequence and the W2 unrecoverability are both carried at full strength.
+
+**Zero-findings challenge (executor asserted synthesis exposed no inconsistency)**: I actively hunted for inconsistencies across the consumed inputs rather than accepting the assertion. Candidates examined and dismissed: (a) C15's dual deferred/deterministic labelling across outputs — matches D-03-01's own overlapping classification, not a conflict; (b) the source document's Y1 "proposes migration" vs D-02-04's prohibition — that is the revision's intended content, correctly handled in disposition §2, not an inter-finding inconsistency; (c) narrative §2's "unfolds in the same sequence the platform is built" vs the interleaved build signal (C7 shadow before C11/C13) — this is DEC-11-03's own Stage-11-critic-passed claim at story granularity, with the per-story pacing stated honestly; (d) K4's "closed without documented resolution" component — traces to `product-opportunity-map.md` (area: exception resolution, "should be zero"), consistent with its F-04-01-substrate citation; (e) the K6 provenance sentence — a Stage 12 drafting imprecision, not an inconsistency between confirmed prior findings, so no finding was owed. The zero-findings record is defensible under CONTEXT's finding discipline (mismatch between *prior confirmed findings* → finding; none exists).
+
+## Consistency assessment
+
+- `CONTEXT.md` status, `review-state.md` row 12, `state.md`, `findings.md`, `decisions.md` gate section, and `_inputs/source-register.md` all agree: executor pass complete 2026-07-18, awaiting-critic, 7 outputs, 0 findings, DEC-12-01–05, zero human decisions. The source-register Stage 12 note correctly records the single S-04 re-read and the no-new-sources posture.
+- Every Q1–Q7 requirement has a matching output; completion criteria are met: fork stated with clean separation (Q1), posture as checkable constraints citing the Stage 10 handoff's four properties plus the ratchet (Q2), narrative inside the overclaim table (Q3), end-state map with dispositions and the not-do list (Q4), KPIs with prohibition guards (Q5), disposition concrete enough to approve or amend (Q6), handoff consistent with `sequencing-economics.md` and the decision-logistics placements (Q7).
+- Exclusions honoured: no sequencing/sprint shapes (the handoff inherits Stage 11's constraint set rather than producing an order of its own), no human decision resolved, no disposition re-opened, no file outside the programme touched, no marketing copy, Stage 13 not started.
+- D-02-02/03/04 are embedded at full strength (statement §4, posture P-D, end-state map C4/C8/C11 rows and §2); the gate ratchet appears in posture §2 and the KPI/narrative boundaries; nothing anywhere weakens a CG/SG/SS row, the evidence register, or the residual-risk register.
+
+## Advancement recommendation
+
+**Close Stage 12 and open Stage 13 (Approved Roadmap) context-ready, automatically per `RUNBOOK.md`/D-003** — the verdict is PASS and no blocking human decision remains for closure. Recommended before/at closure:
+
+1. Controller applies the one-sentence K6 provenance fix in `direction-kpis.md` (non-blocking; keeps the stage's traceability record exact).
+2. Carry to the Stage 13 executor unchanged: the fork must remain framed (Stage 13 may not adopt the SaaS trajectory without the F-11-01 bundle going through the human gate first); the full decision pack per `stage-13-handoff.md` §5 (roadmap + DQ-007(+MFA) + visibility items RR-1/DEC-08-09 + source-document disposition + EG-004/EG-005 asks); and the reminder that Stage 13 **always** ends at the final human approval gate — critic PASS is never roadmap approval (POLICY).
+3. Programme hygiene (not gating): refresh `_core/HUMAN-DECISIONS.md`'s stale "Next action" line before the Stage 13 pack cites that file.

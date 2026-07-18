@@ -2,7 +2,7 @@
 
 ## Status
 
-awaiting-critic (executor pass complete 2026-07-18 — all 7 outputs produced, 0 findings, 5 executor synthesis conclusions DEC-12-01–05; context populated 2026-07-18 by the controller on Stage 11's closure — critic PASS, zero required corrections, report in `11-commercial-product-strategy/outputs/critic-review.md`)
+closed (2026-07-18 — independent critic **PASS**, zero required corrections, `outputs/critic-review.md`; one non-blocking precision item — K6 provenance sentence in `direction-kpis.md` — applied by the controller pre-closure; closed automatically per D-003. Executor pass complete 2026-07-18 — all 7 outputs produced, 0 findings, 5 executor synthesis conclusions DEC-12-01–05)
 
 ## Objective
 
@@ -75,4 +75,4 @@ Ready for the critic only when: every Q1–Q7 has an answer; the fork is stated 
 
 ## Next action
 
-**Run the independent critic per `CRITIC.md` → `outputs/critic-review.md`.** Recommend a fresh session/context for the critic pass (D-004).
+**Stage closed.** Continue the loop at Stage 13 (`13-approved-roadmap/CONTEXT.md`) — the final stage, which always ends at the human approval gate.
