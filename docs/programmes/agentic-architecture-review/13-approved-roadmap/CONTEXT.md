@@ -2,7 +2,9 @@
 
 ## Status
 
-context-ready (populated 2026-07-18 by the controller on Stage 12's closure — critic PASS, zero required corrections, report in `12-target-direction/outputs/critic-review.md`)
+awaiting-human-decision (executor pass complete 2026-07-18; independent critic **PASS** 2026-07-18, zero required corrections — `outputs/critic-review.md`, critic run on Opus 4.8 after the Fable 5 pass halted on a usage-credit limit before writing output). 4 outputs produced; 0 F-13 findings; DEC-13-01–06 logged; every O1–O9/W1–W6 honoured with zero departures; decision pack DP-1–DP-9 consolidated. **Stage held at the final human approval gate — it does NOT close automatically.** Next: human reviewer responds to `outputs/stage-13-approval-prompt.md`; approval/amendments recorded in `_core/HUMAN-DECISIONS.md` close the stage and Phase 1.)
+
+_(populated context-ready 2026-07-18 by the controller on Stage 12's closure — critic PASS, zero required corrections, report in `12-target-direction/outputs/critic-review.md`)_
 
 ## Objective
 
