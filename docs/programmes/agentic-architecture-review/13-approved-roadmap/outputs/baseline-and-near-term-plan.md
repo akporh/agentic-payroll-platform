@@ -17,6 +17,8 @@ The calendar-bound, low-cost actions that must be placed **explicitly so none is
 
 ---
 
+> **DP-7 amendment (2026-07-19, HD-14) — read this section in that light.** The human reviewer resolved EG-004 with an **amended evidence approach**: the next live onboarding is **no longer the only acceptable B1/B2 source**, and the "unrecoverable window" is no longer a hard dependency. B1/B2 may be captured via a **controlled onboarding benchmark** built from representative historical client information or appropriately synthetic data based on previous onboarding cases — measuring the existing/manual process and the platform-supported process consistently (time, effort, interventions, errors, completeness, and other relevant measures) — with live-onboarding evidence collected **opportunistically** when available. Replay/test data must be isolated, governed, and safely removed or retained per the agreed evidence protocol, and simulated onboarding must be **labelled clearly as controlled benchmark evidence, never as proof of live operational performance**. The "unrecoverable window (W2)" language below is retained as originally written pending DP-9 (roadmap not yet finally approved — not rewritten here); read it as superseded by this amendment for evidence-capture purposes. Master record: `_core/HUMAN-DECISIONS.md` HD-14; queue rows EG-001/EG-002/EG-004.
+
 ## 2. Ask now — EG-004 (the scheduling fact the unrecoverable window hinges on)
 
 **EG-004 — next-onboarding timing:** whether/when Sandy expects the next new payroll client. Only Michael can supply it (evidence type 5; never invented). This is the single fact the **unrecoverable B1/B2 window (W2)** depends on.
