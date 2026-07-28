@@ -2,7 +2,7 @@
 
 ## Status
 
-context-ready (populated 2026-07-17 by the controller on Stage 06's closure — critic PASS, re-critic addendum in `06-compliance-controls/outputs/critic-review.md`)
+closed (2026-07-17 — critic PASS with zero blocking corrections, `outputs/critic-review.md`; the one non-blocking evidence-precision item (route-sweep denominator) was verified and corrected pre-closure; D-003 automatic closure; Stage 08 opened context-ready)
 
 ## Objective
 
@@ -172,4 +172,4 @@ Stage 07 is ready for the critic only when:
 
 ## Next action
 
-**Run the Stage 07 primary-executor pass per `RUNBOOK.md`.**
+**None — stage closed.** The programme's next action is the Stage 08 primary-executor pass (see `review-state.md`).

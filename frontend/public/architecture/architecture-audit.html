@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payroll Platform — Architecture Audit</title>
+<style>
+:root{
+  --bg:#f6f4ef;
+  --surface:#ffffff;
+  --ink:#1c2321;
+  --ink-soft:#4a534f;
+  --line:#d9d3c6;
+  --accent:#2c5c53;
+  --accent-soft:#e4ede9;
+  --mono-bg:#eee9dc;
+  --good:#2f7a3d;
+  --good-bg:#e6f2e5;
+  --warn:#a3690a;
+  --warn-bg:#fbf0da;
+  --bad:#b23b2e;
+  --bad-bg:#f9e6e2;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#171a18;
+    --surface:#1f2422;
+    --ink:#ece8de;
+    --ink-soft:#a9b0ab;
+    --line:#333b36;
+    --accent:#7fbfae;
+    --accent-soft:#233330;
+    --mono-bg:#252a26;
+    --good:#7fc98a;
+    --good-bg:#1e2f20;
+    --warn:#e0ab5c;
+    --warn-bg:#332a15;
+    --bad:#e08b7d;
+    --bad-bg:#3a201c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171a18; --surface:#1f2422; --ink:#ece8de; --ink-soft:#a9b0ab; --line:#333b36;
+  --accent:#7fbfae; --accent-soft:#233330; --mono-bg:#252a26;
+  --good:#7fc98a; --good-bg:#1e2f20; --warn:#e0ab5c; --warn-bg:#332a15; --bad:#e08b7d; --bad-bg:#3a201c;
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ef; --surface:#ffffff; --ink:#1c2321; --ink-soft:#4a534f; --line:#d9d3c6;
+  --accent:#2c5c53; --accent-soft:#e4ede9; --mono-bg:#eee9dc;
+  --good:#2f7a3d; --good-bg:#e6f2e5; --warn:#a3690a; --warn-bg:#fbf0da; --bad:#b23b2e; --bad-bg:#f9e6e2;
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  line-height:1.55;
+}
+.wrap{max-width:920px;margin:0 auto;padding:64px 28px 120px;}
+
+.masthead{
+  border-bottom:2px solid var(--ink);
+  padding-bottom:22px;
+  margin-bottom:40px;
+}
+.eyebrow{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 10px;
+}
+h1{
+  font-family:Georgia,"Iowan Old Style","Palatino Linotype",Palatino,serif;
+  font-size:clamp(28px,4vw,40px);
+  font-weight:600;
+  margin:0 0 8px;
+  text-wrap:balance;
+  letter-spacing:-.01em;
+}
+.subhead{color:var(--ink-soft);font-size:15px;margin:0;max-width:60ch;}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;font-size:12.5px;color:var(--ink-soft);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+.meta-row b{color:var(--ink);font-weight:600;}
+
+h2{
+  font-family:Georgia,"Iowan Old Style","Palatino Linotype",Palatino,serif;
+  font-size:23px;
+  font-weight:600;
+  margin:56px 0 6px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+  letter-spacing:-.005em;
+}
+h2 .num{color:var(--accent);font-family:ui-monospace,monospace;font-size:15px;font-weight:600;margin-right:10px;}
+h3{
+  font-size:15.5px;
+  font-weight:700;
+  margin:26px 0 8px;
+  color:var(--ink);
+}
+p{margin:0 0 14px;max-width:68ch;}
+p.lede{color:var(--ink-soft);max-width:68ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;}
+li{margin-bottom:6px;max-width:64ch;}
+strong{font-weight:700;}
+code{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:.86em;
+  background:var(--mono-bg);
+  padding:1px 5px;
+  border-radius:4px;
+  white-space:nowrap;
+}
+
+.cap-card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px 20px;
+  margin:14px 0;
+}
+.cap-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
+.cap-name{font-weight:700;font-size:15px;}
+.pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:ui-monospace,monospace;
+  font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  padding:3px 9px;border-radius:99px;white-space:nowrap;
+}
+.pill.full{background:var(--good-bg);color:var(--good);}
+.pill.partial{background:var(--warn-bg);color:var(--warn);}
+.pill.missing{background:var(--bad-bg);color:var(--bad);}
+.evidence{
+  margin-top:10px;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12px;
+  color:var(--ink-soft);
+  background:var(--mono-bg);
+  border-radius:6px;
+  padding:9px 12px;
+  line-height:1.6;
+  overflow-x:auto;
+}
+
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13.5px;}
+.tbl-wrap{overflow-x:auto;margin:16px 0;}
+th{
+  text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-soft);font-weight:600;
+  border-bottom:1px solid var(--ink);
+  padding:8px 12px;
+  white-space:nowrap;
+}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+td code{white-space:normal;}
+
+blockquote{
+  margin:16px 0;padding:12px 18px;
+  border-left:3px solid var(--accent);
+  background:var(--accent-soft);
+  border-radius:0 8px 8px 0;
+  font-size:13.5px;color:var(--ink-soft);
+}
+blockquote code{background:transparent;padding:0;}
+
+.gap-list{list-style:none;padding:0;margin:14px 0;}
+.gap-list li{
+  display:flex;gap:12px;
+  padding:10px 0;
+  border-bottom:1px solid var(--line);
+  max-width:none;
+}
+.gap-list li:last-child{border-bottom:none;}
+.gap-tag{flex:0 0 auto;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:16px 0;}
+@media (max-width:640px){.two-col{grid-template-columns:1fr;}}
+.compare-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.compare-card h4{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);}
+
+.summary-box{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-left:4px solid var(--accent);
+  border-radius:8px;
+  padding:22px 24px;
+  margin:20px 0;
+}
+.summary-box p:last-child{margin-bottom:0;}
+
+.sales-box{
+  background:var(--accent);
+  color:#fbfaf5;
+  border-radius:12px;
+  padding:28px 26px;
+  margin:20px 0;
+}
+.sales-box p{color:#fbfaf5;max-width:70ch;font-size:15.5px;}
+.sales-box p:last-child{margin-bottom:0;}
+@media (prefers-color-scheme:dark){
+  .sales-box, .sales-box p{color:#0f1614;}
+}
+:root[data-theme="dark"] .sales-box, :root[data-theme="dark"] .sales-box p{color:#0f1614;}
+:root[data-theme="light"] .sales-box, :root[data-theme="light"] .sales-box p{color:#fbfaf5;}
+
+.toc{
+  display:flex;flex-wrap:wrap;gap:6px 0;
+  font-size:12.5px;
+  margin:20px 0 0;
+  padding:0;
+  list-style:none;
+}
+.toc li{margin:0;}
+.toc a{color:var(--ink-soft);text-decoration:none;padding:4px 10px;border-right:1px solid var(--line);}
+.toc li:last-child a{border-right:none;}
+.toc a:hover, .toc a:focus{color:var(--accent);}
+
+footer{margin-top:70px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-soft);font-size:12px;font-family:ui-monospace,monospace;}
+
+a{color:var(--accent);}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<div class="masthead">
+  <p class="eyebrow">Architecture Audit — Evidence-Based</p>
+  <h1>Sandy Payroll Platform: What Was Actually Built</h1>
+  <p class="subhead">A code-verified description of the payroll engine's design, capabilities, and gaps — every claim traced to a file, class, or function. No roadmap language, no aspirational features.</p>
+  <div class="meta-row">
+    <span><b>Repo</b> agentic-payroll-platform</span>
+    <span><b>Verified</b> 2026-07-03</span>
+    <span><b>Branch</b> uat</span>
+    <span><b>Scope</b> Phase 1 MVP — deterministic engine</span>
+  </div>
+  <ul class="toc">
+    <li><a href="#overview">1 · Overview</a></li>
+    <li><a href="#capabilities">2 · Capabilities</a></li>
+    <li><a href="#differentiators">3 · Differentiators</a></li>
+    <li><a href="#gaps">4 · Gaps</a></li>
+    <li><a href="#comparison">5 · Enterprise comparison</a></li>
+    <li><a href="#value">6 · Value</a></li>
+    <li><a href="#pitch">7 · 30-second pitch</a></li>
+  </ul>
+</div>
+
+<h2 id="overview"><span class="num">01</span>System Overview</h2>
+
+<p><strong>Type:</strong> a metadata-driven, rule-configurable payroll calculation engine for the Nigerian statutory regime. It is not a generic workflow tool with payroll bolted on, and not a hardcoded per-country calculator — the calculation graph itself (which components run, in what order, feeding what totals) is data, not code.</p>
+
+<p><strong>Architectural style:</strong> layered and domain-driven, matching the layering documented in the project's own CLAUDE.md and confirmed in the source tree:</p>
+
+<div class="tbl-wrap"><table>
+<tr><th>Layer</th><th>Location</th><th>Rule observed</th></tr>
+<tr><td>API routes</td><td><code>backend/api/routes/</code></td><td>Thin — orchestration and validation only</td></tr>
+<tr><td>Application services</td><td><code>backend/application/</code></td><td>Owns transactions, lifecycle transitions, retry orchestration</td></tr>
+<tr><td>Domain logic</td><td><code>backend/domain/payroll/</code>, <code>backend/domain/rules/</code></td><td>Pure functions — no DB imports, confirmed in <code>paye.py</code>, <code>pension.py</code>, <code>nhf.py</code></td></tr>
+<tr><td>Repositories</td><td><code>backend/infra/repositories/</code></td><td>Raw SQL, workspace-scoped in SQL for most tables</td></tr>
+</table></div>
+
+<p><strong>Design philosophy, as evidenced by the code itself:</strong></p>
+<ul>
+<li><strong>Configuration over branching.</strong> <code>sequential_executor.py</code> dispatches through a handler registry (<code>register_handler()</code>) keyed by <code>calculation_method</code>, not an if/elif ladder — new statutory contributions (NSITF, ITF) were added by registering a handler, not editing the core loop.</li>
+<li><strong>Fail loud, not silent.</strong> Missing pension rates raise; unrecognised rule methods produce an explicit <code>not_applied</code> trace entry rather than being dropped; a missing historical rule version raises <code>NoHistoricalRuleVersionError</code> rather than falling back to the current rate. This pattern — reject rather than guess — recurs across the codebase and is the strongest evidence of a deliberate correctness-first design stance.</li>
+<li><strong>Temporal correctness as a first-class concern.</strong> The RULE-VER-1 rule-versioning system and <code>statutory_rule.effective_from</code> exist specifically so a correction run for a past period recalculates under the rules that applied <em>then</em>, not today's rules.</li>
+</ul>
+
+<h2 id="capabilities"><span class="num">02</span>Core Capabilities — Code-Verified</h2>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Sequential calculation engine</span><span class="pill full">Full</span></div>
+  <p>Payroll components execute in priority order (BASIC → HOUSING → TRANSPORT → rule-injected pay → GROSS_PAY → PENSION → TAXABLE_INCOME → PAYE → NHF → HEALTH → DEVELOPMENT_LEVY → employer costs → NET_PAY), each handler reading only the accumulated context so far — a genuine pipeline, not a flat spreadsheet of independent formulas.</p>
+  <div class="evidence">backend/domain/payroll/sequential_executor.py :: run_sequential_payroll() (L615–786)<br>handler registry: _HANDLERS / register_handler() (L77–104)<br>Decimal + ROUND_HALF_UP quantized at every computed component</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Rule execution model</span><span class="pill full">Full</span></div>
+  <p>Workspace-defined <code>payroll_rule</code> records support five calculation methods: <code>unit_multiplier</code>, <code>daily_rate_deduction</code> (with per-component proration strategy and multi-period-spanning group handling), <code>fixed_amount</code>, <code>ot_multiplier</code> (rate-code driven overtime, shift-gated), and <code>percentage_of_sum</code>. Rules run before the sequential executor and inject components at priority 50.</p>
+  <div class="evidence">backend/domain/payroll/rule_evaluator.py :: apply_payroll_rules() (L91)<br>VALID_CALCULATION_METHODS (L59–65)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Rule versioning &amp; historical resolution</span><span class="pill full">Full</span></div>
+  <p>Rule sets are snapshotted per <code>(workspace, effective_from)</code> and auto-published; once a <code>payroll_run</code> references a rule set it is locked from further edits. Correction runs resolve rates against the rule set that was active on the original <code>reference_date</code>, and raise rather than silently substitute the current rate when no historical version exists.</p>
+  <div class="evidence">migrations/versions/a8b9c0d1e2f3_add_rule_set_tables_temporal_rules.py<br>backend/application/rule_set_service.py :: auto_publish() (L22)<br>backend/domain/payroll/rule_evaluator.py :: _resolve_rule() (L750–826)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Metadata-driven configuration</span><span class="pill full">Full</span></div>
+  <p><code>component_metadata</code> (platform defaults) and <code>client_component_metadata</code> (per-workspace overrides) define every component's class, priority, and calculation method as data. A workspace can reclassify a component (e.g. make TRANSPORT non-taxable) or override a rate without a code deploy.</p>
+  <div class="evidence">backend/infra/db/models/component_metadata.py (L7–30)<br>consumed at sequential_executor.py L667–679</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Multi-tenant / workspace scoping</span><span class="pill partial">Partial</span></div>
+  <p>Most repositories filter by <code>workspace_id</code> directly in SQL. Two exceptions rely on the calling route to have already validated tenancy rather than enforcing it in the query: <code>payroll_result_repo.py</code> (scoped only by <code>payroll_run_id</code>) and <code>employee_repo.get_current_contract()</code> (no <code>workspace_id</code> parameter at all). Verified callers currently guard correctly, but the pattern is inconsistent — a defense-in-depth gap, not a confirmed live vulnerability.</p>
+  <div class="evidence">backend/infra/repositories/payroll_result_repo.py (no workspace_id refs)<br>backend/infra/repositories/employee_repo.py :: get_current_contract() (L125–146)<br>guarded at call site: backend/api/routes/employees.py :: add_contract() (L172–176)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Auditability &amp; traceability</span><span class="pill full">Full</span></div>
+  <p>Every executed component writes a trace entry (method, class, result, and — for period-sensitive calculations — the annualization factor used) into <code>component_trace_jsonb</code>, seeded with a period-context header. Rule-evaluator trace entries (resolution source, rate used, warnings) are merged in wholesale — a prior gap where only one rule type's trace survived has been fixed. Lifecycle transitions write to <code>audit_log</code> with old/new value diffs.</p>
+  <div class="evidence">sequential_executor.py L696–773 (trace build), L775–781 (rule trace merge)<br>executor.py L247–254 (comment documenting the fix)<br>backend/infra/repositories/audit_log_repo.py :: save_audit_log() (L25)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Legacy calculation path</span><span class="pill partial">Partial</span></div>
+  <p>When a caller doesn't supply <code>component_metadata</code>, the engine falls back to a legacy pipeline that produces a payroll result with <strong>no audit trace</strong> (<code>component_trace_jsonb</code> is explicitly set to <code>None</code>). This path is still live and instrumented — its usage is tracked and exposed via an ops endpoint — rather than removed.</p>
+  <div class="evidence">backend/domain/payroll/executor.py :: execute_single_employee_payroll() (L51, L132)<br>GET /{workspace_id}/payroll/ops/legacy-executor-stats — backend/api/routes/payroll.py:1297</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Input handling</span><span class="pill full">Full</span></div>
+  <p>Payroll inputs carry a category (<code>EARNING</code>, <code>DEDUCTION</code>, <code>STANDARD</code>, <code>PAYE_ONLY</code>) enforced by a DB constraint; <code>PAYE_ONLY</code> rows raise taxable income without touching gross or net pay. Inputs are inserted unclaimed and claimed onto a run by reference date; future-dated inputs are never auto-claimed. Bulk upload of pay inputs and bulk enrollment onto payroll are separate code paths writing to separate tables, deliberately decoupled since Sprint 22.</p>
+  <div class="evidence">migrations/versions/d6e7f8a9b0c1_add_input_category_constraint.py:21<br>backend/infra/repositories/payroll_input_repo.py :: link_inputs_to_run() (L18–79)<br>backend/api/routes/payroll_input.py (bulk upload, L190–333)<br>backend/infra/repositories/employee_repo.py :: bulk_enroll_employee_contracts() (L293–378)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Payroll lifecycle</span><span class="pill partial">Partial</span></div>
+  <p>Runs progress DRAFT → CALCULATING → CALCULATED/PARTIAL → APPROVED → LOCKED → PAID, enforced by a DB trigger on rank rather than an explicit edge list. LOCKED/PAID runs are immutable to edits. Retry is <code>PER_EMPLOYEE</code> only — <code>FULL_RUN</code> retry was deliberately retired and now raises on invocation. <strong>Gap:</strong> the DB trigger recognises a <code>VALIDATED</code> status that does not exist in the Python status enum — a single-source-of-truth drift, not observed to cause a functional failure but worth reconciling.</p>
+  <div class="evidence">backend/domain/payroll/status.py (L16–34) vs. migrations/versions/f1a2b3c4d5e6_enforce_payroll_run_status_transitions.py<br>backend/application/payroll_retry_service.py :: _retry_full_run() (L501–505, always raises)</div>
+</div>
+
+<div class="cap-card">
+  <div class="cap-head"><span class="cap-name">Statutory calculations</span><span class="pill full">Full</span></div>
+  <p>PAYE uses the cumulative annualized method (period income × annualization factor, banded, de-annualized) — correct for non-monthly periods, not just a monthly shortcut. Bands were corrected to NTA 2025 thresholds in a scoped, non-destructive migration. Pension, NHF, Health Insurance, Development Levy, NSITF, and ITF are all implemented as pure Decimal functions in <code>backend/domain/rules/</code>; pensionable base and ITF eligibility (≥5 employees, ≥₦50M YTD payroll) are both config-resolved, not hardcoded.</p>
+  <div class="evidence">backend/domain/rules/paye.py :: calculate_paye_for_period() (L61–87)<br>migrations/versions/de1f2a3b4c5d_fix_ng_paye_bands_nta_2025.py (L22–48, scoped update)<br>sequential_executor.py :: _handle_pension_rule (L291–336), _handle_itf_employer (L471–527)</div>
+</div>
+
+<h2 id="differentiators"><span class="num">03</span>Differentiators — Based on Implementation</h2>
+
+<p class="lede">What actually separates this from a typical bespoke payroll build, evidenced in the code rather than claimed in a pitch deck:</p>
+
+<ul>
+<li><strong>The calculation graph is data, not code.</strong> Execution order, component classification (taxable/non-taxable/employer-cost), and rate values live in <code>component_metadata</code>, <code>client_component_metadata</code>, and <code>rule_set_item.rule_definition_json</code>. Reclassifying a component or changing a rate is a database write, evidenced by the override path at <code>sequential_executor.py:667–679</code> — no equivalent exists in a hardcoded formula system.</li>
+<li><strong>Rules are versioned like code, not overwritten like config.</strong> <code>rule_set</code> snapshots are immutable once referenced by a run (<code>rule_set_service.py</code> raises <code>RuleSetLockedError</code> rather than allowing a retroactive edit) — most SME payroll spreadsheets and even many commercial tools cannot reproduce a payslip from six months ago under the rules that applied then. This one can, for rule-defined components — see the rate-code exception below.</li>
+<li><strong>Every computed number carries its own provenance.</strong> <code>component_trace_jsonb</code> records not just the result but the method, resolution source, and (for time-sensitive figures) the exact annualization factor used — built for reconstructing "why is this payslip this number" without re-running the engine.</li>
+<li><strong>JSONB is used for genuine schema flexibility, not as a dumping ground.</strong> <code>salary_definition.components_jsonb</code>, <code>metadata_json</code>, and <code>overrides_json</code> all have a defined, code-enforced shape per <code>calculation_method</code>, read through typed accessors — not free-form blobs read ad hoc.</li>
+</ul>
+
+<h2 id="gaps"><span class="num">04</span>Limitations &amp; Gaps</h2>
+
+<ul class="gap-list">
+  <li><span class="gap-tag pill missing">Not implemented</span><span><strong>Rate code versioning.</strong> <code>rate_code_registry</code> has no <code>effective_from</code> column. Overtime/shift-rate changes cannot be reproduced historically the way rule and statutory changes can — the one place the "temporal correctness" design goal isn't yet met. Flagged as a TODO in the code itself (<code>rule_evaluator.py:477</code>).</span></li>
+  <li><span class="gap-tag pill missing">Not implemented</span><span><strong>Direct-pay input source (period_input_components).</strong> The executor's function signature accepts this parameter "for API stability" but never uses it — a stated future extension point, not a bug.</span></li>
+  <li><span class="gap-tag pill partial">Partial</span><span><strong>Legacy executor fallback.</strong> Still reachable, produces payroll results with zero audit trace. Anything calling it without <code>component_metadata</code> silently loses traceability, even though the run itself succeeds.</span></li>
+  <li><span class="gap-tag pill partial">Partial</span><span><strong>Status model.</strong> Two sources of truth (Python enum vs. DB trigger) disagree on whether <code>VALIDATED</code> is a real status. No observed functional break, but it means a developer reading only the Python code has an incomplete picture of what the database will actually accept.</span></li>
+  <li><span class="gap-tag pill missing">Implemented, not exposed via UI</span><span><strong>Rule-set / rule-versioning history.</strong> The backend has a full snapshot-and-lock system for rule sets; no frontend page lets an operator browse published rule sets or their effective dates. An operator today cannot see "what rules were active for the March run" without querying the database directly.</span></li>
+  <li><span class="gap-tag pill missing">Implemented, not exposed via UI</span><span><strong>Execution trace / legacy-executor-stats.</strong> Both exist as backend endpoints with no corresponding page — an operator cannot currently see, from the UI, whether a given run used the audited or the un-audited calculation path.</span></li>
+</ul>
+
+<div class="summary-box">
+<p><strong>What would block this from being production-ready at enterprise scale:</strong> not the calculation logic itself, which is unusually rigorous for its stage — it's operational surface area. Multi-country statutory support doesn't exist beyond Nigeria (no evidence of a second <code>country_code</code> ruleset in the domain layer). The rate-code versioning gap means overtime corrections on past periods are not fully auditable. And the workspace-scoping inconsistency in two repositories, while not currently exploitable, means tenancy isolation depends partly on caller discipline rather than being structurally guaranteed everywhere — the kind of thing that becomes a real risk as more routes get added by more people.</p>
+</div>
+
+<h2 id="comparison"><span class="num">05</span>Enterprise Comparison</h2>
+
+<div class="tbl-wrap"><table>
+<tr><th>Dimension</th><th>This system</th><th>SAP / Oracle / ADP</th></tr>
+<tr><td>Rule changes</td><td>Database row insert/publish; no deploy; versioned and locked once used</td><td>Configuration change through a formal change-control layer (e.g. SAP PCR/schema); typically requires a consultant and a change window</td></tr>
+<tr><td>Onboarding a new client</td><td>New workspace + metadata rows; core engine unchanged</td><td>Often a multi-month implementation project</td></tr>
+<tr><td>Transparency of calculation</td><td>Every component's method, inputs, and resolution source is in <code>component_trace_jsonb</code> for that specific run</td><td>Available, but typically requires specialist tooling or vendor support to extract at this granularity</td></tr>
+<tr><td>Cost of change</td><td>Low for rule/rate changes; a genuine new statutory component type still requires a handler function</td><td>High — licensing, consulting day-rates, regression testing across modules</td></tr>
+<tr><td>Maintainability</td><td>Small, legible codebase; layering is respected; but single-tenant-team-scale, unproven at high volume or under sustained multi-country load</td><td>Battle-tested at scale; heavy, slow to change, expensive to run</td></tr>
+</table></div>
+
+<p class="lede">The honest read: this system is structurally more agile than an enterprise suite for a single-country, single-bureau context — the metadata-driven design genuinely delivers that. It has not been tested against the volume, multi-country breadth, or hostile-input hardening that the enterprise incumbents have absorbed over decades. It is not a replacement for SAP/Oracle/ADP at enterprise scale today; it is a credible, auditable alternative for the SME/bureau segment those vendors under-serve on cost and flexibility.</p>
+
+<h2 id="value"><span class="num">06</span>Value Proposition — Derived from Real Capabilities</h2>
+
+<div class="two-col">
+  <div class="compare-card"><h4>Technical fact</h4><p>Component classification, rates, and execution order live in DB metadata, not code (§2, §3)</p></div>
+  <div class="compare-card"><h4>Business value</h4><p>A new earning/deduction type, or a client-specific rule, can go live same-day — not after a development sprint</p></div>
+</div>
+<div class="two-col">
+  <div class="compare-card"><h4>Technical fact</h4><p>Rule sets are versioned and locked once used by a run; correction runs resolve historical rates (§2)</p></div>
+  <div class="compare-card"><h4>Business value</h4><p>A payslip from any prior period can be defended and reproduced under an audit — the answer to "why was this employee paid this" doesn't depend on anyone's memory</p></div>
+</div>
+<div class="two-col">
+  <div class="compare-card"><h4>Technical fact</h4><p><code>component_trace_jsonb</code> records the method and resolution source behind every figure (§2)</p></div>
+  <div class="compare-card"><h4>Business value</h4><p>Statutory or client queries can be answered by pulling one record, not by re-deriving the calculation by hand</p></div>
+</div>
+<div class="two-col">
+  <div class="compare-card"><h4>Technical fact</h4><p>Fail-loud design: missing rates and unresolvable historical rules raise errors rather than substituting a guess (§1)</p></div>
+  <div class="compare-card"><h4>Business value</h4><p>Silent miscalculation — the failure mode that actually damages a payroll bureau's reputation — is designed against, not just tested against</p></div>
+</div>
+
+<h2 id="pitch"><span class="num">07</span>30-Second Sales Summary</h2>
+
+<div class="sales-box">
+<p>Most payroll systems are either rigid — every rule change needs a developer — or opaque — you can't see how a number was actually calculated. This one is built differently: the rules that decide how someone gets paid live in configuration, not code, so a client-specific pay rule can go live in a day instead of a sprint. And every single figure on every payslip carries a record of exactly how it was worked out, so if a client — or a tax authority — asks "why is this number what it is," there's a real answer, not a shrug. It's built for a payroll bureau that needs to move fast for clients without losing the paper trail.</p>
+</div>
+
+<footer>Compiled from direct code inspection of agentic-payroll-platform (branch: uat) · onAiR / Sandy engagement · Every claim above traces to a cited file and function</footer>
+
+</div>
+
+</body>
+</html>

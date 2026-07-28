@@ -86,6 +86,42 @@ Stage 04 (Outcome Discovery) introduced no new sources — its evidence base is 
 ### S-04 note (Stage 06)
 Stage 06 re-read `docs/architecture/agent-layer-architecture.html` (S-04, live read 2026-07-15) only for the `agent_session_log`/retention design (lines 496, 938, 1150–1151) — excerpts saved in the Stage 06 evidence file §7. Treated as stated intent only, unchanged status ("NEEDS REVISION", D-02-01).
 
+### Codebase re-read notes (Stages 07–09)
+
+- **Stage 07 (2026-07-17)**: fresh direct reads of the route surface, CORS configuration, and `workspace_info()` callers at commit `ea1590a`; excerpts in `07-security-identity/evidence/`.
+- **Stage 08 (2026-07-17)**: fresh direct reads at commit `573be0d` (clean tree) for mechanism grounding — statutory resolution query, persister transaction boundaries, actor-input sites, reconciliation/decorative routes, executor purity, `simulate_payroll.py` precedent; excerpts in `08-technical-architecture/evidence/08-code-grounding-excerpts.md`. Stage 08 also re-read S-04 (`agent-layer-architecture.html`, live read 2026-07-17) for the Track P/V/X/Y mechanism proposals — design under review, not authority, unchanged status.
+- **Stage 09 (2026-07-17)**: fresh direct reads of the frontend surface at commit `7d36020` (clean tree) for IA/surface grounding — `router.tsx`, `MainLayout.tsx`, design-system `Navigation.tsx`/`Layout.tsx`, `PayrollResults.tsx` (tabs + audit adapter), `RunPayroll.tsx` (run-type/retry options), shared upload components, `docs/design/ui-decisions.md` (standing UI decisions log, binding input); excerpts in `09-human-experience/evidence/09-frontend-grounding-excerpts.md`. Stage 05's frontend claims (F-05 §§1–2) were re-verified against this later commit rather than carried over. No new external sources.
+
+### S-09: Repository test/CI infrastructure (Stage 10)
+- **Type**: code
+- **Location**: `.github/workflows/tests.yml`, `frontend/package.json`, `tests/` (tree listing + collect run), `docs/test-reports/test-harness/test-harness-checklist.md`, `CLAUDE.md` (Test Harness section)
+- **First consulted**: 2026-07-17, Stage 10
+- **Snapshot basis**: git commit `e4ad484`, branch `uat`, clean tree; transient command outputs (pytest collect count 328, full run 327 passed / 1 skipped, find/grep counts) duplicated into `10-evaluation-assurance/evidence/10-ci-and-harness-excerpts.md` per the evidence standard
+- **Notes**: Grounds F-10-01 (no frontend test harness), F-10-02 (no CI schedule seam), F-10-03 (documented suite size stale). The test-harness checklist and `CLAUDE.md` were used as documented intent and cross-checked against the workflow file / package.json / test tree directly — the T4.5 park corroborates F-10-01 but the finding rests on the direct reads.
+
+### Stage 10 note
+
+Beyond S-09, Stage 10 consumed only prior confirmed findings, gate registers, Stage 07–09 handoffs/designs, and the Stage 04 measurement framework — all programme-internal, already registered via their producing stages' evidence. No new external sources.
+
+### S-10: Sandy business-context documents (Stage 11 re-read)
+- **Type**: documentation
+- **Location**: `Clients/Sandy/CLAUDE.md` (business phases/intent); `Clients/Sandy/_PRODUCT/EP-004_phase2-agentic/FEAT-020_ai-payroll-engine_FUTURE.md`, `FEAT-021_saas-multi-tenant_FUTURE.md` (Phase 2 product stubs — same files as S-05, re-verified)
+- **First consulted**: 2026-07-12 (Stage 02, as S-02/S-05); re-read 2026-07-18, Stage 11
+- **Snapshot basis**: live read 2026-07-18; excerpts duplicated into `11-commercial-product-strategy/evidence/11-business-context-excerpts.md` (files sit outside the git repository, so excerpt duplication is the durable record per the evidence standard)
+- **Notes**: Treated strictly as documented *intent* (evidence type 4) — never as demand evidence. Grounds F-11-01 (FEAT-021 still an unscoped stub) and, via the §4 absence sweep, F-11-02 (no registered type-5 commercial-demand evidence anywhere in the programme). Repo-internal citations in Stage 11 are pinned at commit `4abafdc`, branch `uat`, clean tree.
+
+### Stage 11 note
+
+Beyond S-10, Stage 11 consumed only programme-internal inputs (Stage 02/04/05/09/10 confirmed findings, outputs and handoffs; the gate/evidence/residual-risk registers; `decision-queue.md`) — all already registered via their producing stages. No new external sources; no business fact was taken from an unregistered source (gaps recorded as EG-004/EG-005 instead).
+
+### Stage 12 note
+
+Stage 12 (Target Direction, executor pass 2026-07-18) introduced no new sources — it is a pure synthesis stage consuming programme-internal inputs only (Stage 02/03/04/05/09/10/11 confirmed findings, outputs and handoffs; the gate/evidence/residual-risk registers; `decision-queue.md`), all already registered via their producing stages. One re-read: **S-04** (`docs/architecture/agent-layer-architecture.html`, live read 2026-07-18) solely to state the revision's disposition (`12-target-direction/outputs/source-document-disposition.md`) — unchanged status ("Arch-council reviewed 2026-06-11", pill "NEEDS REVISION"), treated as stated intent only per D-02-01. No new code exploration; no repo-code citations beyond prior stages' confirmed findings. Repository HEAD at the time of the pass: `33a4651`, branch `uat`, clean tree.
+
+### Stage 13 note
+
+Stage 13 (Approved Roadmap, executor pass 2026-07-18) introduced **no new sources** — it is a pure roadmap-assembly/synthesis stage consuming programme-internal inputs only: the two stage-13 handoffs (Stage 11, Stage 12), `sequencing-economics.md`, `pre-build-decision-logistics.md`, the launch-gate evidence register + residual-risk register (Stage 10), the capability end-state map / direction statement / posture / KPIs / source-document disposition (Stage 12), Stage 05's readiness matrix and Stage 08's designs (via prior confirmed findings), Stage 09 handoffs, and `decision-queue.md` — all already registered via their producing stages. No repository code was read; no repo-code citations beyond prior stages' confirmed findings. **S-04 was not re-read** at Stage 13 — its disposition was settled by Stage 12 and is carried as the DP-2 recommendation, not re-verified here (application is a Phase 3 act). No business facts were invented; the scheduling/demand gaps (EG-004/EG-005) are carried as explicit human asks in the decision pack, per programme discipline. Repository HEAD at the time of the pass: `bb7cfac`, branch `uat`.
+
 ## Next action
 
-**Stage 06 executor pass complete — critic review, then Stage 07.**
+**Register current through Stage 13 executor pass (no new sources). No further source entries expected in Phase 1** — the remaining Phase 1 act is the human approval gate (recorded in `_core/HUMAN-DECISIONS.md`), which consults no new source.
