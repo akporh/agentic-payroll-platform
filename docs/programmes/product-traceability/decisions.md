@@ -150,6 +150,197 @@ This decision also authorises a schema amendment: `CAPABILITIES.md`, `FEATURES.m
 **Effect on later phases:** Governs `runs/historical-migration-confirmed-batch-run-001.md`. Successful batch completion does **not** auto-authorise the remainder of Phase 4 (the still-unmigrated confirmed items in other capability areas, nor any strongly-inferred/tentative item anywhere) — a separate, explicit human decision is required for any further migration batch, per the batch's own human-gate-discipline requirement (rubric point 11).
 **Follow-up outside this programme:** None — the two follow-up investigations from D-010/D-012 (PH_OT `is_pensionable`, Gate 4 contradiction) remain open and unaffected by this decision; note that PH_OT `is_pensionable` (`PT-A1-02`) and Gate 4 (`PT-UI-04`) are in different capability areas / confidence levels and are not part of this A1+A2 confirmed-only batch regardless.
 
+## D-017 — Halt migration; complete and approve the hierarchy top-down first
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction, review of the Phase 4A/4B batches)
+**Decision:** Further historical migration is **halted**. Before any additional story is migrated, the product hierarchy — outcomes, capabilities and features — must be defined **as a whole, top-down, across the entire 148-item inventory**, and explicitly approved by the human as a single proposal.
+**Rationale:** Phase 4A and Phase 4B each created only the hierarchy rows needed to place that batch's stories (`OUT-3`, `CAP-3`, `FEAT-3`/`4`/`5` exist because 19 A1+A2 stories needed a home). This is bottom-up accretion: feature boundaries are set by what a batch happened to contain rather than by product logic, coverage is unknowable, and there has never been a complete proposal for the human to approve. The discovery document anticipated exactly this — Sections 7 and 8 explicitly declined to define features or map stories "before the hierarchy model itself is approved… which is exactly the kind of scope expansion `POLICY.md` prohibits" — and Phase 4A/4B proceeded without that layer having been defined.
+**Effect on later phases:** Introduces Phase 3B (`hierarchy completion`, authorised by D-022) between Phase 3 and any further Phase 4 batch. Full Phase 4 remains unauthorised and additionally now blocked behind Phase 3B's human gate.
+**Follow-up outside this programme:** None.
+
+## D-018 — Acceptance-criteria ownership: pointer-only for retro-migrated stories, native for forward-authored stories
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction)
+**Decision:** A **retro-migrated** story record does not carry acceptance criteria; it summarises and links to the source story file, as D-009 established. A **forward-authored** story — one created in the product hierarchy from the point the PM writes it, with no pre-existing sprint story file to point at — carries its acceptance criteria **natively and authoritatively** in its own record.
+**Rationale:** For already-delivered work the source story is closed and frozen, so the drift risk D-009 was avoiding is real while the benefit of duplication is low; re-typing acceptance criteria for up to 148 delivered stories is heavy work for little gain. For new work there is no prior file, so the hierarchy must own the criteria or they have no home.
+**Contradiction resolved by this decision:** `POLICY.md`'s fixed source-of-truth boundaries state "Story records own story definition and authoritative acceptance criteria" without naming *which* story records, which reads as contradicting D-009's pointer-only rule. This ambiguity — not a deliberate trade-off — is why a reviewer reasonably expected migrated stories to carry acceptance criteria and found none. `POLICY.md` is amended under D-022 to state the retro/forward split explicitly rather than leaving the reading to the reader.
+**Effect on later phases:** `stories/TEMPLATE.md` gains an acceptance-criteria section that is mandatory for forward-authored stories and explicitly "not applicable — see source" for retro-migrated ones. Phase 5 (sprint-workflow integration) inherits the forward rule.
+**Follow-up outside this programme:** None.
+
+## D-019 — Meaning-free durable story IDs (`STORY-<nnnn>`)
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction)
+**Decision:** Story identifiers take the form `STORY-<nnnn>` and **encode nothing** — no programme name, no capability area, no feature, no sprint, no delivery date. Allocation rules:
+
+1. Seed allocation runs in **chronological delivery order** across all 148 known inventory items, in a single pass at hierarchy sign-off.
+2. Forward allocation is **strictly sequential** in the order stories enter the registry, regardless of date.
+3. IDs are **never renumbered and never reused**. A late-discovered historical item takes a high number despite being early — this is correct; the delivery-date field carries the truth.
+4. Every one of the 148 items receives an ID at sign-off whether or not it is migrated, so coverage is visible as "which IDs have a story file."
+5. A later merge or split (human approval required per `POLICY.md`) **retires** an ID; it is never reused.
+6. Every legacy code is preserved on the story in a mandatory `origin_code` field (e.g. `PT-A1-22`; `Sprint 17 B2`; `EMP-B2`).
+
+**Rationale:** `PT-A1-22` encoded two temporary things — the programme's own name, and a position in a one-off retro inventory — neither of which survives the programme that created them. More fundamentally, `docs/product/README.md` already commits to "a story's ID never changes even if its feature assignment is later revised," so any identifier encoding a relationship eventually becomes a lie. The ID is a handle; readability comes from the title and the display-name columns, and chronology from the date fields, which are sortable. `STORY-REGISTRY.md` itself recorded that re-keying was a pending human decision — this decision makes it.
+**Effect on later phases:** All forward stories use this scheme. The 21 already-migrated stories are re-keyed under D-020.
+**Follow-up outside this programme:** None.
+
+## D-020 — Re-key the 21 migrated stories now; one-time exception to "never renumbered"
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction)
+**Decision:** The 21 stories migrated under D-015 and D-016 are re-keyed from their provisional `PT-*` identifiers to the `STORY-<nnnn>` scheme fixed in D-019, with every legacy code preserved in `origin_code`. This is an **explicit, recorded, one-time exception** to the "never reused, never renumbered" rule stated in the headers of `OUTCOMES.md`, `CAPABILITIES.md`, `FEATURES.md` and `STORY-REGISTRY.md`. That rule is restated as binding **from this decision forward**.
+**Rationale:** The cost of re-keying scales with volume — 21 stories now versus up to 148 later. `STORY-REGISTRY.md`'s own schema note describes the `PT-*` IDs as provisional and flags re-keying as a decision the human had yet to make; that decision was never made, and the provisional scheme became permanent by default rather than by choice. Recording the exception explicitly is preferred to letting the "never renumbered" rule read as silently violated.
+**Effect on later phases:** Executed in Phase 3B. `validate_registry.py` gains a check that no live `PT-*` identifier survives outside an `origin_code` field.
+**Follow-up outside this programme:** None.
+
+## D-021 — Defer `docs/ROADMAP.md` relabelling until after the traceability layer is established
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction)
+**Decision:** The inconsistent labelling in `docs/ROADMAP.md` is acknowledged as a real problem and **deferred**. No relabelling is undertaken now, by this programme or otherwise. Old item codes are never rewritten; they are preserved as `origin_code` values on the corresponding stories.
+**Rationale:** Three reasons. (1) `docs/ROADMAP.md` runs three different organising principles in sequence — capability area (Sprints 0–1b), Track (Phase 1 Priority Order), then Sprint with per-sprint Story Index (Sprint 14 onward) — and carries 25+ unrelated ID prefixes, some colliding (`B` denotes both Track B "Schema Foundations" and Sprint 17's Track B items; `P1`/`P2` serve as both item prefixes and phase names). (2) Relabelling now would break citations across four programmes simultaneously: `docs/product/`, `docs/audit-program/`, `docs/programmes/agentic-architecture-review/`, and every sprint story file and test report. (3) The root cause is that the roadmap serves two jobs — forward planning *and* historical record. This programme is building the layer that owns delivered history; once it does, the roadmap keeps only forward planning and one consistent scheme applies to new items alone, making a retrospective relabel largely unnecessary.
+**Effect on later phases:** None within this programme. `POLICY.md` forbids this programme from modifying `docs/ROADMAP.md` in any case, so any future relabelling requires its own separate authorisation outside this programme.
+**Follow-up outside this programme:** After the traceability layer is established, scope a separate piece of work to apply one consistent labelling scheme to *new* roadmap items and to retire the roadmap's historical-record role.
+
+## D-022 — Authorise Phase 3B (`hierarchy completion`) and the governance amendments it requires
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction, plan approved this session)
+**Decision:** A new phase, **Phase 3B — `hierarchy completion`**, is authorised, positioned as a peer of Phase 3 (`structure implementation`) and **before** any further Phase 4 batch. Write access is limited to `docs/product/` and `docs/programmes/product-traceability/`. Its purpose is to define the complete outcome/capability/feature hierarchy across the whole 148-item inventory, present it for human sign-off as a visual artefact, and — only after approval — apply it together with the re-key (D-020) and the readability fixes. **No story is migrated by this phase.**
+
+This decision also authorises the following amendments, each a consequential change under `POLICY.md`'s own rule that changes to it require human approval:
+
+- **`POLICY.md`** — (a) restate the acceptance-criteria source-of-truth boundary per D-018, naming which story records; (b) add **the story ID scheme** to "Human approval required for" — its absence is the gap that let provisional IDs become permanent without a decision; (c) mark the "may not create the final `docs/product/` structure" prohibition as superseded by Phase 3/D-014.
+- **`PHASES.md`** — define Phase 3B; record that Phase 2's approval was **partial** (the model and terminology were approved; the feature layer was explicitly deferred and never defined). Phase 2's own record is not retro-edited to claim otherwise.
+- **`PROGRAMME.md`** — correct the stale `current phase: discovery` and stale scope exclusions; carry the D-018 acceptance-criteria split into the source-of-truth model.
+
+**Rationale:** Phase 4's stated purpose is to "populate **the approved structure**." Since the structure was never fully approved, this work is not Phase 4 and cannot legitimately run under Phase 4's authorisation. `POLICY.md`'s autonomy mode is phase-scoped — the executor "may not execute a later phase" and "may not expand the authorised file scope beyond what `PHASES.md` grants the active phase" — so the phase must exist before the work begins. Performing the analysis first and back-filling the governance afterwards would reproduce precisely the pattern that caused the problem this phase exists to fix.
+**Effect on later phases:** Full Phase 4 remains unauthorised and is now additionally gated behind Phase 3B's human sign-off. Phase 3B's completion does **not** auto-authorise any migration batch.
+**Follow-up outside this programme:** The roadmap relabelling deferred under D-021.
+
+## D-023 — Hierarchy approved; OQ-1–OQ-8 resolved (Phase 3B Stage 2 gate passed)
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction, on review of the Stage 2 visual sign-off artefact)
+**Decision:** The hierarchy proposed in `hierarchy-proposal.md` — **5 outcomes, 12 capabilities, 41 features** — is **approved as a whole**, at outcome, capability, feature and story level. Phase 3B's human gate is passed; Stage 3 is authorised to apply it.
+
+Rulings on the eight open questions:
+
+| OQ | Ruling |
+|---|---|
+| OQ-1 — 148 vs 149 item count | **Proceed.** The discrepancy surfaces itself in Stage 3 when each story file is created; do not block on it. |
+| OQ-2 — Sprint PAY-TAX-1 missing | **Capture it.** The work is delivered; the gap is in the discovery inventory, not the platform. See D-024. |
+| OQ-3 — Sprint 25 missing | **Capture it**, same as OQ-2. See D-024. |
+| OQ-4 — Rename `CAP-1`/`CAP-2` | **Approved.** IDs unchanged; display names updated. |
+| OQ-5 — Split A1+A2 into `CAP-3` + `CAP-4` | **Approved.** |
+| OQ-6 — Keep `OUT-5`/`CAP-12` with zero stories | **Approved — keep.** They represent the agentic payroll work not yet done; naming them keeps that gap visible. |
+| OQ-7 — No `EPIC-*` delivery rows | **Approved — non-adoption confirmed.** A capability already functions as an epic in this model, so a separate delivery layer would duplicate what `sprint_refs` and the capability layer already carry. |
+| OQ-8 — Split `STORY-0104` (`PT-A1-24`) | **Approved — split**, on condition that both halves remain traceable to the original item. Both carry `PT-A1-24` as `origin_code`, distinguished by sub-item (B0a / B0b). The split is vindicated by the two halves landing in different features. |
+
+**Rationale:** the proposal was reviewed as a whole against the visual artefact, with feature membership, coverage and provenance all inspectable. Every ruling above is the human's, not the executor's.
+**Effect on later phases:** Stage 3 may proceed. Phase 4 (migration of the remaining items) remains separately unauthorised.
+**Follow-up outside this programme:** None.
+
+## D-024 — Capture six previously-uninventoried delivered items; re-seed the ID allocation
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction: the work "is there, it's implemented, we just need to capture it")
+**Decision:** Six delivered items absent from the discovery inventory are added to the allocation, and `PT-A1-24` is split in two per OQ-8, taking the total from 148 to **155**:
+
+| Origin | Item | Feature | Confidence |
+|---|---|---|---|
+| `BADGE-RT-1` | Payroll Inputs sidebar badge reflects live pending count via `window.dispatchEvent` | `FEAT-17` | confirmed |
+| `BADGE-RT-2` | Badge shows total pending inputs, not just issue inputs | `FEAT-17` | confirmed |
+| `EMP-TABLE-1` | Employees table UX: start/end dates visible, column alignment, inactive styling | `FEAT-11` | confirmed |
+| `EMP-TABLE-2` | "No longer active" state surfaced; contract end date editable | `FEAT-11` | confirmed |
+| `EMP-TABLE-3` | Register employee: contract start/end date fields in AddEmployeeSlideOver | `FEAT-4` | confirmed |
+| `PAY-TAX-1` | NG PAYE bands corrected to NTA 2025 (migration `de1f2a3b4c5d`) | `FEAT-19` | confirmed |
+
+**Evidence verified before classification** (per `POLICY.md`'s prohibition on classifying `confirmed` without direct evidence): all five Sprint 25 story files exist on disk (`docs/stories/sprint-25-badge-realtime-update.md`, `sprint-25a`, `sprint-25b`, `sprint-25c`, `sprint-25d`); `migrations/versions/de1f2a3b4c5d_fix_ng_paye_bands_nta_2025.py` and `tests/test_paye.py` both exist; both sprints are ✅ in `docs/ROADMAP.md` with named files-changed lists; `CLAUDE.md` records Sprint PAY-TAX-1 closed.
+
+**Why they were missed — recorded so the method gap is not repeated:** the discovery pass inventoried **by capability area**, and both items sit exactly where an area-based sweep loses things.
+- **Sprint 25** was collapsed into the Summary Matrix row "Sprints 24–26 — Employee Lifecycle UX | 14✅". Sprints 24 and 26 were expanded to line-item grain; the Sprint 25 block never was, so its five stories disappeared into an aggregate count.
+- **Sprint PAY-TAX-1** is filed in the Summary Matrix under *Correctness & Audit* but is substantively an Execution/statutory item. The A4 sweep did not reach it (the matrix filed it under A7); the A7 sweep did not claim it (it is not an audit observation). It fell in the seam between two areas.
+
+This is **not** a date cutoff — Sprint RULE-VER-1 (2026-06-21) was captured while PAY-TAX-1 (2026-06-20) was not. It is a method gap, and it is the strongest argument for maintaining a coverage map: an area-based sweep cannot see what sits between areas.
+
+**Re-seed of the ID allocation:** because Stage 3 had not yet written any identifier to `docs/product/`, the chronological seed pass fixed by D-019 rule 1 is **re-run once** to place the seven new/split items in their correct chronological positions, rather than appending them out of order. This is the last moment at which that is free; after Stage 3 writes them, D-019 rule 3 (never renumber) binds absolutely. Notable shift: the item reviewed in conversation as `STORY-0104` becomes `STORY-0104`/`STORY-0105` (the B0a/B0b split), and everything from the old `STORY-0105` onward shifts by one or more places. The draft numbering in `hierarchy-proposal.md` §5 is superseded by `docs/product/ID-ALLOCATION.md`.
+
+**Rationale:** capturing delivered work that the inventory missed is a correction, not a scope expansion — the alternative is a traceability layer that silently under-reports what was built. Re-seeding preserves the one property the chronological seed was chosen for.
+**Effect on later phases:** Phase 4's migration set grows from 148 to 155 items; 134 remain unmigrated. The discovery document is **not** retro-edited — it remains an accurate record of what that pass found.
+**Follow-up outside this programme:** None. If further uninventoried sprints surface, they are captured the same way and the count is corrected again.
+
+## D-025 — Authorise Phase 4C: full `CAP-6` Execution Engine batch (31 items, all confidence levels)
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (direct chat instruction: start Phase 4, focused on the Execution Engine capability)
+**Decision:** A bounded Phase 4C batch is authorised, and only this batch — **Phase 4 as a whole remains unauthorised.** The batch migrates **every item allocated to `CAP-6` Execution Engine** — all 31, across `FEAT-18` through `FEAT-25` — into `docs/product/`.
+
+**Confidence is carried verbatim, not filtered.** The batch composition is 12 `confirmed`, 13 `strongly inferred`, 5 `tentative`, 1 `backlog`. No item may be upgraded; a `tentative` item is migrated *as* `tentative`, with its evidence gap stated in its own record.
+
+**Departure from the Phase 4B batch rule, and why.** D-016's batch selected `confirmed`-only items. That rule is **not** carried forward here. Confirmed-only would have migrated 12 of 31 and left the Execution Engine partially covered — reproducing, inside a single capability, exactly the patchy-coverage problem that Phase 3B existed to fix. The `confidence` column exists precisely so that weakly-evidenced work can be recorded without overclaiming; using it is a better answer than omitting the work and leaving the registry silent about it. `POLICY.md`'s prohibition is on classifying an item `confirmed` **without evidence** — it does not prohibit recording an item at a lower confidence, and this batch does not weaken it.
+
+**Known evidence weakness, accepted with eyes open:** five Sprint 0 items (`STORY-0004`, `0005`, `0006`, `0007`, and `STORY-0038`) rest on pre-sprint-tracking records with no dedicated test report. Each is migrated as `tentative` with the specific gap named in its `Unresolved questions` section. They are not to be cited as evidence of verified behaviour.
+
+**Why `CAP-6` first:** it is the largest capability (31 items), had **zero** migrated coverage after Phases 4A/4B, and is the platform's core reason to exist — gross-to-net calculation, statutory deductions, proration, overtime and public-holiday pay, rule resolution and retry. Its zero-coverage state was surfaced by `ID-ALLOCATION.md` and is the clearest single illustration of what a batch-shaped hierarchy conceals.
+
+**Rationale:** the hierarchy is now approved and stable (D-023), identifiers are allocated and permanent (D-019/D-020), and the coverage map makes the gap explicit. Migrating a whole capability — rather than a confidence slice of one — produces a capability that can be reasoned about as a unit.
+**Effect on later phases:** on completion, coverage rises from 21/155 to 52/155. The remaining 103 items stay unauthorised; this batch's completion does **not** auto-authorise any further batch.
+**Follow-up outside this programme:** None.
+
+## D-026 — Capture the `dev-levy-rule-pct` sprint; extend the Phase 4C batch to 33
+
+**Date:** 2026-07-28
+**Approved by:** Michael Emedo (applying the D-024 standing approach — captured delivered work that the inventory missed)
+**Decision:** Sprint `dev-levy-rule-pct` (2026-07-16) is captured as two stories, both Execution Engine work, and both are included in the Phase 4C batch — taking it from 31 items to **33**:
+
+| New ID | Origin | Item | Feature | Confidence |
+|---|---|---|---|---|
+| `STORY-0156` | `DEV-LEVY-1` | Development Levy applied correctly — two independent OR'd cadence triggers, `annual_amount` override key | `FEAT-19` | confirmed |
+| `STORY-0157` | `RULE-PCT-1` | "Percentage of basic" earning rule configurable via UI; invalid `PERCENTAGE_OF_GROSS` method string fixed | `FEAT-18` | confirmed |
+
+**Why it was missed:** a date boundary, not a method gap this time. The discovery pass ran on **2026-07-15**; this sprint closed on **2026-07-16** — one day later. Nothing was overlooked; the inventory simply has a cut-off, and no mechanism existed to catch work delivered after it. This is the third uninventoried sprint found (with Sprint 25 and PAY-TAX-1 under D-024), and the first attributable to recency rather than to the area-based sweep.
+
+**Evidence verified before classification:** `docs/sprints/dev-levy-rule-pct/` exists as a full ICM sprint workspace (`CONTEXT.md`, `plan.md`, `decisions.md`, `architecture.md`, `state.md`, `evidence/`); `docs/test-reports/2026-07-16-dev-levy-rule-pct.md` records **327 passed / 1 intentional skip / 0 failed**, 8 LIVE API checks, verdict PASS; `docs/audit/2026-07-16-dev-levy-rule-pct-audit-review.md` exists and its CRITICAL finding is recorded as fixed and re-verified before the test pass began. This is among the best-evidenced work in the repository.
+
+**Forward allocation, not a re-seed.** `STORY-0156`/`0157` take the next free numbers under D-019 rule 2, **not** chronological positions. The seed pass is spent; D-019 rule 3 (never renumber) now binds absolutely, and a later-discovered item taking a high number is the expected and correct outcome. `sprint_refs` carries the true date.
+
+**Standing implication:** the inventory has a 2026-07-15 horizon. Any sprint closing after that date is invisible to it and must be captured at migration time, as here. Phase 5 (`sprint-workflow integration`) is the durable fix — wiring traceability into sprint closure so new work registers itself rather than waiting to be rediscovered.
+**Effect on later phases:** total allocation rises from 155 to 157; Phase 4C covers 33; on completion, coverage is 54/157.
+**Follow-up outside this programme:** None.
+
+## D-027 — Authorise Phase 4D: migrate every remaining allocated item (103), as one phase, not in batches
+
+**Date:** 2026-07-29
+**Approved by:** Michael Emedo (direct chat instruction: *"product traceability programme: proceed with migrating all other capabilities no need to process in batch"*)
+**Decision:** **Phase 4 is now authorised in full**, and completed by a single phase — **Phase 4D** — which migrates **all 103 remaining allocated items** into `docs/product/`. On completion, coverage is **157 of 157 (100%)** and there is no migration backlog left.
+
+**Explicit batching decision.** The instruction is that no further batch decomposition is required. Phases 4A (2), 4B (19) and 4C (33) each carried their own authorisation; this decision retires that pattern for the remainder rather than issuing six more capability-shaped authorisations. The batching existed to prove the mechanism at increasing scale — a 2-item pilot, a 19-item confirmed slice, a 33-item whole capability — and that proof is now complete: the hierarchy is approved and stable (D-023), identifiers are allocated and permanent (D-019/D-020), the coverage map is exhaustive (`../product/ID-ALLOCATION.md`), and the validator has caught real defects in each of the last two batches. Continuing to authorise batch-by-batch would buy nothing except a longer period during which the registry under-reports what the platform does.
+
+**Scope — all six zero-coverage capabilities plus the partial remainder of four others:**
+
+| Capability | Remaining | Capability | Remaining |
+|---|---|---|---|
+| `CAP-5` Pay Events & Inputs | 18 | `CAP-1` Correctness, Audit & Snapshot | 10 |
+| `CAP-3` Onboarding & Workspace Setup | 14 | `CAP-4` Employee Lifecycle Management | 15 |
+| `CAP-9` Design System & Navigation | 11 | `CAP-7` Governance & Run State Machine | 9 |
+| `CAP-10` Delivery Infrastructure | 9 | `CAP-8` Disbursement & Exports | 7 |
+| `CAP-2` Security & Compliance Hardening | 7 | `CAP-11` Programme Governance & Assurance | 3 |
+
+`CAP-6` is already complete (33/33) and `CAP-12` Agent Layer has zero allocated items by design (D-023, OQ-6) — it stays empty and visible.
+
+**Confidence is carried verbatim, per D-025 — the confirmed-only rule of D-016 stays retired.** The remainder is 33 `confirmed`, 53 `strongly inferred`, 12 `tentative` and 5 `backlog`. No item may be upgraded on migration; a `tentative` item is migrated *as* `tentative` with its evidence gap named in its own record.
+
+**The five remaining `backlog` items are migrated with `status: backlog`, never `delivered`** (D-011): `STORY-0150`, `STORY-0152`, `STORY-0153`, `STORY-0154`, `STORY-0155`. A sixth, `STORY-0151`, was already migrated on the same terms under Phase 4C. Their reason for existing is that a reader must not be able to mistake them for delivered work by their absence.
+
+**Two `tentative` items record a source contradiction rather than resolving it.** `STORY-0057` (Gate 4) — `docs/ROADMAP.md` marks it ✅ while `docs/stories/ux-ui-upgrade-stories/gate-4-bureau-workspace-setup.md` says implementation pending; this is D-012/DP-06's open item and is **not** closed by migrating it. `STORY-0103` (Employees.tsx split-action rework) and `STORY-0105` (timesheet LATERAL join) both carry **BLOCKED** browser/multi-contract verification in `docs/test-reports/2026-05-27-sprint-17-full.md`. Recording the contradiction accurately is the deliverable; resolving it is not this programme's work.
+
+**Rationale:** the coverage map's whole point is that a partially-populated registry conceals gaps — that is what Phase 3B existed to fix at the hierarchy layer, and a 34%-migrated story layer reproduces it one level down. A registry that covers everything can be trusted to answer "is this recorded?" with silence meaning *no such work exists*, which is the property the programme was commissioned to produce.
+**Effect on later phases:** Phase 4 closes entirely. Phase 5 (`sprint-workflow integration`) becomes the only remaining phase and the only defence against the 2026-07-15 horizon problem recorded in D-026 — with a complete backlog, every subsequently-missed sprint is now the *only* thing that can make the registry wrong.
+**Follow-up outside this programme:** unchanged — PH_OT `is_pensionable` (D-010/DP-04, `STORY-0036`) and the Gate 4 status contradiction (D-012/DP-06, `STORY-0057`) remain open and are owned elsewhere.
+
 ---
 
-*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4B confirmed-batch decision: D-016, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md`. Phase 4 (historical migration) as a whole remains unauthorised.*
+*Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4B confirmed-batch decision: D-016, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md`. Hierarchy-completion decisions: D-017–D-022, recorded 2026-07-28 via direct human chat instruction following human review of the Phase 4A/4B batches. Phase 4 (historical migration) as a whole remains unauthorised, and is now additionally gated behind Phase 3B's human sign-off.*

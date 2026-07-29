@@ -12,70 +12,67 @@ structure_implementation_run_id: structure-implementation-run-001
 historical_migration_pilot_run_id: historical-migration-pilot-run-001
 historical_migration_confirmed_batch_run_id: historical-migration-confirmed-batch-run-001
 
-current_phase: historical-migration-phase-4b-confirmed-batch
-current_phase_status: complete-for-authorised-scope
-current_phase_authorised: true  # D-016, docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md, 2026-07-15
+current_phase: historical-migration-phase-4d-remainder
+current_phase_status: complete
+current_phase_authorised: true  # D-027, direct human chat instruction, 2026-07-29
 current_phase_allowed_paths:
   - docs/product/
   - docs/programmes/product-traceability/
-current_phase_migrated_story_ids:
-  - PT-A1-07
-  - PT-A1-08
-  - PT-A1-09
-  - PT-A1-10
-  - PT-A1-11
-  - PT-A1-15
-  - PT-A1-16
-  - PT-A1-17
-  - PT-A1-18
-  - PT-A1-19
-  - PT-A1-20
-  - PT-A1-21
-  - PT-A1-22
-  - PT-A1-25
-  - PT-A1-28
-  - PT-A1-38
-  - PT-A1-39
-  - PT-A1-41
-  - PT-A1-42
-current_phase_capability_area: A1+A2 (Onboarding & Workforce Setup)
+current_phase_run_id: historical-migration-remainder-run-001
+current_phase_migrates_stories: true
+current_phase_migrated_item_count: 103
+current_phase_batched: false    # D-027 — capability-shaped batching retired for the remainder
+current_phase_human_gate: after   # spot-check of the completed registry; nothing blocked pending it
+current_phase_critic_verdict: PASS   # critic-review-phase-4d-remainder.md, 3 non-blocking observations
 
-all_migrated_story_ids_to_date:
-  - PT-A4-31   # Phase 4A pilot
-  - PT-A4-32   # Phase 4A pilot
-  - PT-A1-07   # Phase 4B confirmed-batch
-  - PT-A1-08
-  - PT-A1-09
-  - PT-A1-10
-  - PT-A1-11
-  - PT-A1-15
-  - PT-A1-16
-  - PT-A1-17
-  - PT-A1-18
-  - PT-A1-19
-  - PT-A1-20
-  - PT-A1-21
-  - PT-A1-22
-  - PT-A1-25
-  - PT-A1-28
-  - PT-A1-38
-  - PT-A1-39
-  - PT-A1-41
-  - PT-A1-42
+# Phase 4 is now closed in full. Coverage is 157/157; there is no migration
+# backlog and no further Phase 4 authorisation to give.
+migration_complete: true
+migration_coverage: 157/157
+phase_4_closed: true
 
-recommended_next_phase_id: historical-migration-remainder
+# Superseded phase positions, retained for history:
+previous_phase: historical-migration-phase-4c-cap6-batch
+previous_phase_status: complete
+previous_phase_authorised: true  # D-025, extended by D-026, 2026-07-28
+previous_phase_run_id: historical-migration-cap6-run-001
+
+earlier_phase: hierarchy-completion-phase-3b
+earlier_phase_status: complete   # critic PASS; hierarchy signed off at D-023
+earlier_phase_authorised: true   # D-022, 2026-07-28
+earlier_phase_run_id: hierarchy-completion-run-001
+
+# Superseded phase position, retained for history:
+phase_4b:
+  id: historical-migration-phase-4b-confirmed-batch
+  status: complete-for-authorised-scope
+  authorised: true  # D-016, docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md, 2026-07-15
+  capability_area: A1+A2 (Onboarding & Workforce Setup)
+  migrated_legacy_ids: [PT-A1-07, PT-A1-08, PT-A1-09, PT-A1-10, PT-A1-11, PT-A1-15,
+                        PT-A1-16, PT-A1-17, PT-A1-18, PT-A1-19, PT-A1-20, PT-A1-21,
+                        PT-A1-22, PT-A1-25, PT-A1-28, PT-A1-38, PT-A1-39, PT-A1-41,
+                        PT-A1-42]   # re-keyed to STORY-<nnnn> under D-020
+
+# Enumerating migrated story IDs here stopped being useful at Phase 4D: the answer
+# is now "all of them". The authoritative list is docs/product/STORY-REGISTRY.md
+# (157 rows) and the coverage view is docs/product/ID-ALLOCATION.md.
+all_migrated_story_ids_to_date: all-157   # see docs/product/STORY-REGISTRY.md
+
+recommended_next_phase_id: sprint-workflow-integration-phase-5
 recommended_next_phase_authorised: false  # authorisation is a human decision, not granted by this file
-# Full Phase 4 (historical migration of every remaining discovery item — other
-# capability areas' confirmed items, and every strongly-inferred/tentative/
-# requires-human-classification item anywhere) is explicitly not begun or
-# authorised by D-015's pilot or D-016's confirmed-batch. Neither batch's
-# completion auto-authorises it (human-gate-discipline checks in each
-# authorising prompt's own governance rubric).
-# NOTE: this is not a claim that all confirmed items are migrated — only
-# capability area A1+A2's 19 confirmed items (D-016) and the two Phase 4A
-# pilot items (D-015) have been. Other capability areas' confirmed items
-# (e.g. 13 in A4 Execution, 2 of which are already covered by Phase 4A)
-# remain unmigrated pending a further, separate authorisation.
+# Phase 5 is the only phase left. It requires an explicit allowed-path expansion
+# into docs/sprints/, which is currently a forbidden path for this programme, and
+# it is the only durable fix for the 2026-07-15 inventory horizon recorded in
+# D-026 — without it, today's 157/157 completeness decays with every sprint that
+# closes without registering itself.
+#
+# Superseded 2026-07-29 by D-027: the block that stood here recorded that
+# migration was HALTED and that no batch's completion auto-authorised the
+# remainder. That was accurate under D-017 and is now spent — the hierarchy was
+# approved (D-023) and the remainder was authorised and executed as Phase 4D.
+# Removed rather than edited in place, because leaving a live-sounding "migration
+# is HALTED" line in the file consulted for current parameters is exactly the
+# kind of stale-state hazard the programme has already been bitten by.
 
 authoritative_input_files:
   - docs/ROADMAP.md
@@ -98,13 +95,15 @@ authoritative_input_files:
 
 # Proposed only — not granted by this file. Any expansion of allowed paths
 # requires a human decision recorded in decisions.md before it takes effect.
+# The Phase 4 entries that stood here are spent; Phase 4 is closed and its outputs
+# are all delivered. What follows is Phase 5's proposed shape, unauthorised.
 proposed_allowed_paths_next_phase:
-  - docs/product/stories/<story-id>.md   # populated content — not yet authorised; Phase 4 only
+  - docs/sprints/STAGE-REGISTRY.md   # NOT YET AUTHORISED — currently a forbidden path
+  - docs/sprints/WORKFLOW.md         # NOT YET AUTHORISED — currently a forbidden path
 
 proposed_outputs_next_phase:
-  - populated docs/product/STORY-REGISTRY.md rows (up to 148, per D-007 granularity)
-  - populated docs/product/stories/*.md (one per confirmed/strongly-inferred/tentative item)
-  - populated docs/product/OUTCOMES.md, CAPABILITIES.md, FEATURES.md rows
+  - a traceability link recorded at sprint closure (story_id <-> sprint <-> evidence)
+  - no change to the existing stage/gate mechanics defined in docs/sprints/STAGE-REGISTRY.md
 
 structure_implementation_outputs_delivered:
   - docs/product/README.md
@@ -125,6 +124,18 @@ historical_migration_pilot_outputs_delivered:
   - docs/product/stories/TEMPLATE.md    # amended — schema defect fix, see run record
   - docs/programmes/product-traceability/critic-review-phase-4a-pilot.md
   - docs/programmes/product-traceability/runs/historical-migration-pilot-run-001.md
+
+historical_migration_remainder_outputs_delivered:   # Phase 4D, D-027
+  - docs/product/stories/          # +103 story files — every remaining allocated item
+  - docs/product/STORY-REGISTRY.md # 54 -> 157 rows, rebuilt in ID order
+  - docs/product/FEATURES.md       # stories/migrated updated on all 41 rows; migrated == allocated throughout
+  - docs/product/ID-ALLOCATION.md  # 103 rows flipped to migrated; coverage rewritten to 157/157 + coverage history
+  - docs/product/SOURCE-INDEX.md   # +103 legacy-code rows, +32 evidence-file rows; now covers all 157
+  - docs/product/README.md         # status rewritten; guidance on what an absent story now means
+  - docs/programmes/product-traceability/decisions.md   # D-027
+  - docs/programmes/product-traceability/PHASES.md      # Phase 4D section + authorisation-state table
+  - docs/programmes/product-traceability/critic-review-phase-4d-remainder.md
+  - docs/programmes/product-traceability/runs/historical-migration-remainder-run-001.md
 
 historical_migration_confirmed_batch_outputs_delivered:
   - docs/product/OUTCOMES.md            # +1 row: OUT-3; +outcome_name column on all rows
@@ -185,8 +196,34 @@ approved_decision_ids:
   - D-014  # authorises Phase 3 (structure implementation), scope-limited to docs/product/
   - D-015  # authorises Phase 4A bounded two-story pilot only — full Phase 4 remains unauthorised
   - D-016  # authorises Phase 4B bounded confirmed-story batch (A1+A2, ≤20 items) + human-readable names — full Phase 4 remains unauthorised
+  - D-017  # halt migration; complete and approve the hierarchy top-down first
+  - D-018  # acceptance criteria: retro pointer-only, forward native — resolves the POLICY.md / D-009 contradiction
+  - D-019  # meaning-free durable story IDs (STORY-<nnnn>) + allocation rules
+  - D-020  # re-key the 21 migrated stories; one-time exception to "never renumbered"
+  - D-021  # defer docs/ROADMAP.md relabelling until after the traceability layer exists
+  - D-022  # authorise Phase 3B (hierarchy completion) + POLICY/PHASES/PROGRAMME amendments
+  - D-023  # sign off the complete populated hierarchy (5 outcomes / 12 capabilities / 41 features) + OQ-1..OQ-8 rulings
+  - D-024  # capture Sprint 25 and PAY-TAX-1, absent from the discovery inventory; re-seed the ID allocation
+  - D-025  # authorise Phase 4C — the full CAP-6 Execution Engine batch, all confidence levels
+  - D-026  # capture the dev-levy-rule-pct sprint; extend Phase 4C to 33; record the 2026-07-15 inventory horizon
+  - D-027  # authorise Phase 4D — all 103 remaining items in one batch; closes Phase 4 in full
 
-unresolved_decision_ids: []  # DP-01 through DP-07 all resolved 2026-07-15; next unresolved decision is Phase 3 authorisation itself (not yet a numbered DP item)
+story_id_scheme:                  # fixed by D-019
+  format: STORY-<nnnn>
+  encodes: nothing                # no programme, capability area, feature, sprint or date
+  seed_allocation_order: chronological-delivery-order-across-all-148-items
+  forward_allocation_order: strictly-sequential-on-entry
+  renumber_or_reuse: never        # one-time exception for the 21 PT-* stories authorised by D-020 only
+  legacy_codes_preserved_in: origin_code   # mandatory field on every story
+  superseded_scheme: PT-<area>-<nn>        # provisional; became permanent by default, corrected by D-020
+
+reference_path_convention:        # fixed by Phase 3B, documented in docs/product/README.md
+  within_docs_product: relative           # e.g. ../FEATURES.md — survives moving the tree
+  outside_docs_product: repo-root-relative # e.g. docs/stories/foo.md — greppable, stable
+  absolute_or_home_relative: never
+  move_risk_mitigation: link-existence check in validate_registry.py
+
+unresolved_decision_ids: []  # DP-01 through DP-07 resolved 2026-07-15; D-017–D-022 recorded 2026-07-28; D-023–D-026 recorded 2026-07-28; D-027 recorded 2026-07-29. The next human gate is Phase 5 authorisation (not yet a numbered DP item).
 
 follow_up_investigations_outside_programme:
   - id: PH_OT-is_pensionable

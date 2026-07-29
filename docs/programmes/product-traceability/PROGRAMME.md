@@ -15,6 +15,9 @@ Create a durable product-management and traceability layer above the existing IC
 - Which stories have been delivered?
 - In which sprint or sprints were they delivered?
 - What evidence proves delivery?
+- Where does a given story's authoritative acceptance criteria live?
+
+On that last question, the answer differs by how the story came into existence (D-018, 2026-07-28): a **retro-migrated** story's authoritative acceptance criteria stay in its original sprint story file, and the hierarchy record summarises and links to them; a **forward-authored** story — written by the PM into the hierarchy, with no prior sprint file — carries its acceptance criteria natively in its own record. Retro records are therefore deliberately not standalone-complete; forward records are.
 
 The programme also retrospectively reconstructs delivered stories from repository evidence (roadmap, story files, test reports, audit reports, git history) without rewriting history and without presenting inference as fact.
 
@@ -26,15 +29,19 @@ In scope:
 - Running a read-only discovery phase that inventories delivered work and proposes (but does not adopt) a product hierarchy and repository structure.
 - Producing a decision pack of genuine human decisions required before any structural change is made.
 
-Out of scope for this programme's current authorised phase:
+Out of scope for this programme's current authorised phase (`hierarchy completion`, D-022):
 
-- Creating the final `docs/product/` hierarchy or individual story files.
+- Migrating any further historical story into `docs/product/`. Phase 4 remains unauthorised and is additionally gated behind Phase 3B's human sign-off.
 - Modifying production code, `docs/ROADMAP.md`, existing sprint workspaces, or existing historical story files.
-- Migrating or rewriting any historical record.
+- Rewriting any historical record.
+
+*Amendment note (2026-07-28):* this list previously also excluded "creating the final `docs/product/` hierarchy or individual story files," which was accurate at bootstrap but superseded by Phase 3 (D-014) and Phases 4A/4B (D-015, D-016). The live scope constraint is always the active phase's `allowed paths` in `PHASES.md`.
 
 ## Current phase
 
-`discovery`
+`hierarchy completion` (Phase 3B) — authorised 2026-07-28 by D-022.
+
+*Amendment note (2026-07-28):* this field read `discovery` until now, having never been advanced as the programme moved through Phases 2, 3, 4A and 4B. `state.md` and `phase-inputs.yaml` carried the accurate position throughout. Corrected here; `state.md` remains the authoritative phase-state file.
 
 ## Status
 
@@ -44,11 +51,12 @@ Out of scope for this programme's current authorised phase:
 
 1. **discovery** — inventory delivered work from repository evidence; propose (not adopt) a hierarchy model and repository structure. *Authorised.*
 2. **hierarchy approval** — human reviews the decision pack and approves (or amends) the terminology, model, and repository information architecture. *Not authorised.*
-3. **structure implementation** — create the approved `docs/product/` (or equivalent) structure and registries, empty of historical content. *Not authorised.*
-4. **historical migration** — populate the approved structure with reconstructed historical stories, under the approved confidence and classification rules. *Not authorised.*
+3. **structure implementation** — create the approved `docs/product/` (or equivalent) structure and registries, empty of historical content. *Complete (D-014).*
+3B. **hierarchy completion** — define the complete outcome/capability/feature hierarchy across the whole 148-item inventory, top-down, and get it signed off; then apply it with the story re-key and readability fixes. Added 2026-07-28. *Authorised and active (D-022).*
+4. **historical migration** — populate the approved structure with reconstructed historical stories, under the approved confidence and classification rules. *Phases 4A (D-015) and 4B (D-016) complete for their bounded scope; the remainder is **not authorised**, and is additionally gated behind Phase 3B's human sign-off.*
 5. **sprint-workflow integration** — wire the new product layer into the ICM sprint workflow (`docs/sprints/`) so future sprints write traceability links as a normal part of sprint closure. *Not authorised.*
 
-Only phase 1 is authorised by this bootstrap. Each subsequent phase requires an explicit human authorisation recorded in `decisions.md` before it may begin.
+Each phase requires an explicit human authorisation recorded in `decisions.md` before it may begin. *(This originally read "Only phase 1 is authorised by this bootstrap" — accurate at bootstrap, superseded by the authorisation table in `PHASES.md`.)*
 
 ## Success criteria
 

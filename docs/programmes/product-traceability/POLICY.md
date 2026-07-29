@@ -26,9 +26,10 @@ The executor may complete the entire authorised phase without requesting interme
 - Modify existing sprint history (`docs/sprints/**`, `docs/stories/**`, `docs/test-reports/**`, `docs/audit/**`, `docs/retro-reports/**`, `docs/security/**`).
 - Modify `docs/ROADMAP.md`.
 - Modify existing historical story files.
-- Create the final `docs/product/` structure.
+- ~~Create the final `docs/product/` structure.~~ **Superseded 2026-07-15 by Phase 3 / D-014**, which authorised exactly this, scope-limited to `docs/product/`. Retained here as history, not as a live prohibition. The live constraint is the per-phase `allowed paths` list in `PHASES.md`.
 - Classify tentative items as confirmed without evidence.
 - Merge or split historical stories as a final decision.
+- Re-key, renumber or reuse a story identifier without an explicit recorded decision (added 2026-07-28 under D-022; the one-time re-key of the 21 Phase 4A/4B stories is authorised by D-020 and by nothing else).
 - Modify user-home skills (`~/.claude/**`).
 - Add dependencies (no `requirements.txt`, `package.json`, or lockfile changes).
 - Expand the authorised file scope beyond what `PHASES.md` grants the active phase.
@@ -40,6 +41,8 @@ The executor may complete the entire authorised phase without requesting interme
 
 - The hierarchy terminology and model (e.g. Outcome→Epic→Feature→Story vs. Outcome→Capability→Feature→Story vs. hybrid).
 - The repository information architecture (Model A vs. Model B vs. an alternative).
+- **The story identifier scheme** — its format, what it does and does not encode, and the allocation rules. Added 2026-07-28 under D-022. *Why this was added:* this item was absent from the list, so the discovery document's deliberately **provisional** `PT-*` identifiers were carried into `docs/product/` by Phase 4A/4B and became permanent by default rather than by decision, despite `STORY-REGISTRY.md` itself flagging re-keying as a pending human choice. An identifier scheme is a long-lived, expensive-to-change commitment and is now an explicit human gate. Current scheme: `STORY-<nnnn>`, fixed by D-019.
+- **The complete outcome/capability/feature set** — not merely the model, but the actual populated hierarchy, approved as a whole rather than accreted batch by batch. Added 2026-07-28 under D-022 (see D-017).
 - Source-of-truth changes (any change to the ownership model fixed in `PROGRAMME.md`/this prompt).
 - Ambiguous story classification (any item the executor could not classify even provisionally, or classified as `requires human classification`).
 - Merges or splits of historical stories.
@@ -64,7 +67,10 @@ Routine naming, formatting, evidence collection, and provisional classification 
 ## Source-of-truth boundaries (fixed for this programme)
 
 - Product hierarchy owns long-lived intent, relationships and status.
-- Story records own story definition and authoritative acceptance criteria.
+- Story records own story definition and acceptance criteria — **with the retro/forward split fixed by D-018 (2026-07-28)**:
+  - **Retro-migrated stories** (already delivered before this programme existed): the *sprint* story file under `docs/stories/` or `docs/sprints/` holds the authoritative acceptance criteria. The product-hierarchy record summarises and links to it; it does **not** duplicate the criteria. This is D-009's rule, unchanged.
+  - **Forward-authored stories** (written into the product hierarchy by the PM, with no pre-existing sprint story file): the **product-hierarchy story record** holds the acceptance criteria natively and authoritatively.
+  - *Amendment note:* this bullet previously read "Story records own story definition and authoritative acceptance criteria" without naming which story records, which reads as contradicting D-009 and caused a reviewer to reasonably expect acceptance criteria on migrated stories and find none. The ambiguity was unintentional; D-018 resolves it.
 - Sprint `CONTEXT.md` owns selected execution scope for that sprint.
 - Sprint `state.md` owns workflow-stage state.
 - Sprint `decisions.md` owns HITL routing and skip decisions.
