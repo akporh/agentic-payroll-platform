@@ -97,7 +97,14 @@ story_refs:
     status_at_close: delivered | backlog     # written by retro, not pm
 ```
 
-**Allocated at `pm`, completed at `retro`.** The split is deliberate. At `pm` the scope is known and the evidence does not exist yet, so the stage reserves the next free ID in `docs/product/ID-ALLOCATION.md` and writes `story_refs`. At `retro` the sprint's test, audit and security evidence finally exists, so that stage writes the full `STORY-REGISTRY.md` row and story file — including `evidence_refs`, `sprint_refs` and `confidence`. Allocating only at close would mean a sprint runs start to finish with nothing to reference; completing only at `pm` would mean inventing evidence that doesn't exist.
+**Written at `pm`, completed at `retro` (D-031, 2026-07-29).** The record is written in two passes because its fields become knowable at two different times — not because it is written once, late.
+
+- **`pm`, at scope confirmation** — reserves the next free ID in `docs/product/ID-ALLOCATION.md`, writes `story_refs` here, **and creates the story file and `STORY-REGISTRY.md` row** with the intent fields: actor, problem addressed, intended behaviour, acceptance criteria, out of scope, priority, parent IDs, dependencies, source and decision references. `status: backlog`, `ac_owner: hierarchy`, no delivery evidence.
+- **`retro`, at close** — fills `evidence_refs`, `sprint_refs` and `confidence` from the sprint's actual test, audit and security output, flips `status`, appends the delivery-history line, and extends `SOURCE-INDEX.md` and `FEATURES.md`.
+
+`CONTEXT.md` cites `STORY-<nnnn>` and its title and **links** to the story record for acceptance criteria. It does not restate them.
+
+*Superseded rationale.* This previously read "allocated at `pm`, completed at `retro`", with `pm` writing the criteria into `CONTEXT.md` and `retro` transcribing them into the record. The reasoning — that completing at `pm` "would mean inventing evidence that doesn't exist" — held only if the record must be written in one act. It need not: `STORY-0150`–`0155` have been valid `status: backlog` records carrying `Implementation evidence: None — not implemented.` since Phase 4D, and D-011 requires that shape. The transcription step meanwhile drifted on all five forward-authored stories produced under it, so the criteria `tester` verified and the criteria the registry published were different texts. See D-031.
 
 **Rules:**
 
@@ -107,6 +114,8 @@ story_refs:
 - This applies to **new** sprints only. Closed sprint workspaces are history and are not retrofitted.
 
 **Close gate.** `retro` cannot reach `complete` while any `story_ref` is unresolved — this is part of the same Sprint Workspace Close Gate that already requires every stage to be terminal. That is what makes traceability a condition of closing rather than a habit that decays.
+
+**"Unresolved" means incomplete, not absent (D-031).** Before D-031 the story file did not exist until `retro` created it, so "resolved" and "the file exists" were the same test. They no longer are: under the two-pass split the file exists from scope confirmation onward, in an intentionally incomplete state. A `story_ref` is resolved only when its record carries `evidence_refs`, `sprint_refs` and `confidence` set from this sprint's own output, and a `status` that is no longer the placeholder `backlog` written at `pm` — **unless** the story was scoped and genuinely not delivered, which closes as `backlog` under D-011 with that stated explicitly in the record. A gate that tested only for file existence would let a sprint close with every record still holding its `pm` placeholders.
 
 *Known gap (D-029):* the `/pm` and `/retro` skills in `~/.claude/skills/` perform this work, and that path is outside this programme's authorised scope. The obligation above is enforced by the close gate; the skill-side prompts were handed over for manual application.
 

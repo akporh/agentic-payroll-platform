@@ -14,6 +14,8 @@ Standard-library only, no dependencies. Checks:
      capability's `outcome_name`, a story's `feature_name`) exactly matches the
      current authoritative `name` of the parent row it references, and is not
      missing.
+  8. No `status: backlog` row carries delivery evidence or `confidence: confirmed`
+     (D-031, OQ-5) — undelivered work cannot hold proof of delivery.
 
 Story files are named `<story-id>-<descriptive-slug>.md` (e.g.
 `PT-A4-31-component-source-trace-fix.md`) so a filename alone identifies the
@@ -241,6 +243,48 @@ def main() -> int:
             errors.append(
                 f"STORY-REGISTRY.md '{sid}' maps to feature '{fid}', but that feature's "
                 f"stories column does not list it"
+            )
+
+    # --- Phase 7 addition (D-031, OQ-5) ---------------------------------------------
+
+    # From D-031, `pm` creates a story record at scope confirmation with
+    # `status: backlog` and no delivery evidence; `retro` fills the evidence in and
+    # flips the status. That creates a failure mode the layer did not previously
+    # have: a record left at `backlog` while carrying evidence of delivery, which
+    # would let a half-completed close look like planned work.
+    #
+    # The test is deliberately narrow. A backlog row legitimately cites its
+    # *source* — every one of the 20 existing backlog rows cites `docs/ROADMAP.md`,
+    # which is where the item was found, not proof it was built. Only paths that
+    # can exist solely as the output of a delivered sprint count as delivery
+    # evidence. `confidence: confirmed` is disallowed on the same reasoning:
+    # confirmation is a statement about evidence, and unbuilt work has none.
+    DELIVERY_EVIDENCE = (
+        "docs/test-reports/",
+        "docs/audit/",
+        "docs/security/",
+        "docs/retro-reports/",
+        "/evidence/",
+    )
+    for row in story_registry_rows:
+        if len(row) <= 10:
+            continue
+        story_id, status, confidence, evidence_refs = row[0], row[6], row[7], row[10]
+        if status.strip().lower() != "backlog":
+            continue
+        cited = [marker for marker in DELIVERY_EVIDENCE if marker in evidence_refs]
+        if cited:
+            errors.append(
+                f"STORY-REGISTRY.md row '{story_id}' is status 'backlog' but its "
+                f"evidence_refs cite delivery evidence ({', '.join(cited)}) — a story "
+                f"cannot be undelivered and carry proof of delivery. Flip the status "
+                f"or move the citation to source (D-031, OQ-5)"
+            )
+        if confidence.strip().lower() == "confirmed":
+            errors.append(
+                f"STORY-REGISTRY.md row '{story_id}' is status 'backlog' but "
+                f"confidence 'confirmed' — confirmation is a claim about evidence, "
+                f"and undelivered work has none (D-031, OQ-5)"
             )
 
     # No live PT-* identifier may survive. Legacy codes belong in origin_code

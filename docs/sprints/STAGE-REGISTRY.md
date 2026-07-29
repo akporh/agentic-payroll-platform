@@ -30,12 +30,12 @@ Every entry below is drawn directly from this repository's `CLAUDE.md` (global `
 | Purpose | Scope stories and write acceptance criteria |
 | Mandatory status | mandatory |
 | Entry conditions | User says "let's scope sprint," "what's next," or "start sprint" |
-| Inputs | `docs/ROADMAP.md`; existing `docs/stories/` (must be read first, per standing project practice, before generating new stories); `docs/product/ID-ALLOCATION.md` (to find the next free story ID) |
-| Outputs | Story text and acceptance criteria (in chat and/or `docs/stories/`); a reserved `STORY-<nnnn>` per in-scope story, recorded in `docs/product/ID-ALLOCATION.md` and in this sprint's `CONTEXT.md` as `story_refs` |
+| Inputs | `docs/PLAN.md` (forward work) and `docs/ROADMAP.md` (frozen history); existing `docs/stories/` (must be read first, per standing project practice, before generating new stories); `docs/product/ID-ALLOCATION.md` (to find the next free story ID); `docs/product/stories/TEMPLATE.md` (the record schema to write) |
+| Outputs | Story text and acceptance criteria (in chat); a reserved `STORY-<nnnn>` per in-scope story recorded in `docs/product/ID-ALLOCATION.md` and in this sprint's `CONTEXT.md` as `story_refs`; **and, per story, a `docs/product/stories/STORY-<nnnn>-<slug>.md` file plus `STORY-REGISTRY.md` row carrying the intent fields** — actor, problem, intended behaviour, acceptance criteria, out of scope, priority, parent IDs, dependencies, source and decision references — at `status: backlog`, `ac_owner: hierarchy`, no delivery evidence (D-031). `CONTEXT.md` links to that record for criteria rather than restating them |
 | Dependencies | `roadmap` (complete) |
 | Parallel compatibility | None |
 | Skip conditions | None |
-| Completion criteria | Stories + AC agreed; explicit human confirmation of sprint scope obtained before plan mode; every in-scope story carries an allocated `STORY-<nnnn>` (see `WORKFLOW.md` § Product traceability) |
+| Completion criteria | Stories + AC agreed; explicit human confirmation of sprint scope obtained before plan mode; every in-scope story carries an allocated `STORY-<nnnn>` **and a created story record at `status: backlog`**, with `python3 docs/product/validate_registry.py` at PASS (see `WORKFLOW.md` § Product traceability) |
 | Human gate | Explicit scope confirmation — required before entering plan mode |
 
 ## `architecture`
@@ -151,11 +151,11 @@ Every entry below is drawn directly from this repository's `CLAUDE.md` (global `
 | Mandatory status | mandatory |
 | Entry conditions | User says "done," "sprint complete," or "close sprint" |
 | Inputs | `git log`, `MEMORY.md`, plan file (if it still exists); this sprint's `story_refs`, `state.md` and `evidence/` |
-| Outputs | `SKILL.md` edits, memory file updates, occasionally `CLAUDE.md` edits; a completed row in `docs/product/STORY-REGISTRY.md` and a story file under `docs/product/stories/` for every `story_ref` |
+| Outputs | `SKILL.md` edits, memory file updates, occasionally `CLAUDE.md` edits; for every `story_ref`, the **completion** of the record `pm` created — `evidence_refs`, `sprint_refs` and `confidence` set from this sprint's own test/audit/security output, `status` flipped, one line appended to Delivery history, and `SOURCE-INDEX.md` + `FEATURES.md` extended (D-031). `retro` completes these records; it no longer creates them |
 | Dependencies | `test` (complete); every other activated stage in this sprint's `state.md` at a terminal status (`complete` / `skipped` / `not-applicable`) — no stage may be left `active` or `blocked` when `retro` runs |
 | Parallel compatibility | None |
 | Skip conditions | None — always runs at sprint close |
-| Completion criteria | Retro findings applied to skill files; `state.md` fully terminal; every `story_ref` resolved to a complete registry row and story file, and `python3 docs/product/validate_registry.py` at PASS (see `WORKFLOW.md` § Product traceability) |
+| Completion criteria | Retro findings applied to skill files; `state.md` fully terminal; every `story_ref` **resolved — meaning its record carries this sprint's `evidence_refs`, `sprint_refs` and `confidence`, and a `status` no longer holding the `pm` placeholder `backlog` (or holding it deliberately, per D-011, with that stated in the record). File existence alone is not resolution (D-031)**; `python3 docs/product/validate_registry.py` at PASS (see `WORKFLOW.md` § Product traceability) |
 | Human gate | "With user confirmation" (per CLAUDE.md's retro step) |
 
 ---

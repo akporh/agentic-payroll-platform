@@ -29,6 +29,34 @@ Amended again 2026-07-28 (Phase 3B, D-018/D-019/D-023):
 - An Acceptance criteria section was added, with ownership differing by how the
   story came into existence (D-018). Its absence was a real gap: a reviewer
   reasonably expected migrated stories to carry the criteria their source had.
+
+Amended again 2026-07-29 (Phase 7, D-031):
+- WRITE STAGE. A forward-authored record is now created by `pm` at scope
+  confirmation, not by `retro` at close. `pm` populates the intent fields and sets
+  `status: backlog`; `retro` populates the evidence fields, flips the status and
+  appends the delivery-history line. See the "Who writes what" table below.
+  Previously `pm` wrote the criteria into the sprint's `CONTEXT.md` and `retro`
+  transcribed them here — that transcription drifted on all five forward-authored
+  stories produced under it, so the criteria `tester` verified and the criteria the
+  registry published were not the same text.
+- Out of scope and Priority sections added (D-031 OQ-2). Neither had anywhere to
+  live: deliberate exclusions were invisible, so a reader could not tell work ruled
+  out from work missed; and priority was being re-derived by hand on every planning
+  pass across ~20 backlog rows, despite sprint CONTEXT.md files already writing
+  "(P2)"/"(P3)" into story headings.
+- Business risk was considered and deliberately NOT added (D-031 OQ-3) — it is
+  sprint-instance context and stays in the sprint's CONTEXT.md.
+-->
+
+<!-- WHO WRITES WHAT (D-031) — guidance, not a story field. Delete when copying.
+
+| Stage | Fields |
+|---|---|
+| `pm`, at scope confirmation | Origin code(s) · Outcome · Capability · Feature · Classification · Priority · Status (`backlog`) · Actor · Problem addressed · Delivered behaviour (as *intended* behaviour) · Acceptance criteria · Out of scope · Source reference · Decision references (as known) · Dependencies · Unresolved questions |
+| `retro`, at sprint close | Implementation evidence · Test / review evidence · Confidence · Delivery sprint(s) · Delivery history (append one line) · Status → `delivered`, or `backlog` per D-011 if scoped and not delivered |
+
+A retro-migrated record is written in one pass by whoever performs the migration;
+the split above applies to forward-authored stories only.
 -->
 
 # `<story-id>` — `<title>`
@@ -38,6 +66,7 @@ Amended again 2026-07-28 (Phase 3B, D-018/D-019/D-023):
 **Capability:** `<capability_id>` — `<capability name>`
 **Feature:** `<feature_id>` — `<feature name>`
 **Classification:** `<user-facing story | operational story | compliance story | platform capability | technical enabler | defect/remediation | discovery or architecture item>`
+**Priority:** `<P0 system broken | P1 compliance or financial obligation | P2 operator productivity | P3 nice to have>`
 **Status:** `<delivered | in-flight | backlog>`
 **Confidence:** `<confirmed | strongly inferred | tentative | requires human classification>`
 
@@ -70,6 +99,18 @@ validate_registry.py rejects a name that has drifted from its parent. -->
 `FORWARD-AUTHORED (written here by the PM, no prior sprint story file) — the criteria`
 `live HERE and are authoritative. Write them out in full as a checklist. There is no`
 `other file to point at.>`
+
+## Out of scope
+
+`<What this story deliberately does NOT do, and — where it is not obvious — why.`
+`Written by pm at scope confirmation (D-031). This exists so a reader can tell work`
+`that was ruled out from work that was missed: without it, an absent behaviour is`
+`indistinguishable from an oversight, and the layer's core property is that a gap`
+`counts as evidence.`
+
+`Record only exclusions a reader could plausibly expect to be included. Do not list`
+`everything the story is not. For a retro-migrated story, write "Not recorded —`
+`migrated before this field existed" rather than reconstructing it from memory.>`
 
 ## Source reference
 

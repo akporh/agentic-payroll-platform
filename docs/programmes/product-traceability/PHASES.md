@@ -306,6 +306,35 @@ No other path. Unchanged from every prior Phase 4 sub-phase.
 
 ---
 
+## Phase 7 — `write-stage correction`
+
+**Status:** **authorised** (2026-07-29, via D-031 — direct human chat instruction resolving OQ-1–OQ-5 of `write-stage-proposal.md`). Recorded before any file in scope was written.
+
+**Purpose:** Move authorship of a **forward-authored** story record from `retro` to `pm`. `pm` creates the story file and registry row with intent fields and `status: backlog`; `retro` completes evidence, status and delivery history. Sprint `CONTEXT.md` links to the record for acceptance criteria instead of restating them. Amends the forward-authored branch of D-018 only; the retro-migrated branch is untouched.
+
+**Why a phase.** The steady-state provision reserves "changing what a registry column *means*" to a new phase and a human decision, and `POLICY.md` reserves any change to the source-of-truth ownership model to explicit human approval recorded in `decisions.md`. This changes which stage owns story-record authorship and amends a standing decision (D-018). Both gates apply, so a phase is created rather than the change being treated as an addition or a correction.
+
+**Allowed paths (exhaustive):** `docs/programmes/product-traceability/**`; `docs/product/stories/TEMPLATE.md`; `docs/product/README.md` (§ Acceptance criteria and § Adding a new item only); `docs/product/validate_registry.py` (the OQ-5 rule only); `docs/sprints/WORKFLOW.md` (§ Product traceability only); `docs/sprints/STAGE-REGISTRY.md` (`pm` and `retro` rows only).
+
+**Forbidden paths:** everything forbidden to Phase 6, unchanged — plus `docs/product/OUTCOMES.md`, `docs/product/CAPABILITIES.md`, `docs/product/FEATURES.md`, `docs/product/ID-ALLOCATION.md`, `docs/product/STORY-REGISTRY.md` and every existing file under `docs/product/stories/`. No existing story record is retrofitted (OQ-4); this phase binds new sprints only, matching the D-029 precedent. `~/.claude/**` stays forbidden — the skill-side edits are the human's, per the Phase 5 handover precedent.
+
+**Required inputs:** `write-stage-proposal.md` (this folder) and D-031.
+
+**Required outputs:**
+- `TEMPLATE.md` — a write-stage note stating which fields `pm` populates and which `retro` completes; plus two new sections, **Out of scope** and **Priority** (OQ-2). **Business risk is not added** (OQ-3).
+- `README.md` § Acceptance criteria — the forward-authored branch restated per D-031; § Adding a new item — the revised two-stage sequence.
+- `WORKFLOW.md` § Product traceability — the `pm`/`retro` split restated; the Close Gate unchanged.
+- `STAGE-REGISTRY.md` — `pm` and `retro` rows amended to match.
+- `validate_registry.py` — one rule: `status: backlog` with populated evidence fields is a failure (OQ-5).
+
+**Required validations:** `python3 docs/product/validate_registry.py` at PASS against all 176 existing rows *after* the OQ-5 rule is added — the six `STORY-0150`–`0155` backlog rows and the ~14 from `STORY-0160` must all still pass, since they carry `None — not implemented.` rather than populated evidence. Confirmation that no outcome, capability, feature, ID scheme or story record changed.
+
+**Human gate:** **before** — satisfied by D-031.
+
+**Open item to confirm before execution, not to assume.** Whether `pm`'s declared `allowed-tools` permit writing to `docs/product/`, and whether `retro`'s Close Gate check on an unresolved `story_ref` behaves correctly when the record already exists at sprint open. Recorded as unverified in `write-stage-proposal.md` § 11 and carried here so it cannot be skipped.
+
+---
+
 ## Steady state — maintaining `docs/product/` after Phase 5
 
 *Added 2026-07-29 under D-029, closing the authorisation gap D-028 opened.*

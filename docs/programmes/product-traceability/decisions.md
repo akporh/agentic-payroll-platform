@@ -409,4 +409,46 @@ Two alternatives were put to the human and declined. Forcing the four stories in
 
 ---
 
+## D-031 — Authorise Phase 7 (`write-stage correction`): `pm` writes the forward-authored story record, `retro` completes it
+
+**Date:** 2026-07-29
+**Approved by:** Michael Emedo (direct human chat instruction, answering OQ-1–OQ-5 of `write-stage-proposal.md` in turn)
+**Proposal:** `write-stage-proposal.md`, this folder. Approved as written, with all five open questions resolved — see below.
+
+**Decision:** A new phase, **Phase 7 — `write-stage correction`**, is authorised. Authorship of a **forward-authored** story record moves from `retro` to `pm`. `pm` creates `docs/product/stories/STORY-<nnnn>-<slug>.md` and its `STORY-REGISTRY.md` row with the intent fields populated and `status: backlog`; `retro` populates the evidence fields, flips status, appends the delivery-history line, and completes `SOURCE-INDEX.md` and `FEATURES.md`. Sprint `CONTEXT.md` cites `STORY-<nnnn>` and links to the record for acceptance criteria rather than restating them.
+
+This amends the **forward-authored** branch of D-018 only. D-018's retro-migrated branch — the product record links to the frozen sprint story file and never duplicates its criteria — is unchanged.
+
+**Open questions as resolved:**
+
+| OQ | Question | Resolution |
+|---|---|---|
+| OQ-1 | Full change, or the fallback (keep the split; require `retro` to diff and report)? | **Full change.** The fallback leaves the transcription step in place and fixes only its visibility. |
+| OQ-2 | Do **Out of scope** and **Priority** join `TEMPLATE.md`? | **Yes, both.** |
+| OQ-3 | Does **Business risk** join it? | **No** — it stays in sprint `CONTEXT.md`. It is sprint-instance context, not durable product intent. |
+| OQ-4 | Reconcile the five already-drifted `roadmap-split` stories? | **No.** They are left as history and stand as the evidence for this decision. Retrofitting them would breach the proposal's own §9 no-retrofit rule on its first application. |
+| OQ-5 | Add a validator rule that `status: backlog` with populated evidence fields is contradictory? | **Yes.** Minor; it guards the one new failure mode this phase creates. |
+
+**Rationale.** The two-point split fixed by D-029 places story authorship at sprint close, so `pm` writes the story's intent into `docs/sprints/<id>/CONTEXT.md` and `retro` later transcribes it into the durable record. That transcription has drifted on **every forward-authored story produced to date** — all five from `roadmap-split`, the only rows carrying `ac_owner: hierarchy`. Two drifted in criterion count (`STORY-0158` 4→5, `STORY-0176` 5→6); `STORY-0159` dropped a quantified figure ("the 20 open items" → "the open Phase 1 items"). `validate_registry.py` passes all five, correctly — it has no notion of acceptance-criteria equivalence, and acquiring one would be the wrong fix.
+
+The drift runs in the direction that diagnoses it: in every case the record is the *better* text, because it was composed at close and reflects what was learned. So the criteria that gated implementation and that `tester` verified against were `CONTEXT.md`'s, while the criteria the registry publishes — with that test evidence attached — are a later, different text. `STORY-0158` presents five criteria beside a passing test report; four were verified.
+
+D-018 identified this exact hazard for retro-migrated stories ("two copies would only drift") and fixed it there. The forward case has the same hazard and is worse, because both copies are live and editable, and no document states which is authoritative during the sprint.
+
+**Root cause: a migration workflow promoted to steady state.** All 157 stories were created by retro-migration, where intent and evidence arrive at the same instant and writing the record in one act is correct. Phase 5 carried that shape into the forward case, where they arrive months apart. The artefacts are on the record: `stories/TEMPLATE.md`'s header states it was amended during the Phase 4A pilot to add fields "the pilot's two stories could not be recorded [without]"; D-018 split ownership on retro-vs-forward yet asked only which *file* owns the criteria, never which *stage* writes the record; and `docs/product/README.md` still calls the layer "not a replacement planning surface", which `roadmap-split`'s `STORY-0160` made untrue by requiring a `story_ref` on every forward item in `docs/PLAN.md`.
+
+**Why this needs no schema change.** A story record existing before its evidence is already the established treatment of planned work, not a state this phase introduces. `STORY-0150`–`0155` are six `status: backlog` records reading `Implementation evidence: None — not implemented.`; they pass validation, and D-011 *requires* the shape so undelivered scope holds an identifier rather than being silently absent. `STORY-0160` created ~14 more. This phase only makes it the state every story passes through.
+
+**The objection, and why it was not taken.** That `CONTEXT.md` holds working notes, so drift from a durable record is expected and harmless — a position consistent with the observed data, since the record improved on the note in all five cases. Declined on two grounds. Nothing designates it a draft: `POLICY.md` names `CONTEXT.md` the owner of selected execution scope, `roadmap-split/CONTEXT.md` is headed "scope confirmed … recorded before any in-scope file was touched", and `PHASES.md`'s Phase 6 entry cites it as a **required input**. And granting the premise concedes the substance — whether draft or decided, one text was verified and another is published with that verification attached.
+
+**Effect on later phases:** None. Phase 7 is terminal and self-contained; on completion the programme returns to the steady state defined after Phase 5. It does not reopen Phase 4, does not alter the ID scheme, does not move any story's feature assignment, and grants no authority over `docs/ROADMAP.md`. It binds **new sprints only** — no existing story record is retrofitted, matching the D-029 precedent.
+
+**Consequential amendments authorised by this decision:** `POLICY.md`'s source-of-truth boundary list (which stage writes the forward-authored record); `stories/TEMPLATE.md` (write-stage note, plus the OQ-2 fields); `docs/product/README.md` § Acceptance criteria; `docs/sprints/WORKFLOW.md` § Product traceability; `docs/sprints/STAGE-REGISTRY.md` `pm` and `retro` rows; `validate_registry.py` (OQ-5 rule only).
+
+**Follow-up outside this programme.** The behaviour change lands in `~/.claude/skills/pm/SKILL.md` and `~/.claude/skills/retro/SKILL.md`, which `POLICY.md` forbids this programme from touching and which `WORKFLOW.md` already records as a known gap under D-029. The Phase 5 precedent applies: the programme writes the obligation into `WORKFLOW.md`/`STAGE-REGISTRY.md`, and the skill-side edits are applied by the human and verified. This decision grants no authority over `~/.claude/**`.
+
+**Also surfaced by the same review, not authorised here.** `state.md` records decisions as "D-001–D-029" and Phase 5 as "the last defined phase", both superseded by D-030/Phase 6. That is a **correction** under the steady-state provision — ordinary maintenance, recorded in the relevant sprint's `decisions.md`, needing no phase.
+
+---
+
 *Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4B confirmed-batch decision: D-016, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md`. Hierarchy-completion decisions: D-017–D-022, recorded 2026-07-28 via direct human chat instruction following human review of the Phase 4A/4B batches. Phase 4 (historical migration) as a whole remains unauthorised, and is now additionally gated behind Phase 3B's human sign-off.*

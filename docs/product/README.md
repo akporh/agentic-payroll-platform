@@ -36,7 +36,27 @@ Before that, the hierarchy was built bottom-up: the Phase 4A pilot (D-015, 2 sto
 
 **What can still make this wrong.** The discovery inventory behind these 157 items has a **2026-07-15 horizon**, and three sprints were already found missing from it (D-024, D-026). Work delivered after that date registers here only if someone captures it at migration time. Wiring traceability into sprint closure is Phase 5 and is **not yet authorised** — until it is, the completeness above decays with every sprint that closes.
 
-Adding a new item: allocate the next free `STORY-<nnnn>` in `ID-ALLOCATION.md` (never renumber, never reuse), add the registry row and story file, extend `SOURCE-INDEX.md`, and run `python3 docs/product/validate_registry.py`.
+## Adding a new item — two stages (D-031)
+
+A forward-authored story is written **in two passes, by two stages.** It is not written once at the end.
+
+**At `pm`, when sprint scope is confirmed:**
+
+1. Allocate the next free `STORY-<nnnn>` in `ID-ALLOCATION.md` — strictly sequential, never renumbered, never reused.
+2. Create `stories/STORY-<nnnn>-<slug>.md` from `stories/TEMPLATE.md`, filling the **intent** fields: actor, problem addressed, intended behaviour, acceptance criteria, out of scope, priority, parent IDs, dependencies, source and decision references. Set `status: backlog`.
+3. Add the `STORY-REGISTRY.md` row with `ac_owner: hierarchy` and no delivery evidence.
+4. Record the ID in the sprint's `CONTEXT.md` under `story_refs`. `CONTEXT.md` **links** to the story record for acceptance criteria — it does not restate them.
+
+**At `retro`, when the sprint closes:**
+
+5. Fill the **evidence** fields — implementation, test/review — citing only files that exist on disk. Set `confidence` from this sprint's own evidence. Flip `status` to `delivered`, or leave it `backlog` per D-011 if the story was scoped and not delivered.
+6. Append one line to Delivery history. Extend `SOURCE-INDEX.md` and `FEATURES.md`.
+
+**Both stages:** run `python3 docs/product/validate_registry.py`. Note it now rejects a `status: backlog` row that carries delivery evidence or `confidence: confirmed` (D-031, OQ-5) — a story cannot be undelivered and hold proof of delivery. Citing the *source* a backlog item came from (`docs/ROADMAP.md`, `docs/PLAN.md`) is fine and expected.
+
+*A retro-migrated story is still written in one pass — the split above applies to forward-authored stories only.*
+
+**Why two stages.** Until 2026-07-29 `pm` wrote the criteria into the sprint's `CONTEXT.md` and `retro` transcribed them here. The transcription drifted on all five forward-authored stories produced under it — two gained a criterion, one dropped a quantified figure — so the criteria `tester` verified against and the criteria the registry published, with that test evidence attached, were different texts. D-018 had already identified the same hazard for retro-migrated stories and fixed it there. See `../programmes/product-traceability/write-stage-proposal.md`.
 
 ## Story identifiers (D-019, D-020)
 
@@ -59,9 +79,11 @@ Allocation:
 Ownership depends on how a story came into existence:
 
 - **Retro-migrated** — the authoritative criteria stay in the original sprint story file. The record here summarises and links; it does not duplicate. The source is closed and frozen, so two copies would only drift.
-- **Forward-authored** — the criteria live **here**, authoritatively, because there is no prior file to point at.
+- **Forward-authored** — the criteria live **here**, authoritatively, because there is no prior file to point at. **Written by `pm` at scope confirmation, not by `retro` at close (D-031).** The sprint's `CONTEXT.md` cites the story ID and links here; it does not hold a second copy.
 
 A retro record is therefore deliberately not standalone-complete; a forward record is. `STORY-REGISTRY.md`'s `ac_owner` column states which applies, per story.
+
+**Criteria that change mid-sprint.** Criteria discovered during implementation are normal, and often a sprint's most valuable output. Edit them here and record the change as a line in the sprint's `decisions.md` — the same route a scope increase takes (`roadmap-split` DEC-05 is the worked example). What is not acceptable is a criterion appearing in the record at close having never been visible during the sprint; that is what the pre-D-031 transcription step produced.
 
 *This resolves a genuine contradiction: `POLICY.md` stated "Story records own story definition and authoritative acceptance criteria" without naming which story records, which read as contradicting D-009's pointer-only rule.*
 
