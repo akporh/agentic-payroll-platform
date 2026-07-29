@@ -1,4 +1,4 @@
-# `STORY-0103` — `Employees.tsx` split-action rework — Edit / Change Grade / View Contracts
+# `STORY-0103` — `Employees.tsx` split-action rework — browser UAT BLOCKED
 
 **Origin code(s):** `PT-A1-23` · `EMP-B3`
 **Outcome:** `OUT-3` — Operationally usable payroll administration

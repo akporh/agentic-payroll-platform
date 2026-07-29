@@ -30,12 +30,12 @@ Every entry below is drawn directly from this repository's `CLAUDE.md` (global `
 | Purpose | Scope stories and write acceptance criteria |
 | Mandatory status | mandatory |
 | Entry conditions | User says "let's scope sprint," "what's next," or "start sprint" |
-| Inputs | `docs/ROADMAP.md`; existing `docs/stories/` (must be read first, per standing project practice, before generating new stories) |
-| Outputs | Story text and acceptance criteria (in chat and/or `docs/stories/`) |
+| Inputs | `docs/ROADMAP.md`; existing `docs/stories/` (must be read first, per standing project practice, before generating new stories); `docs/product/ID-ALLOCATION.md` (to find the next free story ID) |
+| Outputs | Story text and acceptance criteria (in chat and/or `docs/stories/`); a reserved `STORY-<nnnn>` per in-scope story, recorded in `docs/product/ID-ALLOCATION.md` and in this sprint's `CONTEXT.md` as `story_refs` |
 | Dependencies | `roadmap` (complete) |
 | Parallel compatibility | None |
 | Skip conditions | None |
-| Completion criteria | Stories + AC agreed; explicit human confirmation of sprint scope obtained before plan mode |
+| Completion criteria | Stories + AC agreed; explicit human confirmation of sprint scope obtained before plan mode; every in-scope story carries an allocated `STORY-<nnnn>` (see `WORKFLOW.md` § Product traceability) |
 | Human gate | Explicit scope confirmation — required before entering plan mode |
 
 ## `architecture`
@@ -150,12 +150,12 @@ Every entry below is drawn directly from this repository's `CLAUDE.md` (global `
 | Purpose | Review what was caught late in the sprint; update skill checklists |
 | Mandatory status | mandatory |
 | Entry conditions | User says "done," "sprint complete," or "close sprint" |
-| Inputs | `git log`, `MEMORY.md`, plan file (if it still exists) |
-| Outputs | `SKILL.md` edits, memory file updates, occasionally `CLAUDE.md` edits |
+| Inputs | `git log`, `MEMORY.md`, plan file (if it still exists); this sprint's `story_refs`, `state.md` and `evidence/` |
+| Outputs | `SKILL.md` edits, memory file updates, occasionally `CLAUDE.md` edits; a completed row in `docs/product/STORY-REGISTRY.md` and a story file under `docs/product/stories/` for every `story_ref` |
 | Dependencies | `test` (complete); every other activated stage in this sprint's `state.md` at a terminal status (`complete` / `skipped` / `not-applicable`) — no stage may be left `active` or `blocked` when `retro` runs |
 | Parallel compatibility | None |
 | Skip conditions | None — always runs at sprint close |
-| Completion criteria | Retro findings applied to skill files; `state.md` fully terminal |
+| Completion criteria | Retro findings applied to skill files; `state.md` fully terminal; every `story_ref` resolved to a complete registry row and story file, and `python3 docs/product/validate_registry.py` at PASS (see `WORKFLOW.md` § Product traceability) |
 | Human gate | "With user confirmation" (per CLAUDE.md's retro step) |
 
 ---

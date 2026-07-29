@@ -1,4 +1,4 @@
-# `STORY-0057` — Gate 4 — Bureau / workspace-setup journey, 8 pages
+# `STORY-0057` — Gate 4 bureau / workspace-setup journey, 8 pages — delivery CONTRADICTED
 
 **Origin code(s):** `PT-UI-04`
 **Outcome:** `OUT-3` — Operationally usable payroll administration

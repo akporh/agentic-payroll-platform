@@ -84,9 +84,35 @@ compensating_control: <optional — what covers the risk instead, if anything>
 
 Every `decision_ref` cited anywhere in a sprint's `state.md` must resolve to an `id` here. A reason with no matching `decisions.md` entry is a lint failure (`scripts/lint_sprint_state.py`, once introduced), not a valid state — this is what makes gate outcomes durable: an `arch-council` verdict, for instance, becomes a `decisions.md` entry, not a chat message that evaporates when the session ends.
 
+## Product traceability
+
+Every sprint records what it built into `docs/product/`, the durable product hierarchy, as part of running — not as a clean-up afterwards. This exists because the alternative has already failed: the hierarchy was built from a discovery pass with a **2026-07-15 horizon**, and three sprints closed after it without registering anything. They were recovered by chance, not by process (D-024, D-026 in `docs/programmes/product-traceability/decisions.md`). Authorised by **D-029**.
+
+**`story_refs`** — a sprint-instance field in `CONTEXT.md`, listing the `STORY-<nnnn>` identifiers this sprint delivers:
+
+```yaml
+story_refs:
+  - id: STORY-0158
+    title: <short title, matching the registry row>
+    status_at_close: delivered | backlog     # written by retro, not pm
+```
+
+**Allocated at `pm`, completed at `retro`.** The split is deliberate. At `pm` the scope is known and the evidence does not exist yet, so the stage reserves the next free ID in `docs/product/ID-ALLOCATION.md` and writes `story_refs`. At `retro` the sprint's test, audit and security evidence finally exists, so that stage writes the full `STORY-REGISTRY.md` row and story file — including `evidence_refs`, `sprint_refs` and `confidence`. Allocating only at close would mean a sprint runs start to finish with nothing to reference; completing only at `pm` would mean inventing evidence that doesn't exist.
+
+**Rules:**
+
+- IDs are **strictly sequential on allocation, never renumbered, never reused** (D-019). A story dropped from scope mid-sprint keeps its ID; the ID is retired, not recycled.
+- `confidence` at close is set from *this sprint's own evidence*, and a sprint with a passing test report and audit review should be recording `confirmed`. Do not write `strongly inferred` for work you just built and verified — that value exists for retro-migrated history, not for new work.
+- A story that was scoped but **not** delivered closes as `status: backlog`, never silently dropped. A reader must not be able to mistake abandoned scope for delivered work by its absence (D-011).
+- This applies to **new** sprints only. Closed sprint workspaces are history and are not retrofitted.
+
+**Close gate.** `retro` cannot reach `complete` while any `story_ref` is unresolved — this is part of the same Sprint Workspace Close Gate that already requires every stage to be terminal. That is what makes traceability a condition of closing rather than a habit that decays.
+
+*Known gap (D-029):* the `/pm` and `/retro` skills in `~/.claude/skills/` perform this work, and that path is outside this programme's authorised scope. The obligation above is enforced by the close gate; the skill-side prompts were handed over for manual application.
+
 ## Sprint completion
 
-A sprint is done when every activated stage in its `state.md` is `complete`, `skipped`, or `not-applicable` — not when some fixed final stage number is reached. `retro` checks this explicitly before allowing sprint close (see `STAGE-REGISTRY.md`'s `retro` entry): no stage may be left `active` or `blocked` at close.
+A sprint is done when every activated stage in its `state.md` is `complete`, `skipped`, or `not-applicable` — not when some fixed final stage number is reached. `retro` checks this explicitly before allowing sprint close (see `STAGE-REGISTRY.md`'s `retro` entry): no stage may be left `active` or `blocked` at close, and no `story_ref` may be left unresolved.
 
 ## Separation of concerns
 
@@ -100,5 +126,6 @@ A sprint is done when every activated stage in its `state.md` is `complete`, `sk
 | Current execution state | `docs/sprints/<id>/state.md` | No — one per sprint, mutated in place |
 | Human decisions | `docs/sprints/<id>/decisions.md` | No — append-only per sprint |
 | Generated evidence | `docs/sprints/<id>/evidence/` | No — per sprint, per stage, per attempt |
+| Durable record of what was built (story → sprint → evidence) | `docs/product/` — written by `pm` (ID) and `retro` (full row) | Yes — the permanent cross-sprint record |
 
 Skill logic stays in `~/.claude/skills/` exactly where it is today — this workflow does not ask any sprint file to restate a checklist. `CONTEXT.md` / `state.md` / `decisions.md` hold only sprint-instance data; `STAGE-REGISTRY.md` / `WORKFLOW.md` (this file) hold only the rules, once.

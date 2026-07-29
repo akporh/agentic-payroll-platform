@@ -100,7 +100,7 @@ Confidence: `C` confirmed · `S` strongly inferred · `T` tentative · `B` backl
 | `STORY-0054` | `PT-A1-18` | WorkspaceConfig.tsx full interactive overhaul (Gate 6) | `FEAT-3` | C | ● |
 | `STORY-0055` | `PT-UI-06` | Gate 6 — Post-onboarding config management overhaul (frontend) | `FEAT-16` | C | ● |
 | `STORY-0056` | `PT-UI-03` | Gate 3 — Operator journey, 6 screens + 6 amendments | `FEAT-16` | S | ● |
-| `STORY-0057` | `PT-UI-04` | Gate 4 — Bureau / workspace-setup journey, 8 pages | `FEAT-16` | T | ● |
+| `STORY-0057` | `PT-UI-04` | Gate 4 bureau / workspace-setup journey, 8 pages — delivery CONTRADICTED | `FEAT-16` | T | ● |
 
 ## Sprint 9 — Client B
 | ID | Origin | Title | Feature | | |

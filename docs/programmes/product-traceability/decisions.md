@@ -341,6 +341,56 @@ This is **not** a date cutoff — Sprint RULE-VER-1 (2026-06-21) was captured wh
 **Effect on later phases:** Phase 4 closes entirely. Phase 5 (`sprint-workflow integration`) becomes the only remaining phase and the only defence against the 2026-07-15 horizon problem recorded in D-026 — with a complete backlog, every subsequently-missed sprint is now the *only* thing that can make the registry wrong.
 **Follow-up outside this programme:** unchanged — PH_OT `is_pensionable` (D-010/DP-04, `STORY-0036`) and the Gate 4 status contradiction (D-012/DP-06, `STORY-0057`) remain open and are owned elsewhere.
 
+## D-028 — Surface the two unflagged source contradictions in the registry title; open the steady-state authorisation gap
+
+**Date:** 2026-07-29
+**Approved by:** Michael Emedo (direct chat instruction, following a walkthrough of the three post-Phase-4D risks: registry completeness vs verification, the three contradiction items, and the decaying 2026-07-15 horizon)
+**Decision:** The `title` of `STORY-0057` and `STORY-0103` is amended in `../product/STORY-REGISTRY.md`, `../product/ID-ALLOCATION.md` and their story files to carry the verification state inline. Scope is exactly these two titles. **No `status`, `confidence`, `evidence_refs` or story body is changed** — the underlying records are already correct.
+
+| Story | Title before | Title after |
+|---|---|---|
+| `STORY-0057` | Gate 4 — Bureau / workspace-setup journey, 8 pages | Gate 4 bureau / workspace-setup journey, 8 pages — delivery CONTRADICTED |
+| `STORY-0103` | `Employees.tsx` split-action rework — Edit / Change Grade / View Contracts | `Employees.tsx` split-action rework — browser UAT BLOCKED |
+
+**The defect this fixes.** All three contradiction items (D-027) carry an explicit "do not cite this as evidence" warning *inside their story file*, and all three are `confidence: tentative`. But the surface most readers actually scan is the `STORY-REGISTRY.md` table, where the row reads `status: delivered` and the only counter-signal is one word in a column eight fields across. `STORY-0105` already solved this by putting `multi-contract verification BLOCKED` in its title; `STORY-0057` and `STORY-0103` did not. A reader skimming the table sees `delivered` and stops.
+
+**This follows an existing precedent rather than inventing one — and closes a live divergence.** `ID-ALLOCATION.md` already titled `STORY-0103` *"Employees.tsx split-action rework — browser UAT BLOCKED"* while `STORY-REGISTRY.md` did not, so the two files disagreed on the same story's title. The wording adopted here is `ID-ALLOCATION.md`'s own, which makes them agree. `STORY-0057`'s flag is newly worded, following the shape `STORY-0105` and `STORY-0103` share: `<description> — <STATE>`. The leading `Gate 4 —` becomes `Gate 4 ` to avoid a second em-dash, matching `FEATURES.md`'s existing phrasing "Gate 4 bureau setup".
+
+**What this does not do.** It does not resolve either contradiction. D-012/DP-06 (Gate 4) stays open and owned outside this programme; Sprint 17's BLOCKED verifications stay BLOCKED. Making a gap harder to miss is not the same as closing it, and this decision must never be cited as having closed one.
+
+**Standing authorisation gap, opened not closed.** Phase 4 is closed (D-027) and Phase 5 is unauthorised, so at the moment this decision was taken **no phase authorised writing to `docs/product/` at all** — the programme has phase authorisations but no steady-state provision for correcting the layer it produced. This decision is a one-off narrow authorisation, not that provision. Defining the standing rule for post-migration maintenance of `docs/product/` belongs to Phase 5's scoping alongside the sprint-closure wiring; until then, every further edit needs its own decision.
+**Effect on later phases:** none on scope. Adds one item to Phase 5's agenda: a steady-state maintenance authorisation for `docs/product/`.
+**Follow-up outside this programme:** unchanged from D-027.
+
+## D-029 — Authorise Phase 5 (`sprint-workflow integration`), with the exact allowed-path expansion
+
+**Date:** 2026-07-29
+**Approved by:** Michael Emedo (direct chat instruction, after a plain-language walkthrough of the scope and an explicit choice of "Option A — hand me the changes" for the skill files)
+**Decision:** **Phase 5 is authorised.** This satisfies `PHASES.md`'s "human gate: **before**" requirement, which demands authorisation of *the exact allowed-path expansion* — not general approval of the phase. The list below is that expansion, and it is exhaustive.
+
+**Allowed paths — write:**
+
+| Path | Constraint |
+|---|---|
+| `docs/sprints/STAGE-REGISTRY.md` | **Amend only.** Lines added to the `Inputs`, `Outputs` and `Completion criteria` fields of the **`pm`** and **`retro`** rows. No new stage; no change to any stage's `Dependencies`, `Parallel compatibility`, `Mandatory status`, `Skip conditions`, `Entry conditions` or `Human gate`; no change to the 10-stage set or its ordering. |
+| `docs/sprints/WORKFLOW.md` | **Amend only.** One new `## Product traceability` subsection, plus one row added to the "Separation of concerns" table. No change to the status values, transition rules, parallel rules, skip rules, rework rules or sprint-completion rule. |
+| `docs/product/**` | Full write — the rows future sprints create, plus the steady-state maintenance provision D-028 identified as missing. |
+| `docs/programmes/product-traceability/**` | Full write — phase record, decisions, critic review. |
+
+**Allowed paths — read-only inputs:** `docs/sprints/CURRENT.md`, `docs/sprints/README.md`, and the three existing sprint workspaces (`aud-q1-trace-source/`, `sec-s7-timesheet-upload-guard/`, `dev-levy-rule-pct/`) as validation material.
+
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/audit/`, `docs/audit-program/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/programmes/agentic-architecture-review/`, **`~/.claude/`** (see below), and `docs/sprints/<id>/**` for every existing sprint workspace — closed sprints are history and are **not** retrofitted with traceability links.
+
+**`~/.claude/skills/` stays forbidden — deliberately, at the cost of one manual step.** The rules Phase 5 writes into `STAGE-REGISTRY.md` are *descriptions*; the work is performed by the `/pm` and `/retro` skills, which live outside this repository. Editing only the descriptions leaves a rule that nothing executes. The alternative — widening the boundary to the human's personal skill folder, which has been forbidden in every phase since bootstrap — was declined. **Phase 5 therefore emits the exact `SKILL.md` text as a proposal for the human to apply by hand, and the phase is not complete until they confirm they have.** Recorded here because it is a known, accepted gap between authorisation and effect, not an oversight.
+
+**Two touchpoints, not one — a deliberate departure from `PHASES.md`'s stated output.** The phase definition anticipated "an additional field or step in the `retro` stage." That is insufficient on its own: at `retro` the evidence exists but the story has run the whole sprint with no identifier, and nothing earlier obliges anyone to create one. So the link is written in two places — **`pm`** allocates the `STORY-<nnnn>` when scope is agreed and evidence does not yet exist, and **`retro`** completes the row at close, when `evidence_refs`, `sprint_refs` and `confidence` finally do. `retro`'s existing Sprint Workspace Close Gate enforces it, which is what converts the obligation from a habit into a condition of closing.
+
+**Why this fixes the decay and not just the symptom.** D-026 recorded the 2026-07-15 horizon and three sprints already past it; D-027 recorded that with the backlog at zero, a subsequently-missed sprint is now the *only* thing that can make the registry wrong. A sprint that cannot close without its row removes that failure mode at source rather than relying on periodic rediscovery. It also improves what enters the cabinet: `confidence` is set at close from the sprint's own test and audit evidence, so new items land as `confirmed` rather than joining the 45 rows whose sole evidence is `docs/ROADMAP.md`.
+
+**Required validation:** run the amended fields against `dev-levy-rule-pct` — closed, fully evidenced, already migrated as `STORY-0156`/`STORY-0157` — as the synthetic case, confirming the new fields reproduce a known-good result. That workspace is read-only and is not modified. Plus `python3 docs/product/validate_registry.py` at PASS.
+**Effect on later phases:** Phase 5 is the last defined phase. On its completion the programme moves to steady state and any further work needs a new phase, per the cross-phase note.
+**Follow-up outside this programme:** unchanged from D-027, plus the manual `SKILL.md` application described above.
+
 ---
 
 *Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4B confirmed-batch decision: D-016, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md`. Hierarchy-completion decisions: D-017–D-022, recorded 2026-07-28 via direct human chat instruction following human review of the Phase 4A/4B batches. Phase 4 (historical migration) as a whole remains unauthorised, and is now additionally gated behind Phase 3B's human sign-off.*

@@ -262,23 +262,39 @@ No other path. Unchanged from every prior Phase 4 sub-phase.
 
 ## Phase 5 — `sprint-workflow integration`
 
-**Status:** not authorised
+**Status:** **authorised and complete** (2026-07-29, via D-029 — direct human chat instruction following a plain-language scope walkthrough, with "Option A" chosen for the skill files). The `before` gate below was satisfied by D-029 naming the exact path expansion prior to any file being written.
 
 **Purpose:** Wire the new product layer into the ICM sprint workflow (`docs/sprints/`) so future sprints write traceability links (story → sprint → evidence) as a normal part of sprint closure, without altering the sprint workflow's existing stage/gate mechanics defined in `docs/sprints/STAGE-REGISTRY.md`.
 
-**Allowed paths:** to be defined at authorisation time — expected to touch `docs/sprints/STAGE-REGISTRY.md`, `docs/sprints/WORKFLOW.md`, and sprint templates, which are currently forbidden paths for this programme and would require explicit re-scoping.
+**Allowed paths (as authorised by D-029, exhaustive):** `docs/sprints/STAGE-REGISTRY.md` (**amend only** — the `Inputs`/`Outputs`/`Completion criteria` fields of the `pm` and `retro` rows, nothing else); `docs/sprints/WORKFLOW.md` (**amend only** — one new subsection plus one table row); `docs/product/**`; `docs/programmes/product-traceability/**`. Read-only inputs: `docs/sprints/CURRENT.md`, `docs/sprints/README.md`, and the three existing sprint workspaces as validation material.
 
-**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, all completed sprint history.
+**Forbidden paths:** `backend/`, `frontend/`, `migrations/`, `docs/ROADMAP.md`, `docs/stories/`, `docs/audit/`, `docs/audit-program/`, `docs/security/`, `docs/test-reports/`, `docs/retro-reports/`, `docs/programmes/agentic-architecture-review/`, **`~/.claude/`**, and `docs/sprints/<id>/**` for every existing sprint workspace — closed sprints are history and are not retrofitted.
 
 **Required inputs:** Phase 4 populated product hierarchy.
 
-**Required outputs:** an updated (not rewritten) sprint-workflow integration point, e.g. an additional field or step in the `retro` stage that records the traceability link.
+**Required outputs (as delivered):** a `story_refs` field and a `## Product traceability` subsection in `WORKFLOW.md`; traceability lines added to the `pm` (allocate ID) and `retro` (complete row, gated) stage entries; the steady-state maintenance provision below. **Two touchpoints, not the single `retro` step this definition originally anticipated** — see D-029 for why one is insufficient.
 
-**Required validations:** to be defined at authorisation time; expected to include running the updated workflow against a real or synthetic sprint to confirm it does not break existing stage/gate mechanics.
+**Required validations (as run):** the amended fields exercised against the closed, fully-evidenced `dev-levy-rule-pct` sprint as a synthetic case, without modifying that workspace; `python3 docs/product/validate_registry.py` at PASS; confirmation that no stage's `Dependencies`, `Parallel compatibility`, `Mandatory status`, `Skip conditions`, `Entry conditions` or `Human gate` changed, and that the 10-stage set and its ordering are untouched.
 
-**Human gate:** **before** — because this phase is the only one that touches the existing sprint-workflow control files, it requires explicit human authorisation of the exact allowed-path expansion before any file is written, not just approval of the general phase.
+**Human gate:** **before** — because this phase is the only one that touches the existing sprint-workflow control files, it requires explicit human authorisation of the exact allowed-path expansion before any file is written, not just approval of the general phase. *Satisfied by D-029.*
 
-**Executor / critic responsibilities:** to be scoped at authorisation time.
+**Known gap carried, not closed:** the `/pm` and `/retro` skills that perform this work live in `~/.claude/skills/`, which stays forbidden by explicit choice. The skill-side text was handed to the human for manual application; the close gate in `STAGE-REGISTRY.md` is what enforces the obligation regardless.
+
+---
+
+## Steady state — maintaining `docs/product/` after Phase 5
+
+*Added 2026-07-29 under D-029, closing the authorisation gap D-028 opened.*
+
+With Phase 5 complete there is no further phase, and the programme's phase-based authorisation model no longer covers the ordinary upkeep of the layer it produced. That gap was real: between D-027 (Phase 4 closed) and D-029, no phase authorised writing to `docs/product/` at all, and correcting two story titles needed its own decision (D-028).
+
+**Standing provision.** From this point, `docs/product/` is maintained under the sprint workflow rather than under this programme:
+
+- **Additions** — new stories enter via `pm`/`retro` per `docs/sprints/WORKFLOW.md` § Product traceability. No programme decision required; the sprint's own record is the authorisation.
+- **Corrections** — fixing a demonstrably wrong field (a broken evidence path, a title that contradicts its own record) is ordinary maintenance. Record it in the relevant sprint's `decisions.md`, not here.
+- **Structural change** — adding or retiring an outcome, capability or feature; changing the ID scheme; changing what a registry column *means*; merging or splitting a story. **These still require a new phase and a human decision in this file.** Retiring an ID always requires human approval (D-019 rule 4).
+
+The line: *filling in the cabinet is routine; changing the shape of the cabinet is not.*
 
 ---
 
