@@ -1,3 +1,19 @@
+> ## ⛔ FROZEN — HISTORICAL RECORD
+>
+> **This file was frozen on 2026-07-29 and is not edited again.**
+>
+> Forward planning lives in **`docs/PLAN.md`**. Per-item detail lives in **`docs/product/`**.
+>
+> **Why it is frozen, and why it kept this path.** This file was doing two jobs at once: it was the historical record of delivered work — ~98% of its content — and it was the forward plan. Every edit to the plan mutated a document that **46 rows in `docs/product/STORY-REGISTRY.md` cite as evidence**, and which is the *only* evidence for 10 of them (Sprint 0, and Sprints 1–6, which predate the per-sprint test-report convention). Now that `docs/product/` owns delivered history, this file keeps only the first job. It kept its path precisely so that not one of those 46 citations had to move.
+>
+> **What was and was not changed at the freeze.** This banner and the italic annotations on open items were **added**. **No pre-existing line was altered, reordered or deleted** — verifiable as an additions-only diff. The three organising principles below (capability area → Track → Sprint) and the 25+ ID prefixes, some colliding, are left exactly as they were. They are the reason this split happened; correcting them retrospectively would break citations across four programmes at once, which `D-021` considered and ruled against.
+>
+> **Open items were still open when this froze.** They were carried to `docs/PLAN.md` and each is annotated below. Two markers were already **stale** — `S7` and `Q1` had in fact been delivered — and are annotated as such rather than corrected, to preserve the additions-only guarantee.
+>
+> Authorised by `docs/sprints/roadmap-split/decisions.md` `DEC-01`/`DEC-02`, executing the follow-up deferred under `D-021`.
+
+---
+
 # Agentic Payroll Platform — Product Roadmap
 
 ## Legend
@@ -54,6 +70,7 @@ Stories built before formal sprint tracking. Covers the core platform skeleton.
 - Toggle statutory components on/off ✅
 - Select effective statutory rule version ✅
 - View applicable statutory rules ⬜
+  - *Carried to `docs/PLAN.md` at the 2026-07-29 freeze as `STORY-0162`. Recorded twice in this file — also as `P3-2` under Phase 1b.*
 
 **A2 — Workforce**
 - Define salary definition ✅
@@ -205,7 +222,9 @@ Open items needed to make the platform production-ready for real clients.
 **A1 — Workspace Setup**
 - Configure pay cycle post-setup — update endpoint ✅ (WC-1, Track J)
 - View applicable statutory rules — read endpoint + UI ⬜ (P3-2)
+  - *Carried to `docs/PLAN.md` as `STORY-0162`.*
 - Statutory rule management UI for bureau ⬜ (P3-2)
+  - *Carried to `docs/PLAN.md` as `STORY-0163`. `P3-2` names two distinct items — an example of the collided prefixes `D-021` identified.*
 - Configure WorkspacePayrollConfig (ph_mode, weekend PH rules, D3/D4 flags, effective_from versioned rows) ✅ (PH-6) ← arch-council: effective_from required
 - Seed rate_code_registry with platform OT codes (OT001–OT007) — no is_pensionable column ✅ (PH-7) ← arch-council: pension via component_metadata not registry
 - Rate code registry — read endpoint + UI view ✅ (PH-7)
@@ -226,6 +245,7 @@ Open items needed to make the platform production-ready for real clients.
 - Enforce salary definition effective dates at run time ✅ (P3-5) — already done
 - Onboard ot_multiplier payroll rules via Excel/JSON (rate_code field) ✅ (PH-8/WI-05)
 - Onboard Client 3 shift allowance rules (basic_daily base) 🔜 (PH-12)
+  - *Carried to `docs/PLAN.md` as `STORY-0150`.*
 
 ### Execution (A4)
 
@@ -265,7 +285,9 @@ Open items needed to make the platform production-ready for real clients.
 ### Correctness & Audit (A10)
 
 - Expose snapshot content with structured UI renderer ⬜
+  - *Carried to `docs/PLAN.md` as `STORY-0164`.*
 - Replay a run using frozen snapshot ⬜ (P4-2) — may move to Phase 3
+  - *Carried to `docs/PLAN.md` as `STORY-0165`. Also listed in the Phase 3 future list below; which phase owns it was never settled and is carried forward unresolved.*
 - Extend run trace header: expected_days, ph_dates_used, ph_source ✅ (PH-9)
 - build_runtime_component_registry: include ot_multiplier-computed components in GROSS_PAY chain ✅ (PH-8)
 
@@ -389,8 +411,14 @@ Findings are logged here as they are identified by `/security` reviews. Full nar
 | S4 | Grade query in `/run-payroll` route hardened with `workspace_id` filter to prevent cross-workspace grade leakage ✅ | Low | `backend/api/routes/payroll.py` | SEC-S4 | Sprint 11 | ✅ |
 | S5 | `shift_type`, `state_of_tax`, `skill_level` onboarding endpoint: enum allowlist validation + VARCHAR length guards added ✅ | Low | `backend/api/routes/onboarding.py` | SEC-S5 | Sprint 11 | ✅ |
 | S6 | `proration_strategy` no enum validation — arbitrary string silently stored; engine falls back with no error. API guard added ✅. DB CHECK constraint still missing. | Medium→Low | `backend/api/routes/workspace.py` + migration needed | SEC-S5 (report) | Sprint 14 | ⬜ DB constraint pending |
+*S6 — carried to `docs/PLAN.md` as `STORY-0166`. Partial: the API guard shipped; the DB CHECK constraint is the residual.*
+
 | S7 | Add file size cap (10 MB) on timesheet upload — `openpyxl.load_workbook` loads entire file into memory; no current guard | Low | `backend/api/routes/payroll.py:1492` | SEC-S6 (report) | Sprint 16 | ⬜ |
+*S7 — **STALE MARKER.** Shown ⬜ here, but delivered by ICM sprint `sec-s7-timesheet-upload-guard` as `STORY-0146`. Annotated, not corrected, to keep the freeze additions-only.*
+
 | S8 | Pin `python-multipart==0.0.28` in `requirements.txt` (currently unpinned; safe at 0.0.28 but unguarded against future regression) | Low | `requirements.txt` | SEC-S7 (report) | Sprint 16 | ⬜ |
+*S8 — carried to `docs/PLAN.md` as `STORY-0154`.*
+
 
 > **Policy:** Security findings are batched into the next sprint unless severity is Critical or High, in which case they block sprint closure. Full review narratives: `docs/security/`.
 
@@ -403,12 +431,20 @@ Observations are logged here as they are identified by `/auditor` reviews. Full 
 | # | Item | Type | File | Ref | Sprint Found | Status |
 |---|------|------|------|-----|--------------|--------|
 | Q1 | Add `"component_source"` field to `fixed_amount` trace entry when fallback fires — derivation path must be auditable | Observation | `backend/domain/payroll/rule_evaluator.py:327–338` | AUD-1 | Sprint 10 | 🔜 |
+*Q1 — **STALE MARKER.** Shown 🔜 here, but delivered by ICM sprint `aud-q1-trace-source` as `STORY-0145`. Annotated, not corrected.*
+
 | Q2 | Store `period_type` on `payroll_run` row; pass to `build_period_context` on retry — CUSTOM runs must reproduce with correct annualization | Observation | `backend/application/payroll_retry_service.py:147–151` (migration required) | AUD-2 | Sprint 10 | 🔜 |
+*Q2 — carried to `docs/PLAN.md` as `STORY-0151`.*
+
 | Q3 | Simulate script: replace raw `dict(b)` tax band mapping with explicit `Decimal(str(...))` conversion to match production path | Observation | `scripts/simulate_payroll_components.py:508` | AUD-3 | Sprint 10 | 🔜 |
+*Q3 — carried to `docs/PLAN.md` as `STORY-0152`.*
+
 | Q4 | `salary_basis` + `shift_type` added as named fields in `_period_context` trace header in `sequential_executor.py` — per-employee context that gates calculations is now auditable ✅ | Resolved | `backend/domain/payroll/sequential_executor.py` | AUD-4 | Sprint 11 | ✅ |
 | Q5 | `timesheet_source` missing from `_period_context` trace header — auditor cannot determine from trace whether hours came from timesheet upload vs. manual entry ✅ | Resolved | `backend/domain/payroll/sequential_executor.py:718` | AUD-16-3 | Sprint 16 | ✅ |
 | Q6 | Re-upload overwrites APPROVED timesheet entries without guard — evidence destruction; APPROVED status must block upsert ✅ | Finding → Resolved | `backend/application/timesheet_derivation_service.py` | AUD-16-2 | Sprint 16 | ✅ Sprint 24 |
 | Q7 | No actor identity (`approved_by`) on timesheet state transitions — who approved cannot be determined from audit log | Observation | `backend/api/routes/payroll.py` (approve endpoint) + migration | AUD-16-1 | Sprint 16 | ⬜ |
+*Q7 — carried to `docs/PLAN.md` as `STORY-0153`.*
+
 | Q8 | `proration_strategy` not captured in `rules_context_snapshot` — already frozen in `client_component_metadata_snapshot` at run start; retry reads from snapshot, not live table ✅ | Resolved | `backend/application/snapshot_service.py:47–91` | AUD-14-1 | Sprint 14 | ✅ Sprint 24 (no-code close) |
 
 > **Policy:** Observations are batched into the next available sprint. Any Observation rated "must fix before UAT/external audit" is escalated to Finding status and blocks the relevant sign-off gate. Full review narratives: `docs/audit/`.
@@ -461,7 +497,11 @@ WI-08 must land before WI-03 can be safely implemented. WI-03 remains blocked un
 | # | Item | Area | Ref | Notes |
 |---|------|------|-----|-------|
 | N1 | WI-08: Merge `_rule_trace` from `apply_payroll_rules()` into `component_trace_jsonb` (currently discarded unconditionally); add `rate_basis` field to each trace entry ⬜ | Correctness (A10) | WI-08 | **Arch-council required** — extends `component_trace_jsonb` schema contract; downstream: UI renderer + retry snapshot reader |
+*N1 — carried to `docs/PLAN.md` as `STORY-0167`. Still requires `/arch-council`.*
+
 | N2 | WI-03: Proration factor fix — `ot_multiplier` + `daily_rate_deduction` to reconstruct full BASIC as rate base (**PARTIALLY ADDRESSED**) 🔜 | Execution (A4) | WI-03 | Ordering fix (hire proration moved after `apply_payroll_rules`) lands in Sprint 14 — resolves `daily_rate_deduction` rate-base issue. `ot_multiplier` rate-base reconstruction is separate story if still needed. |
+*N2 — carried to `docs/PLAN.md` as `STORY-0168`. May already be resolved by Sprint 14's ordering fix; unverified.*
+
 
 ---
 
@@ -475,7 +515,11 @@ All items require arch-council pre-clearance before implementation begins. Entry
 | O2 | NEW-GAP12: Grade percentage structure — `total_monthly`, `basic_pct`, `housing_pct`, `transport_pct`, `utility_pct` on `grade` table; migration `a2b3c4d5e6f7`; `salary_derivation.py` pure function; grade pct wins when `total_monthly` non-null (D6); round-half-up + residual (D7) ✅ | Onboarding (A2) | NEW-GAP12 | Sprint 11 |
 | O3 | WI-04 Sub-B + NEW-GAP8: Shift gate in `rule_evaluator.py` — D9 decision: `basic_daily ot_multiplier` returns ₦0 for `shift_type` in (None, "DAY"); `shift_type` threaded per employee in `batch_processor.py` ✅ | Execution (A4) | WI-04b | Sprint 11 |
 | O4 | SHIFT-ALLOWANCE-CLIENT3: Extend shift allowance for `basic_daily` rate base; SHIFT2/SHIFT3/SHIFT4 rate code seeding migration ⬜ | Execution (A4) | WI-34 | Deferred — needs stable Client 3 workspace identifier before seeding migration can run |
+*O4 — carried to `docs/PLAN.md` as `STORY-0150`, merged with `PH-12`/`SHIFT2-4`.*
+
 | O5 | NEW-GAP11: LTA anniversary trigger — `AnniversaryService` auto-injects `payroll_input` (category=`paye_only`) for employees where `date_engaged` anniversary falls in pay period; configurable LTA amount ⬜ | Execution (A4) | NEW-GAP11 | Deferred to Sprint 12 (D10); blocked on M2 (PAYE-only additions path must land first) |
+*O5 — carried to `docs/PLAN.md` as `STORY-0169`. Its stated blocker (M2) has since shipped as `STORY-0079`.*
+
 | O6 | NEW-GAP1: Timesheet / Attendance Layer — `timesheet_entry` table; derivation pipeline auto-populates configurable OT/PH inputs at run-claim time (not hardcoded OT1/OT2/OT3 codes) 🔄 Sprint 16 in progress | Pay Events (A3) | NEW-GAP1 | Sprint 15 design sprint (arch-council locked AC-1–AC-10, C1, C2); Sprint 16 implementation: migrations MIG-D/E/A/B/C applied; timesheet derivation service + routes + frontend complete |
 
 ---
@@ -742,6 +786,8 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 | Q6-FIX | Guard APPROVED timesheet re-upload: prefetch approved_ids before loop, reject per employee | ✅ |
 | Q8-FIX | CLOSED (no-code): `proration_strategy` already frozen in `client_component_metadata_snapshot` | ✅ |
 | EMP-VERIFY-1 | Browser verification of auto-suggest banner (Sprint 23) | 🔜 |
+*EMP-VERIFY-1 — carried to `docs/PLAN.md` as `STORY-0170`.*
+
 
 **Files changed:** `Employees.tsx`, `MainLayout.tsx`, `Layout.tsx`, `Navigation.tsx`, `PayrollResults.tsx`, `timesheet_repo.py`, `timesheet_derivation_service.py`, `ROADMAP.md`
 
@@ -797,6 +843,8 @@ Table updated each sprint by `/tester`. Confirmed pre-existing via `git stash` b
 | PAY-RECON-1 | Payroll reconciliation upload (old system vs new): column mapping, comparison table, mismatch filter, XLSX download | ✅ |
 | INP-MULTI-1 | Multi-row period input entry SlideOver: anchor employee + line-item table, partial success handling | ✅ |
 | EMP-REG-5-FIX | Enrollment slide-over pre-population: normalised grade/designation matching (spaces→underscores), pre-fills fields from imported labels; fixes EMP-REG-5 (Sprint 23) | 🔜 |
+*EMP-REG-5-FIX — carried to `docs/PLAN.md` as `STORY-0171`.*
+
 
 **New shared infrastructure:** `NativeUploadFlow.tsx`, `ColumnMappingPanel.tsx`, `nativeExcelParser.ts`
 
@@ -1002,6 +1050,8 @@ Arch-council finding: no JWT auth exists anywhere in the system. Must ship befor
 ## Phase 3 — Platform Scale (Future)
 
 Deferred until Phase 1 (including Tracks K–O) and Phase 2 (Agent Layer) are complete and a second client is onboarded.
+
+*The Phase 3 list below is carried in full to `docs/PLAN.md` — `STORY-0172`, `STORY-0173`, `STORY-0174`, `STORY-0175`; `P4-2` is `STORY-0165`, recorded twice in this file.*
 
 - Employee payslip PDF generation and distribution (P4-1)
 - Snapshot replay endpoint (P4-2)

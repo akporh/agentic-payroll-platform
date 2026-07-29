@@ -3,12 +3,14 @@
 Names the active sprint workspace(s) — nothing else. See `README.md` for what this folder is, `WORKFLOW.md` for transition rules, `STAGE-REGISTRY.md` for stage definitions.
 
 ```yaml
-active_sprints: []
+active_sprints: [roadmap-split]
 ```
 
 `active_sprints` is a list shape by design (D9, `docs/diagnostics/2026-07-12-nonlinear-icm-sprint-workflow-implementation-plan.md`), even though exactly one entry is supported and enforced for now — one active sprint at a time. This means multi-sprint support later is a validation-rule change, not a schema migration.
 
-**No sprint currently active.** Three closed sprints are fully readable as worked examples of this structure:
+**Active: `roadmap-split`** (opened 2026-07-29) — retires `docs/ROADMAP.md`'s dual role, executing the follow-up deferred under D-021 now that the traceability layer exists to own delivered history. Docs-only: six of the ten stages are `not-applicable`. See `roadmap-split/CONTEXT.md`.
+
+Three closed sprints are fully readable as worked examples of this structure:
 
 - `dev-levy-rule-pct` (opened 2026-07-16, closed 2026-07-17) — Development Levy cadence gating + PERCENTAGE_OF_BASIC rule type (`b398c72`). Notable as the first sprint opened retroactively, mid-investigation, rather than starting from `/roadmap` — see `dev-levy-rule-pct/state.md` for the honest accounting of that, including the retro Sprint Workspace Close Gate catching two stale stage rows before close.
 

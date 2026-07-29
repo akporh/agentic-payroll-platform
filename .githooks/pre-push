@@ -28,6 +28,11 @@ echo "pre-push: running backend test suite..."
 "$PY" -m pytest -q --tb=short
 
 echo "pre-push: running frontend typecheck..."
-cd frontend && npx tsc --noEmit
+(cd frontend && npx tsc --noEmit)
+
+# Traceability drift — warns when code ships with no story_ref. Deliberately
+# advisory: it never blocks, so `set -e` must not see a non-zero exit. See the
+# module docstring for why this is a warning and not a gate.
+"$PY" docs/product/check_traceability_drift.py || true
 
 echo "pre-push: all checks passed."

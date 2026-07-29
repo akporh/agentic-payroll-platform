@@ -1,6 +1,6 @@
 # ID Allocation & Coverage Map
 
-Every known item of delivered (or explicitly backlogged) work, with its reserved `STORY-<nnnn>` identifier and feature assignment. **157 items.**
+Every known item of delivered (or explicitly backlogged) work, with its reserved `STORY-<nnnn>` identifier and feature assignment. **176 items.**
 
 This file answers *"what exists, and how much of it is recorded?"* — `STORY-REGISTRY.md` answers *"what has a full record?"* An item here with no registry row has a reserved identifier and a feature assignment and nothing else: **migrating it is Phase 4 work and remains unauthorised.**
 
@@ -316,6 +316,40 @@ Allocated identifiers so the tree is complete and these can never be mistaken fo
 | `STORY-0154` | `PT-S-08` · `S8` | Pin `python-multipart==0.0.28` | `FEAT-36` | B | ● |
 | `STORY-0155` | `PT-X-04` | Two deferred `/simplify` items (shared date utils, shared rule loader) | `FEAT-39` | B | ● |
 
+
+## `roadmap-split` sprint (2026-07-29) — forward-coverage batch
+*Executes the follow-up deferred under D-021. `FEAT-42` added by Phase 6 (D-030) to hold the four sprint stories.*
+
+| ID | Origin | Title | Feature | | |
+|---|---|---|---|---|---|
+| `STORY-0158` | — | Freeze `docs/ROADMAP.md` as the historical record | `FEAT-42` | C | ● |
+| `STORY-0159` | — | Create `docs/PLAN.md` with one labelling scheme | `FEAT-42` | C | ● |
+| `STORY-0160` | — | Reconcile open roadmap items against the story registry | `FEAT-42` | C | ● |
+| `STORY-0161` | — | Clear the two stale programme-state statements | `FEAT-42` | C | ● |
+| `STORY-0176` | — | Traceability drift detector (scope increase, DEC-05) | `FEAT-42` | C | ● |
+
+*Confidence was `—` while these were `in-flight`; `/retro` set it to `C` at close on 2026-07-29 from the sprint's test report. The rule stands: `/retro` sets it at close from the sprint's own evidence, per the Phase 5 two-touchpoint design (D-029). Recording them as `C` before that evidence exists is precisely the completeness-is-not-verification error this layer was built to avoid.*
+
+## Not delivered — forward roadmap items with no prior identifier (2026-07-29)
+Allocated by `roadmap-split` `STORY-0160`. Each was an open item in `docs/ROADMAP.md` carrying no `STORY-<nnnn>`: the Phase 4 migration captured *delivered* work exhaustively and open work only incidentally, so only 6 of 20 open items had one. Classified `backlog` on the D-011 precedent.
+
+| ID | Origin | Title | Feature | | |
+|---|---|---|---|---|---|
+| `STORY-0162` | `P3-2` | View applicable statutory rules — read endpoint + UI | `FEAT-31` | B | ● |
+| `STORY-0163` | `P3-2` | Statutory rule management UI for bureau operators | `FEAT-31` | B | ● |
+| `STORY-0164` | — | Expose snapshot content with a structured UI renderer | `FEAT-26` | B | ● |
+| `STORY-0165` | `P4-2` | Replay a run using its frozen snapshot | `FEAT-26` | B | ● |
+| `STORY-0166` | `S6` · `SEC-S5` | `proration_strategy` DB CHECK constraint (API half shipped) | `FEAT-34` | B | ● |
+| `STORY-0167` | `N1` · `WI-08` | Merge `_rule_trace` into `component_trace_jsonb`; `rate_basis` | `FEAT-1` | B | ● |
+| `STORY-0168` | `N2` · `WI-03` | `ot_multiplier` rate-base reconstruction (residual) | `FEAT-20` | B | ● |
+| `STORY-0169` | `O5` · `NEW-GAP11` | LTA anniversary trigger | `FEAT-19` | B | ● |
+| `STORY-0170` | `EMP-VERIFY-1` | Browser verification of the auto-suggest banner | `FEAT-37` | B | ● |
+| `STORY-0171` | `EMP-REG-5-FIX` | Enrollment slide-over pre-population | `FEAT-8` | B | ● |
+| `STORY-0172` | `P4-1` | Employee payslip PDF generation and distribution | `FEAT-33` | B | ● |
+| `STORY-0173` | `P4-3` | Life insurance — full employer cost reporting | `FEAT-33` | B | ● |
+| `STORY-0174` | `P4-6` | Multi-tenant bureau scaling | `FEAT-6` | B | ● |
+| `STORY-0175` | — | Automated payroll scheduling (pay cycle scheduler) | `FEAT-29` | B | ● |
+
 ---
 
 ## Excluded from allocation
@@ -356,7 +390,9 @@ Allocated identifiers so the tree is complete and these can never be mistaken fo
 
 `CAP-12` Agent Layer's `0 | 0` is **not** an unmigrated gap. It holds no items by design (D-023, OQ-6), retained so the unbuilt Phase 2 agentic work is visible as a named absence rather than an unstated one. It is the only row where zero is the correct answer.
 
-**What this table now means.** While coverage was partial, a missing item could be either unmigrated or non-existent, and the two were indistinguishable. They no longer are: an item absent from this table is an item no known evidence records. That is the property the coverage map was built to produce, and it is only true from this batch forward — it is preserved solely by capturing each new sprint at closure. The inventory behind this table has a **2026-07-15 horizon** (D-026); three sprints were already found missing from it after that date. Phase 5 (`sprint-workflow integration`) is the durable fix and is not yet authorised.
+**What this table now means.** While coverage was partial, a missing item could be either unmigrated or non-existent, and the two were indistinguishable. They no longer are: an item absent from this table is an item no known evidence records. That is the property the coverage map was built to produce, and it is only true from this batch forward — it is preserved solely by capturing each new sprint at closure. The inventory behind this table had a **2026-07-15 horizon** (D-026); three sprints were found missing from it after that date. Phase 5 (`sprint-workflow integration`) was authorised and **completed on 2026-07-29 under D-029** — it is the durable fix, and traceability is now written during a sprint (`/pm` allocates, `/retro` completes, the Close Gate enforces) rather than reconstructed after one.
+
+**The property held for delivered work only until 2026-07-29.** The `roadmap-split` sprint (`STORY-0160`) found that the migration had captured delivered work exhaustively and open work only incidentally — 6 of 20 open roadmap items carried an identifier. `STORY-0162`–`0175` closed that gap, so the "absent means unrecorded" claim now covers forward work too.
 
 ### Coverage history
 

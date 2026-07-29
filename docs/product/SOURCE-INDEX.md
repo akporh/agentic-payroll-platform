@@ -4,7 +4,7 @@
 
 `POLICY.md` forbids this programme from modifying anything under `docs/stories/`, `docs/sprints/`, `docs/test-reports/`, `docs/audit/` or `docs/security/` — history is a read-only input, never rewritten. So the reverse link cannot be a back-reference written into the old story file; it lives here instead.
 
-**Covers all 157 stories** as of 2026-07-29 (D-027, Phase 4D). There are no unmigrated items left, so a legacy code that does not appear here belongs to no known item.
+**Covers all 176 stories** as of 2026-07-29. Rows 1–157 came from the Phase 4D migration (D-027); `STORY-0158`–`0175` were added by the `roadmap-split` sprint, which extended the same property to *forward* work — previously only delivered work was exhaustively indexed. A legacy code that does not appear here belongs to no known item.
 
 ## `CAP-6` Execution Engine — Phase 4C batch (D-025, D-026)
 
@@ -291,3 +291,43 @@ Migrated 2026-07-29, completing the index at **157 of 157**. Every legacy code b
 ## Maintenance
 
 Every migration batch must extend all three tables above in the same change that adds its story rows. `validate_registry.py` checks that every migrated story appears at least once here, so an omission fails validation rather than going unnoticed.
+
+## `FEAT-42` Product record & roadmap structure — `roadmap-split` sprint (D-030)
+
+Added 2026-07-29. Forward-authored, so these carry no legacy codes — the column is retained for shape only.
+
+| Legacy code | Story |
+|---|---|
+| — (forward-authored) | `STORY-0158` — freeze `docs/ROADMAP.md` as the historical record |
+| — (forward-authored) | `STORY-0159` — create `docs/PLAN.md` |
+| — (forward-authored) | `STORY-0160` — reconcile open items against the registry |
+| — (forward-authored) | `STORY-0161` — clear stale programme-state statements |
+| — (forward-authored) | `STORY-0176` — traceability drift detector (scope increase) |
+
+| Source / evidence file | Stories |
+|---|---|
+| `docs/sprints/roadmap-split/CONTEXT.md` | `STORY-0158`, `STORY-0159`, `STORY-0160`, `STORY-0161`, `STORY-0176` |
+| `docs/product/check_traceability_drift.py` | `STORY-0176` |
+
+## Forward roadmap items — `roadmap-split` `STORY-0160` coverage batch
+
+Added 2026-07-29. Every one of these was an open item in `docs/ROADMAP.md` carrying **no** `STORY-<nnnn>` — the forward-coverage gap this batch closed. All are `status: backlog`; none is delivered. Their source is `docs/ROADMAP.md` alone, which after this sprint is a **frozen** file, so these citations are stable by construction.
+
+| Legacy code | Story |
+|---|---|
+| `P3-2` (read side) | `STORY-0162` — view applicable statutory rules |
+| `P3-2` (write side) | `STORY-0163` — statutory rule management UI for bureau operators |
+| — | `STORY-0164` — snapshot content structured UI renderer |
+| `P4-2` | `STORY-0165` — replay a run from its frozen snapshot |
+| `S6` · `SEC-S5` | `STORY-0166` — `proration_strategy` DB CHECK constraint |
+| `N1` · `WI-08` | `STORY-0167` — merge `_rule_trace` into `component_trace_jsonb` |
+| `N2` · `WI-03` | `STORY-0168` — `ot_multiplier` rate-base reconstruction |
+| `O5` · `NEW-GAP11` | `STORY-0169` — LTA anniversary trigger |
+| `EMP-VERIFY-1` | `STORY-0170` — browser verification of the auto-suggest banner |
+| `EMP-REG-5-FIX` | `STORY-0171` — enrollment slide-over pre-population |
+| `P4-1` | `STORY-0172` — payslip PDF generation and distribution |
+| `P4-3` | `STORY-0173` — life insurance employer cost reporting |
+| `P4-6` | `STORY-0174` — multi-tenant bureau scaling |
+| — | `STORY-0175` — automated payroll scheduling (pay cycle scheduler) |
+
+**Note on `P3-2` and `P4-2`.** `P3-2` names two distinct items (a read view and a management UI) and `P4-2` is recorded twice in `docs/ROADMAP.md` — once under Phase 1b and once in the Phase 3 future list. Both are consequences of the collided prefix scheme D-021 identified. Resolved here as two stories for `P3-2` and one for `P4-2`, with the duplication recorded in each story file rather than silently collapsed.

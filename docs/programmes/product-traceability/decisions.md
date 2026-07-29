@@ -391,6 +391,22 @@ This is **not** a date cutoff — Sprint RULE-VER-1 (2026-06-21) was captured wh
 **Effect on later phases:** Phase 5 is the last defined phase. On its completion the programme moves to steady state and any further work needs a new phase, per the cross-phase note.
 **Follow-up outside this programme:** unchanged from D-027, plus the manual `SKILL.md` application described above.
 
+## D-030 — Authorise Phase 6 (`feature-42 addition`): add `FEAT-42` Product record & roadmap structure
+
+**Date:** 2026-07-29
+**Approved by:** Michael Emedo (`AskUserQuestion` answer, "Where do this sprint's four meta-stories live in the hierarchy?" → "Add FEAT-42 under CAP-11")
+**Decision:** A new phase, **Phase 6 — `feature-42 addition`**, is authorised, adding exactly one feature row: `FEAT-42` — *Product record & roadmap structure* — under `CAP-11` Programme Governance & Assurance. Write access is limited to `docs/product/FEATURES.md` (amend only) and this programme's own folder. No outcome, capability, existing feature, ID scheme or column meaning changes, and no existing story's feature assignment moves.
+
+**Rationale:** The `roadmap-split` sprint (authorised separately under its own `decisions.md` DEC-01, executing the follow-up deferred by D-021) has four in-scope stories about the structure of the product record itself. `CAP-11` is unambiguously the right capability, but its only two features are `FEAT-40` (independent review programmes — `audit-program`, `agentic-architecture-review`) and `FEAT-41` (the ICM sprint workflow model — `STAGE-REGISTRY.md`/`WORKFLOW.md`). Neither describes the roadmap and product-record structure, and this programme's own artefact was *excluded* from allocation under D-023's `PT-M-04` ruling rather than given a feature, so no precedent row exists to follow.
+
+Two alternatives were put to the human and declined. Forcing the four stories into `FEAT-41` needs no governance at all but makes the tree assert something false about what `FEAT-41` contains — the small, compounding wrongness this programme was built to remove. Excluding the sprint from traceability entirely, on the `PT-M-04` precedent, was available but would need its own exemption from `retro`'s Close Gate, which hard-stops on an unresolved `story_ref`.
+
+**Why a phase and not just a decision.** The steady-state provision (`PHASES.md`, added under D-029) names "adding or retiring an outcome, capability or feature" as structural change requiring **a new phase and a human decision in this file**. It states no size threshold. Adding one leaf feature under an existing capability is the smallest shape change available, and it is still a shape change; granting it an informal exemption would convert the rule into a matter of judgement on its second application. The phase is cheap. The precedent of skipping it is not.
+
+**Effect on later phases:** None. Phase 6 is terminal and self-contained; on its completion the programme returns to the steady state defined after Phase 5. It does not reopen Phase 4, does not alter the ID scheme, and grants no authority over `docs/ROADMAP.md` — which stays forbidden to this programme, and is edited by the `roadmap-split` sprint under DEC-01/DEC-02 in that sprint's own record.
+
+**Follow-up outside this programme:** Allocating `STORY-0158`–`0161` into `FEAT-42`, and creating backlog rows for the previously untraced open roadmap items, are **additions** — routine sprint work under the steady-state provision, carried by `roadmap-split`'s own record, not by this phase.
+
 ---
 
 *Discovery-phase decisions: D-001–D-006 (governance). Hierarchy-approval-phase decisions: D-007–D-013 (DP-01–DP-07), recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-record-product-traceability-decisions-and-close-phase-2.md`. Structure-implementation-phase decision: D-014, recorded 2026-07-15 via direct human chat instruction. Phase 4A pilot decision: D-015, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4a-two-story-pilot-migration.md`. Phase 4B confirmed-batch decision: D-016, recorded 2026-07-15 per `docs/diagnostics/2026-07-15-prompt-authorise-phase-4b-confirmed-capability-batch.md`. Hierarchy-completion decisions: D-017–D-022, recorded 2026-07-28 via direct human chat instruction following human review of the Phase 4A/4B batches. Phase 4 (historical migration) as a whole remains unauthorised, and is now additionally gated behind Phase 3B's human sign-off.*

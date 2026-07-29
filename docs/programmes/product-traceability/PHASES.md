@@ -282,6 +282,30 @@ No other path. Unchanged from every prior Phase 4 sub-phase.
 
 ---
 
+## Phase 6 — `feature-42 addition`
+
+**Status:** **authorised** (2026-07-29, via D-030 — direct human chat instruction, `AskUserQuestion` answer "Add FEAT-42 under CAP-11"). Recorded before any file in scope was written.
+
+**Why a phase exists for a single row.** The steady-state provision below draws a hard line: filling in the cabinet is routine, changing the shape of the cabinet is not, and "adding or retiring an outcome, capability or feature" is named explicitly as requiring **a new phase and a human decision**. Adding one leaf feature is the smallest possible shape change, but it is a shape change, and the rule admits no size exemption. Creating the phase is cheaper than eroding the rule — and this programme exists because things became permanent by default rather than by choice.
+
+**Purpose:** Add `FEAT-42` — *Product record & roadmap structure* — under `CAP-11` Programme Governance & Assurance, giving the four `roadmap-split` sprint stories an honest home. `CAP-11`'s two existing features are scoped to independent review programmes (`FEAT-40`) and the ICM sprint workflow model (`FEAT-41`); neither covers the structure of the product record itself, and the traceability programme's own artefact (`PT-M-04`) was excluded from allocation rather than given a feature.
+
+**Allowed paths (exhaustive):** `docs/product/FEATURES.md` (**amend only** — one new row plus its changelog line); `docs/programmes/product-traceability/**`.
+
+**Forbidden paths:** everything forbidden to Phase 5, unchanged — plus `docs/product/OUTCOMES.md` and `docs/product/CAPABILITIES.md`, since no outcome or capability changes. `docs/ROADMAP.md` stays forbidden to this programme; the `roadmap-split` sprint edits it under its own separate authorisation (its `decisions.md` DEC-01), never under this phase.
+
+**Required inputs:** the `roadmap-split` sprint's confirmed scope (`docs/sprints/roadmap-split/CONTEXT.md`) establishing that four stories need a feature that does not exist.
+
+**Required outputs:** one `FEAT-42` row in `FEATURES.md` under `CAP-11`, `status: active`; the story-count columns left for the sprint's own `/retro` to complete, per the steady-state additions rule.
+
+**Required validations:** `python3 docs/product/validate_registry.py` at PASS; confirmation that no outcome, capability, existing feature, or ID scheme changed, and that no existing story's feature assignment moved.
+
+**Human gate:** **before** — satisfied by D-030.
+
+**Boundary note.** This phase authorises the *feature row only*. Allocating `STORY-0158`–`0161` into it, and creating the ~14 backlog rows for previously untraced open roadmap items, are **additions** — routine sprint work under the steady-state provision, authorised by the `roadmap-split` sprint's own record, not by this phase.
+
+---
+
 ## Steady state — maintaining `docs/product/` after Phase 5
 
 *Added 2026-07-29 under D-029, closing the authorisation gap D-028 opened.*
