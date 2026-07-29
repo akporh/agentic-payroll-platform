@@ -4,6 +4,23 @@ Read the global `~/.claude/CLAUDE.md` first. This file adds project-specific con
 
 ---
 
+## Commercial & scope documents
+
+The engagement's scope line and commercial position live outside this repo. Read them before any conversation about what is "done", what Phase 1 includes, or what Sandy is entitled to.
+
+| Document | Location | What it settles |
+|---|---|---|
+| Progress & Value Report (23 Jul 2026) | `Clients/Sandy/_DELIVERABLES/Reports/Sandy_progress_value_report_2026-07-23.docx` | **The definition-of-done.** Section 7 lists the six Phase 1 completion items; section 6 is the honest maturity table. |
+| Fee Proposal — Phase 1 | `Clients/Sandy/_DELIVERABLES/Proposals/Sandy_fee_proposal_phase1_v1.docx` | £12,500 proposed fee, payment terms, IP retention, responsibilities. Unsigned. |
+| Subsequent Development Proposal | `Clients/Sandy/_DELIVERABLES/Proposals/Sandy_subsequent_development_proposal_v1.docx` | Gated Phase 2–5 roadmap. Approve-in-principle only; no phase authorised. |
+| Fee model (internal) | `02_Finance_Accounting/Sandy - Fee Model/Sandy_fee_model_2026-07-23.xlsx` | **Internal only — never send.** Holds discount scenarios and closure-risk modelling. |
+
+Live status is tracked in `_CONTROL/dashboard/src/data/register.ts` under `sandy-mvp` (Phase 1 delivery) and `sandy-commercial` (fee, IP, DPA).
+
+**Phase 1 boundary:** upstream data prep and downstream bank/tax/remittance work stay manual. The platform calculates, evidences, and supports approval. The manual process remains the system of record until a controlled parallel run says otherwise. Nothing built-but-untested may be described as production-ready.
+
+---
+
 ## Domain Context
 
 Nigerian payroll platform. Statutory deductions: PAYE (cumulative annual method), Pension (8% employee / 10% employer), NHF (2.5% of basic, key: `employee_rate`), Health Insurance (key: `employee_amount`), Development Levy (key: `amount`).
