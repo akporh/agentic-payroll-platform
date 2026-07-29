@@ -108,7 +108,7 @@ During bulk upload (`handleImport`), `grade_code` is **always null** — never t
 
 ## Test Harness (2026-07-12)
 
-The suite is fully green (306 passed, 1 intentional Phase-2 skip) and enforced automatically. Do not close any sprint with a red suite.
+The suite is fully green (327 passed, 1 intentional Phase-2 skip) and enforced automatically. Do not close any sprint with a red suite.
 
 - **Run:** `python -m pytest -q` (needs Postgres at `DATABASE_URL`; ~10 s).
 - **Pre-push gate:** `.githooks/pre-push` runs pytest + `tsc --noEmit` before every push (`core.hooksPath` is set to `.githooks`). Emergency bypass: `--no-verify`.
